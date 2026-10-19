@@ -2,9 +2,8 @@
 
 Plataforma de e-commerce de ropa con probador virtual con IA.
 Proyecto académico de la materia Sistemas de Información II (UAGRM),
-desarrollado con metodología PUDS (primer parcial) e ICONIX (segundo parcial)
-y modelado UML 2.5. El catálogo del segundo parcial es de 25 casos de uso
-(22 implementados, 3 por construir) y la base tiene 59 tablas.
+desarrollado con metodología ICONIX y modelado UML 2.5. El catálogo es de
+25 casos de uso (22 implementados, 3 por construir).
 
 FashionStore combina una tienda pública para clientes (catálogo, carrito,
 checkout y reservas para probarse en sucursal), un back office administrativo
