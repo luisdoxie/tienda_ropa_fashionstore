@@ -168,7 +168,7 @@ export class CajaComponent implements OnInit {
     });
   }
 
-  /** `/reportes/ventas` ya agrega por sucursal del lado del servidor (CU-33)
+  /** `/reportes/ventas` ya agrega por sucursal del lado del servidor (CU-22)
    * y con alcance global trae todas en una sola consulta -- nada de pedir
    * sucursal por sucursal y sumar acá. */
   private cargarResumenGlobal(): void {

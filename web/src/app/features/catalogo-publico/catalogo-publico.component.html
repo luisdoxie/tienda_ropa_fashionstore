@@ -8,10 +8,10 @@
 <div class="tienda">
   <section class="hero">
     <div class="hero-texto">
-      <p class="hero-eyebrow">Probador virtual con realidad aumentada</p>
+      <p class="hero-eyebrow">Probador virtual con inteligencia artificial</p>
       <h1>Vestite de otra forma: probate cada prenda antes de decidir.</h1>
       <p class="hero-sub">
-        Elegí una prenda, activá la cámara y mirá cómo te queda en tiempo real. Sin vestidores, sin vueltas.
+        Elegí una prenda, subí una foto tuya en la app y mirá cómo te queda. Sin vestidores, sin vueltas.
       </p>
     </div>
 
@@ -27,14 +27,13 @@
           <small>Del catálogo, la que quieras probarte.</small>
         </span>
       </li>
-      <li class="hero-paso hero-paso--camara">
+      <li class="hero-paso">
         <span class="hero-paso-numero">02</span>
-        <span class="pi pi-camera hero-paso-icono" aria-hidden="true"></span>
+        <span class="pi pi-upload hero-paso-icono" aria-hidden="true"></span>
         <span class="hero-paso-texto">
-          <strong>Activá la cámara</strong>
-          <small>Modo espejo: te ves a vos, en vivo.</small>
+          <strong>Subí tu foto</strong>
+          <small>La IA te viste la prenda elegida.</small>
         </span>
-        <span class="hero-paso-punto" aria-hidden="true"></span>
       </li>
       <li class="hero-paso hero-paso--final">
         <span class="hero-paso-numero">03</span>
@@ -204,7 +203,7 @@
               <span class="pi pi-image"></span>
             }
             @if (producto.admite_probador) {
-              <span class="ar-tag"><span class="pi pi-camera"></span>Probador AR</span>
+              <span class="probador-tag"><span class="pi pi-sparkles"></span>Probador IA</span>
             }
           </div>
           <div class="producto-cuerpo">

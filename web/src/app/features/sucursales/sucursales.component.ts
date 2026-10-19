@@ -21,7 +21,7 @@ const COLUMNAS: ColumnaTabla<Sucursal>[] = [
 ];
 
 // dia_semana es 1=lunes...7=domingo (isoweekday), como lo valida
-// HorarioCrear en organizacion/schemas.py.
+// HorarioCrear en plataforma/schemas.py.
 const DIAS = [
   { numero: 1, nombre: 'Lunes' },
   { numero: 2, nombre: 'Martes' },

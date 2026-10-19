@@ -157,7 +157,7 @@ export const routes: Routes = [
         path: 'probador',
         canActivate: [permisoGuard('probador.gestionar')],
         loadComponent: () =>
-          import('./features/probador/anclajes-editor.component').then((m) => m.AnclajesEditorComponent),
+          import('./features/probador/assets-probador.component').then((m) => m.AssetsProbadorComponent),
       },
       {
         path: 'inventario',

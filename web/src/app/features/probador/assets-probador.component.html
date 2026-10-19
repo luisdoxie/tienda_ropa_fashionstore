@@ -1,0 +1,68 @@
+<h1>Assets del probador</h1>
+<p class="ayuda">
+  Subí la imagen de cada prenda (PNG con fondo transparente) y validala para que el cliente pueda probársela.
+  Solo las variantes con un asset validado aparecen en el probador de la app. El servidor exige un PNG real con canal
+  alfa (transparencia), de al menos 512 px de lado y de hasta 3 MB.
+</p>
+
+<section class="carga">
+  <label for="variante">ID de variante</label>
+  <input id="variante" type="number" pInputText [ngModel]="varianteId()" (ngModelChange)="varianteId.set($event)" />
+  <p-button label="Cargar assets" size="small" (onClick)="cargarAssets()" [disabled]="varianteId() === null" />
+</section>
+
+@if (assets().length > 0) {
+  <section class="lista-assets">
+    @for (asset of assets(); track asset.id) {
+      <button
+        type="button"
+        class="asset-chip"
+        [class.activo]="assetSeleccionado()?.id === asset.id"
+        (click)="seleccionarAsset(asset)"
+      >
+        {{ etiquetaTipo(asset.tipo) }}
+        <p-tag
+          [value]="asset.estado"
+          [severity]="asset.estado === 'validado' ? 'success' : asset.estado === 'rechazado' ? 'danger' : 'warn'"
+        />
+      </button>
+    }
+  </section>
+}
+
+<section class="subir">
+  <label for="tipo">Tipo</label>
+  <p-select
+    inputId="tipo"
+    [options]="tipos"
+    optionLabel="label"
+    optionValue="value"
+    [ngModel]="tipoNuevo()"
+    (ngModelChange)="tipoNuevo.set($event)"
+  />
+  <input type="file" accept="image/png" (change)="onArchivoSeleccionado($event)" />
+  <p-button label="Subir" size="small" (onClick)="subirAsset()" [disabled]="varianteId() === null" />
+</section>
+
+@if (assetSeleccionado(); as asset) {
+  <section class="vista-previa-fila">
+    <div class="vista-previa">
+      <img [src]="asset.url" alt="Asset del probador" />
+    </div>
+
+    <aside class="panel">
+      <p><strong>Tipo:</strong> {{ etiquetaTipo(asset.tipo) }}</p>
+      <p><strong>Estado:</strong> {{ asset.estado }}</p>
+      @if (asset.ancho_px && asset.alto_px) {
+        <p><strong>Tamaño:</strong> {{ asset.ancho_px }} × {{ asset.alto_px }} px</p>
+      }
+      <p-button
+        label="Validar"
+        size="small"
+        severity="success"
+        [disabled]="asset.estado !== 'pendiente'"
+        (onClick)="validarAsset()"
+      />
+    </aside>
+  </section>
+}

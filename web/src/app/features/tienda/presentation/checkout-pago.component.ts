@@ -10,7 +10,7 @@ import { PagosService } from '../data/pagos.service';
 import { PedidosService } from '../data/pedidos.service';
 import { CheckoutService } from '../state/checkout.service';
 
-// QR primero y por defecto: Libélula es un simulador que nunca confirma el pago (ver backend/app/pagos/pasarela.py).
+// QR primero y por defecto: Libélula es un simulador que nunca confirma el pago (ver backend/app/comercial/pasarela.py).
 const METODOS: { codigo: MetodoPagoPasarela; etiqueta: string }[] = [
   { codigo: 'qr_online', etiqueta: 'QR' },
   { codigo: 'paypal', etiqueta: 'PayPal' },

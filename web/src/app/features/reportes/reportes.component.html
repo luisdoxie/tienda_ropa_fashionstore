@@ -159,12 +159,15 @@
         </div>
 
         <div class="fs-card seccion-tarjeta">
-          <h3>Uso del probador virtual</h3>
+          <h3>Pruebas del probador por estado</h3>
           <div class="pills-fila">
-            @for (fila of d.uso_probador; track fila.modo) {
-              <span class="pill">{{ fila.modo === 'espejo' ? 'Espejo' : 'Generativo' }}: {{ fila.cantidad }}</span>
+            @for (fila of d.uso_probador; track fila.estado) {
+              <span class="pill"
+                >{{ fila.estado === 'completado' ? 'Completadas' : fila.estado === 'fallido' ? 'Fallidas' : 'En proceso' }}:
+                {{ fila.cantidad }}</span
+              >
             } @empty {
-              <span class="ayuda">Sin sesiones en el período.</span>
+              <span class="ayuda">Sin pruebas generadas en el período.</span>
             }
           </div>
         </div>

@@ -45,14 +45,13 @@
   }
 }
 
-.editor {
+.vista-previa-fila {
   display: flex;
   gap: var(--fs-espacio-6);
   align-items: flex-start;
 }
 
-.lienzo {
-  position: relative;
+.vista-previa {
   display: inline-block;
   max-width: 560px;
   border: 1px solid var(--fs-borde);
@@ -73,43 +72,6 @@
     display: block;
     width: 100%;
     height: auto;
-    cursor: crosshair;
-    user-select: none;
-  }
-}
-
-.capa-anclas {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.marcador {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--fs-error);
-  border: 2px solid white;
-  box-shadow: 0 0 0 1px var(--fs-error);
-  cursor: grab;
-
-  span {
-    position: absolute;
-    top: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    font-size: 11px;
-    background: rgba(0, 0, 0, 0.75);
-    color: white;
-    padding: 2px 6px;
-    border-radius: 4px;
-  }
-
-  &:active {
-    cursor: grabbing;
   }
 }
 
@@ -118,16 +80,4 @@
   flex-direction: column;
   gap: var(--fs-espacio-2);
   min-width: 200px;
-
-  label {
-    font-size: 12px;
-    color: var(--fs-texto-tenue);
-    margin-top: var(--fs-espacio-2);
-  }
-}
-
-.plantillas {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--fs-espacio-2);
 }

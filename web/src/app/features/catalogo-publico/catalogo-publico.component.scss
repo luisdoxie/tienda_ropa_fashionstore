@@ -156,20 +156,6 @@
   }
 }
 
-.hero-paso--camara {
-  position: relative;
-}
-
-.hero-paso-punto {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--fs-exito);
-  margin-inline-start: auto;
-  flex: none;
-  animation: fs-paso-pulso 1.8s ease-in-out infinite;
-}
-
 .hero-paso--final {
   background: #241c18;
   box-shadow: 0 10px 24px rgba(28, 23, 19, 0.16);
@@ -202,21 +188,8 @@
   }
 }
 
-@keyframes fs-paso-pulso {
-  0%,
-  100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .hero-paso {
-    animation: none;
-  }
-  .hero-paso-punto {
     animation: none;
   }
 }
@@ -447,7 +420,7 @@
   }
 }
 
-.ar-tag {
+.probador-tag {
   position: absolute;
   top: 9px;
   left: 9px;

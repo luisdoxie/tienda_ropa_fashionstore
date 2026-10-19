@@ -141,7 +141,7 @@ export interface Carrito {
 }
 
 /** `CarritoDetalle` + los datos resueltos vía /catalogo/variantes/detalle
- * (el backend no los incluye, ver `catalogo.service` en el backend). */
+ * (el backend no los incluye, ver `obtener_detalle_para_dashboard` en backend/app/catalogo/router.py). */
 export interface CarritoLinea extends CarritoDetalle {
   productoNombre?: string;
   imagenPrincipal?: string | null;

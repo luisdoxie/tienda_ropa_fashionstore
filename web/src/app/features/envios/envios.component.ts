@@ -47,7 +47,7 @@ const MENSAJE_EXITO: Record<EstadoEnvio, string> = {
 };
 
 /**
- * CU-43 — Actualizar estado del envío. El personal (administrador y
+ * CU-19 — Gestionar envíos (actualizar estado). El personal (administrador y
  * encargado de sucursal) ve los envíos de su alcance y los hace avanzar:
  * programado → en ruta → entregado, o fallido desde cualquiera de los dos.
  * Las reglas (transiciones, venta pagada, sucursal) las valida el backend;

@@ -252,7 +252,7 @@ export class ReportesComponent implements OnInit {
     this.buscarPestaniaActual();
   }
 
-  // ---- Preguntar a los reportes (CU-38) ---------------------------------------------------
+  // ---- Preguntar a los reportes (CU-23) ---------------------------------------------------
   // Se dicta o se escribe una pregunta; el backend la interpreta, la responde en español y
   // devuelve los filtros que aplicó. Acá se muestran esos filtros y la pestaña del reporte,
   // reutilizando las mismas búsquedas de siempre (no se dibuja `resultado` aparte).

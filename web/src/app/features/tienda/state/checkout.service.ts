@@ -48,7 +48,7 @@ export class CheckoutService {
 
   // Para domicilio también hace falta la cotización de ESA dirección: sin
   // ella costoEnvio valdría 0 y el backend rechaza el envío cuando el costo
-  // de la venta no coincide con la tarifa real de la zona (CU-42).
+  // de la venta no coincide con la tarifa real de la zona (CU-19).
   readonly listoParaPagar = computed(() => {
     const estado = this.estado();
     return (

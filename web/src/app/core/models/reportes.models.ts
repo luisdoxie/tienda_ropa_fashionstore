@@ -2,7 +2,7 @@ import { FilaConsolidado, FilaValuacion } from './inventario.models';
 
 // ---- Ventas -----------------------------------------------------------------------
 
-/** Una fila de vw_ventas_detalle (backend/app/ventas/repository.py). */
+/** Una fila de vw_ventas_detalle (backend/app/comercial/repository.py). */
 export interface FilaVentasDetalle {
   venta_id: number;
   codigo: string;
@@ -80,7 +80,7 @@ export interface ReporteReservas {
 // ---- Probador -----------------------------------------------------------------------
 
 export interface FilaUsoProbador {
-  modo: string;
+  estado: string;
   cantidad: number;
 }
 
