@@ -1,35 +1,50 @@
 # FashionStore — Contexto del proyecto
 
-Plataforma de e-commerce de ropa con vestidor virtual por realidad aumentada.
-Proyecto académico, Sistemas II, UAGRM. Metodología PUDS, modelado UML 2.5.
+Plataforma de e-commerce de ropa con probador virtual con IA.
+Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
+(SaaS multitenant, offline, reportes con IA): ICONIX. Modelado UML 2.5.
 
 ## Stack
 - Backend: Python 3.13 + FastAPI + SQLAlchemy 2.0 + Pydantic v2 + Alembic
 - BD: PostgreSQL en Railway
 - Web: Angular + PrimeNG (back office: admin, encargado, cajero; más una
   tienda pública para clientes: catálogo, registro/login, carrito y
-  checkout — sin probador AR)
+  checkout — sin probador virtual)
 - Móvil: Flutter + Dart, Material 3 (cliente: catálogo, favoritos,
-  carrito/checkout y el probador AR, exclusivo de esta app)
+  carrito/checkout y el probador virtual, exclusivo de esta app)
 - Imágenes: Cloudinary
 - IA: Groq (búsqueda por voz y recomendador)
 - Chatbot: Botpress (widget en la web; el mismo bot en un WebView de la app móvil). Vive en la nube de
   Botpress: sus flujos no están en el repo y el backend no tiene endpoint de chat.
-- Probador: google_mlkit_pose_detection (modo espejo) + Vertex AI (generativo)
+- Probador: generativo, detrás de `catalogo/generativo.py` (hoy Vertex AI; se
+  agregará Decart API Platform como otra implementación). El modo espejo
+  (cámara en vivo + google_mlkit_pose_detection + anclajes) se eliminó.
+  Respaldo en la etiqueta `respaldo-pre-quitar-espejo` y la rama
+  `respaldo-espejo-wip`.
 - Pagos: Libélula y PayPal, ambos en sandbox
 - Despliegue: Railway sin Docker, y Vercel para el Angular
 
 ## Arquitectura
-Monolito modular en capas. 13 paquetes de negocio bajo `backend/app/`:
-core, seguridad, organizacion, catalogo, abastecimiento, inventario,
-reservas, ventas, pagos, entregas, probador, inteligencia, reportes.
+Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
+(más `sincronizacion`, pendiente de crear, para el offline del segundo parcial):
+- `plataforma`: seguridad (autenticación, usuarios, roles, permisos, clientes)
+  y organización (ciudades, sucursales, empleados). Aquí irán empresa, plan y
+  suscripción (multitenant).
+- `catalogo`: catálogo, inventario, abastecimiento y probador virtual
+  (solo modo generativo).
+- `comercial`: reservas, ventas, pagos y entregas.
+- `inteligencia`: recomendador, búsqueda por voz, reportes e indicadores
+  (luego reportes con IA y analítica ML).
+- `core`: infraestructura.
 
-Cada paquete tiene esta estructura:
+Cada paquete tiene esta estructura (un archivo por tipo; dentro de cada
+archivo los bloques de cada dominio absorbido van marcados con
+`# ---- Nombre ----`, p. ej. `# ---- Inventario ----` en `catalogo`):
   models.py       modelos SQLAlchemy (compartido por todo el paquete)
   schemas.py      schemas Pydantic (Crear, Actualizar, Respuesta)
   repository.py   acceso a datos (compartido)
   politicas.py    validaciones y reglas comunes del paquete (compartido)
-  router.py       endpoints FastAPI
+  router.py       endpoints FastAPI (un único `routers`)
   casos_uso/      un archivo por caso de uso del catálogo (excepto en `core`,
                   que es infraestructura y no tiene casos_uso/)
 
@@ -38,23 +53,19 @@ Cada paquete tiene esta estructura:
 - Nombre del archivo: cuXX_nombre_descriptivo.py, en minúsculas y con el
   número delante, para que el listado de la carpeta salga ordenado.
 - El docstring del módulo empieza con "CU-XX — Nombre del caso de uso",
-  seguido de actor, precondición y postcondición.
+  seguido de actor, precondición y postcondición, y una línea "Absorbe los
+  antiguos CU-..." cuando el caso agrupa casos del primer parcial.
+- Un caso de uso se realiza con una o varias CLASES DE CONTROL dentro de su
+  archivo (cada clase es un controlador del diagrama de robustez de ICONIX).
+  Cada clase es pública y en PascalCase.
 - Un caso de uso SIMPLE (una entidad, una operación, un actor) es una sola
-  clase pública en PascalCase, con un único método público `ejecutar()`.
-- Un caso de uso de tipo "Gestionar X" es un solo archivo que hereda de
-  CRUDBase, no varios archivos separados por operación.
-- Un caso de uso COMPUESTO (agrupa varias entidades o varias operaciones
-  relacionadas del catálogo) puede romper la regla de "un único ejecutar()"
-  de dos formas, y ninguna otra:
-    a) Si agrupa varias entidades CRUD triviales del mismo dominio: el
-       archivo contiene varias clases CRUDBase pequeñas, una por entidad.
-       El archivo sigue siendo un solo CU.
-    b) Si es una entidad principal con operaciones relacionadas: el archivo
-       tiene una sola clase con varios métodos públicos en vez de un único
-       ejecutar().
-  Esta excepción no habilita a inventar más casos de uso ni a partir uno del
-  catálogo en dos archivos: existe para fusionar en un solo archivo lo que
-  el catálogo ya modela como un CU.
+  clase con un único método público `ejecutar()`.
+- Un caso de uso de tipo "Gestionar X" hereda de CRUDBase, no varios archivos
+  separados por operación.
+- Un caso de uso COMPUESTO (agrupa varias entidades u operaciones relacionadas)
+  puede tener varias clases de control en el mismo archivo (una por entidad
+  o por flujo), o una sola clase con varios métodos públicos. No se parte
+  un caso de uso del catálogo en dos archivos.
 - Prohibido duplicar lógica entre casos de uso: si dos la necesitan, baja a
   repository.py (si es acceso a datos) o a politicas.py (si es validación o
   regla de negocio).
@@ -71,46 +82,56 @@ Cada paquete tiene esta estructura:
   contiene lógica de negocio.
 
 ## Trazabilidad con el modelo UML
-El catálogo completo de los 43 casos de uso está en
-`docs/consolidado_fashionstore.md`, sección 4 (y, mientras ese archivo no
-exista, en `docs/presentacion2/generadores/cu_ciclo2.json` y
-`docs/presentacion2/generadores/requisitos.json`).
-Todo caso de uso implementado debe corresponder a uno de ese catálogo.
-No inventar casos de uso nuevos ni cambiar la numeración.
-Si al implementar surge la necesidad de una operación que no está en el
-catálogo, no crear un CU nuevo: resolverla en politicas.py o en
-repository.py, o preguntarlo explícitamente.
+El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
+43; la equivalencia está en `C:\Desarrollo\examen\documento\2doParcial\`):
+- plataforma: CU-01 Autenticar y registrar usuarios · CU-02 Gestionar
+  usuarios, roles y permisos · CU-03 Gestionar organización · CU-04 Gestionar
+  empresas, planes y suscripciones (NUEVO, sin implementar).
+- catalogo: CU-05 Gestionar catálogo · CU-06 Consultar y buscar catálogo ·
+  CU-07 Gestionar favoritos · CU-08 Gestionar abastecimiento · CU-09 Gestionar
+  inventario · CU-10 Gestionar assets del probador · CU-11 Probar prenda con IA.
+- comercial: CU-12 Gestionar reservas · CU-13 Gestionar carrito y compra
+  digital · CU-14 Registrar venta presencial · CU-15 Consultar ventas · CU-16
+  Gestionar promociones · CU-17 Gestionar devoluciones y cambios · CU-18
+  Procesar pagos · CU-19 Gestionar envíos y tarifas.
+- inteligencia: CU-20 Recomendar productos · CU-21 Buscar prendas por voz ·
+  CU-22 Consultar reportes e indicadores · CU-23 Generar reportes con IA
+  (hoy reporte por voz; se amplía) · CU-24 Analizar con Machine Learning
+  (NUEVO, sin implementar).
+- sincronizacion: CU-25 Sincronizar operaciones offline (NUEVO, sin
+  implementar; paquete por crear).
+El antiguo CU-22 del primer parcial (modo espejo) se retiró. Una operación que no sea un caso de
+uso del catálogo no crea un CU nuevo: se resuelve en politicas.py o
+repository.py, o se pregunta.
 
 Algunas tablas del esquema (`docs/fashionstore_esquema.sql`) son soporte de
 un caso de uso del catálogo pero no tienen su propio CU (ej. `orden_compra`,
-que CU-12 referencia de forma opcional). Se implementan con su CRUD normal,
-sin numerarlas ni contarlas para el total de 43.
+que CU-08 referencia de forma opcional). Se implementan con su CRUD normal.
 
 ## Reglas obligatorias
 1. Sin dependencias circulares entre paquetes.
-   Excepciones conocidas y deliberadas, ninguna otra: en ambas, el import
-   diferido evita el ImportError circular y el acceso siempre pasa por
-   `politicas`/`casos_uso` público del otro paquete, nunca por su tabla.
-     - `core` ↔ `seguridad`: `core/security.py` necesita resolver permisos
-       (tablas de `seguridad`) para JWT/autorización; importa
-       `seguridad.politicas` de forma diferida (dentro de cada función)
-       porque `seguridad.repository` importa `core.security` a nivel de
+   Orden de dependencias: `core` ← `plataforma` ← `catalogo` ← `comercial` ←
+   `inteligencia` (y `sincronizacion` sobre `comercial`). Una excepción
+   conocida y deliberada, ninguna otra: el import diferido evita el
+   ImportError circular y el acceso siempre pasa por `politicas`/`casos_uso`
+   público del otro paquete, nunca por su tabla.
+     - `core` ↔ `plataforma`: `core/security.py` necesita resolver permisos
+       (tablas de `plataforma`) para JWT/autorización; importa
+       `plataforma.politicas` de forma diferida (dentro de cada función)
+       porque `plataforma.repository` importa `core.security` a nivel de
        módulo.
-     - `catalogo` ↔ `inventario`: `catalogo.casos_uso.cu09` llama a
-       `inventario.casos_uso.cu13` (ConsultarDisponibilidadSucursal) para
-       resolver `cantidad_disponible`, y `catalogo.repository` llama a
-       `inventario.politicas.listar_variantes_con_stock` (import diferido
-       dentro del método, mismo motivo que en `core/security.py`) para el
-       filtro `solo_disponibles` de CU-10; `inventario.politicas` ya
-       llamaba a `catalogo.politicas` para validar que la variante exista.
+   Dentro de un mismo paquete también hay ciclos entre archivos que se
+   resuelven con import diferido (p. ej. `catalogo/repository.py` llama
+   dentro del método a `catalogo/politicas.listar_variantes_con_stock`
+   para el filtro `solo_disponibles` de CU-06).
 2. Un paquete NUNCA consulta las tablas de otro paquete. Llama al caso de uso
-   o a la política del otro paquete. Ejemplo: ventas llama a
-   inventario.politicas.actualizar_stock_operacion(), no hace UPDATE sobre
+   o a la política del otro paquete. Ejemplo: comercial llama a
+   catalogo.politicas.actualizar_stock_operacion(), no hace UPDATE sobre
    stock.
 3. Todo caso de uso de tipo "Gestionar X" hereda de core/crud_base.py y
-   ocupa un solo archivo (si agrupa varias entidades del mismo dominio, ver
-   la excepción de la convención de casos de uso). No repetir código CRUD
-   ni dividir un CRUD en varios casos de uso.
+   ocupa un solo archivo (si agrupa varias entidades del mismo dominio, el
+   archivo tiene varias clases de control, ver la convención de casos de
+   uso). No repetir código CRUD ni dividir un CRUD en varios casos de uso.
 4. Todo cambio de esquema va en una migración de Alembic. Nunca a mano.
 5. El router no toca la base de datos ni contiene lógica de negocio: solo
    instancia el caso de uso correspondiente y llama a ejecutar() (o al
@@ -129,7 +150,10 @@ sin numerarlas ni contarlas para el total de 43.
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(61 tablas). No inventar tablas ni columnas nuevas sin pedirlo explícitamente.
+(60 tablas en el SQL; la base real tiene 59: `bitacora` está en el SQL pero nunca
+se implementó, sin modelo ni migración, y `sesion_probador` se eliminó con el modo
+espejo). No inventar
+tablas ni columnas nuevas sin pedirlo explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
 
@@ -153,7 +177,10 @@ con la fotografía como protagonista.
 
 ## Alcance del probador virtual
 Solo prendas superiores masculinas (poleras, camisas, chamarras).
-Modo espejo obligatorio en Flutter. Modo generativo opcional.
+Solo existe el modo generativo (foto del cliente + imagen de la prenda,
+resuelto por un proveedor externo de IA). El modo espejo se eliminó. En el
+catálogo de 25 CU, los assets del probador son CU-10 (sin anclajes) y probar
+una prenda con IA es CU-11.
 
 ## Entorno local
 - PostgreSQL instalado localmente. Base de desarrollo: `fashionstore_dev`,

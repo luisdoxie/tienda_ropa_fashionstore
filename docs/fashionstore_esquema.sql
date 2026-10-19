@@ -614,8 +614,6 @@ CREATE TABLE activo_probador (
     variante_id     INT NOT NULL REFERENCES producto_variante(id) ON DELETE CASCADE,
     tipo            VARCHAR(20) NOT NULL CHECK (tipo IN ('overlay_2d','flatlay_ia','thumb')),
     url             TEXT NOT NULL,
-    -- Anclajes normalizados 0..1 respecto al tamano de la imagen.
-    anclajes        JSONB,
     ancho_px        INT,
     alto_px         INT,
     estado          VARCHAR(15) NOT NULL DEFAULT 'pendiente'
@@ -642,15 +640,6 @@ CREATE TABLE probador_generacion (
 );
 
 CREATE INDEX ix_generacion_cache ON probador_generacion (hash_foto, variante_id);
-
-CREATE TABLE sesion_probador (
-    id              SERIAL PRIMARY KEY,
-    cliente_id      INT REFERENCES cliente(id),
-    variante_id     INT NOT NULL REFERENCES producto_variante(id),
-    modo            VARCHAR(15) NOT NULL CHECK (modo IN ('espejo','generativo')),
-    duracion_seg    INT,
-    creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 
 -- =====================================================================
@@ -694,6 +683,8 @@ CREATE TABLE recomendacion (
 -- PAQUETE 12: NUCLEO / AUDITORIA
 -- =====================================================================
 
+-- NOTA: tabla de referencia NO implementada (sin modelo ni migracion); la base
+-- real tiene 59 tablas.
 CREATE TABLE bitacora (
     id              BIGSERIAL PRIMARY KEY,
     usuario_id      INT REFERENCES usuario(id),
