@@ -2,7 +2,7 @@
 demo/pruebas). Lista email, roles y estado de cada usuario.
 
 La contraseña se lee de una variable de entorno, nunca por argumento. El
-hash lo hace seguridad.repository (bcrypt), igual que la recuperación de
+hash lo hace plataforma.repository (bcrypt), igual que la recuperación de
 contraseña de la app.
 
 Por defecto NO escribe nada (dry-run). Para escribir hace falta --ejecutar.
@@ -31,8 +31,8 @@ def main(argv: list[str] | None = None) -> None:
 
     import app.main  # noqa: F401  (registra todos los modelos)
     from app.core.database import SessionLocal, engine
-    from app.seguridad.models import Usuario
-    from app.seguridad.repository import UsuarioRepository
+    from app.plataforma.models import Usuario
+    from app.plataforma.repository import UsuarioRepository
 
     print(f"Base destino: {engine.url.host}:{engine.url.port}/{engine.url.database}")
 

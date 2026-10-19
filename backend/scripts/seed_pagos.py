@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.pagos.models import EstadoPago, MetodoPago
+from app.comercial.models import EstadoPago, MetodoPago
 
 METODOS_PAGO: list[tuple[str, str, bool, bool, bool]] = [
     # codigo, nombre, requiere_pasarela, disponible_caja, disponible_online

@@ -1,7 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -21,20 +20,12 @@ if config.config_file_name is not None:
 # nunca del alembic.ini, para que local y Railway coincidan.
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
-# Los modelos de cada paquete se importan acá a medida que existen, para
+# Los modelos de cada paquete se importan acá para
 # que se registren en Base.metadata y autogenerate los detecte.
-from app.abastecimiento import models as abastecimiento_models  # noqa: F401
 from app.catalogo import models as catalogo_models  # noqa: F401
-from app.core import models as core_models  # noqa: F401
-from app.entregas import models as entregas_models  # noqa: F401
+from app.comercial import models as comercial_models  # noqa: F401
 from app.inteligencia import models as inteligencia_models  # noqa: F401
-from app.inventario import models as inventario_models  # noqa: F401
-from app.organizacion import models as organizacion_models  # noqa: F401
-from app.pagos import models as pagos_models  # noqa: F401
-from app.probador import models as probador_models  # noqa: F401
-from app.reservas import models as reservas_models  # noqa: F401
-from app.seguridad import models as seguridad_models  # noqa: F401
-from app.ventas import models as ventas_models  # noqa: F401
+from app.plataforma import models as plataforma_models  # noqa: F401
 
 target_metadata = Base.metadata
 

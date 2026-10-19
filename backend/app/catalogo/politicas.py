@@ -1,35 +1,49 @@
-"""Funciones que catalogo expone para otros paquetes, sin ser casos de uso
-del catálogo: son consultas sobre las tablas de este paquete (producto,
-variante, talla, tabla_medida), para que nadie más tenga que tocarlas
-directamente."""
+"""Reglas y consultas del paquete `catalogo` (secciones Catálogo, Inventario y
+Probador) que no son casos de uso del catálogo: producto, variante, talla,
+tabla_medida, stock, movimientos y generaciones del probador. Las usan los casos
+de uso de este mismo paquete y los paquetes `comercial` e `inteligencia`, para
+que nadie tenga que consultar esas tablas directamente.
+"""
 
-from decimal import Decimal
+import io
+from collections.abc import Iterable
+from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import select
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from app.catalogo.models import (
-    Categoria,
-    Color,
-    Material,
+    MovimientoInventario,
+    ProbadorGeneracion,
     Producto,
     ProductoVariante,
-    Talla,
+    Stock,
     TablaMedida,
-    Temporada,
+    Talla,
 )
 from app.catalogo.repository import (
     CategoriaRepository,
     ColorRepository,
+    GeneracionRepository,
     MaterialRepository,
+    MovimientoRepository,
     ProductoRepository,
+    StockRepository,
     TablaMedidaRepository,
     TallaRepository,
     TemporadaRepository,
+    TipoMovimientoRepository,
     VarianteRepository,
 )
 from app.catalogo.schemas import CatalogoItemRespuesta, FiltrosCatalogo, Genero, ValoresReferenciaCatalogo
 from app.core import storage
+from app.core.deps import ParametrosPeriodo
+from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
+from app.plataforma import politicas as plataforma_politicas
+
+
+# ---- Catálogo ----
+
 
 categoria_repo = CategoriaRepository()
 temporada_repo = TemporadaRepository()
@@ -61,9 +75,22 @@ def a_item_catalogo(producto: Producto) -> CatalogoItemRespuesta:
     )
 
 
+def abrir_imagen_valida(contenido: bytes) -> Image.Image:
+    """Abre y decodifica `contenido` con Pillow (no confía en la extensión ni
+    en el content-type que mandó el cliente). Si no es una imagen real, lanza
+    DomainError. Cada llamador conserva su propio límite de tamaño y las
+    demás reglas (formato, canal alfa...)."""
+    try:
+        imagen = Image.open(io.BytesIO(contenido))
+        imagen.load()
+    except UnidentifiedImageError as exc:
+        raise DomainError("El archivo no es una imagen válida") from exc
+    return imagen
+
+
 def obtener_variante(db: Session, variante_id: int) -> ProductoVariante:
-    """Para que otros paquetes (p. ej. `probador`, `inventario`) validen una
-    variante sin consultar producto_variante directamente."""
+    """Para que las secciones de este paquete (Inventario, Probador) y `comercial`
+    validen una variante sin consultar producto_variante directamente."""
     return variante_repo.obtener(db, variante_id)
 
 
@@ -75,21 +102,32 @@ def buscar_variante(db: Session, variante_id: int) -> ProductoVariante | None:
 
 
 def obtener_producto(db: Session, producto_id: int) -> Producto:
-    """Para que otros paquetes (p. ej. `abastecimiento`, para
-    producto_proveedor) validen un producto sin consultar la tabla
+    """Para que las secciones de este paquete (p. ej. Abastecimiento, para
+    producto_proveedor) y `comercial` validen un producto sin consultar la tabla
     `producto` directamente."""
     return producto_repo.obtener(db, producto_id)
 
 
 def obtener_talla(db: Session, talla_id: int) -> Talla:
-    """Para que otros paquetes (p. ej. `probador`, para el orden de las
-    tallas al recomendar una) resuelvan una talla sin consultar la tabla
-    `talla` directamente."""
+    """Para que las demás secciones de este paquete (p. ej. Probador, para el
+    orden de las tallas al recomendar una) resuelvan una talla sin consultar la
+    tabla `talla` directamente."""
     return talla_repo.obtener(db, talla_id)
 
 
+def obtener_tallas(db: Session, talla_ids: Iterable[int]) -> dict[int, Talla]:
+    """Como `obtener_talla`, pero para varias tallas en una sola consulta:
+    `talla_id` -> Talla. Si alguna no existe, lanza 404 igual que
+    `obtener_talla`."""
+    ids = set(talla_ids)
+    tallas = talla_repo.listar_por_ids(db, ids)
+    if len(tallas) != len(ids):
+        raise NoEncontradoError("Talla no encontrado")
+    return tallas
+
+
 def listar_medidas_para_variante(db: Session, variante_id: int) -> list[TablaMedida]:
-    """Para que `probador` cruce las medidas estimadas del cliente con
+    """Para que la sección Probador cruce las medidas estimadas del cliente con
     tabla_medida sin consultar esa tabla directamente. Prioriza las filas
     específicas del producto de la variante; si no hay ninguna, cae a las
     de su categoría."""
@@ -101,14 +139,14 @@ def listar_medidas_para_variante(db: Session, variante_id: int) -> list[TablaMed
 
 
 def obtener_precio_efectivo(variante: ProductoVariante) -> Decimal:
-    """Para que `ventas` calcule precio_unitario sin reimplementar la regla
+    """Para que `comercial` (ventas) calcule precio_unitario sin reimplementar la regla
     de precio (propio de la variante, o heredado de su producto)."""
     return variante.precio if variante.precio is not None else variante.producto.precio_base
 
 
 def obtener_info_promocion(variante: ProductoVariante) -> tuple[int, int, int | None]:
     """(producto_id, categoria_id, temporada_id) de una variante, para que
-    `ventas` busque promociones vigentes (promocion_alcance) sin consultar
+    `comercial` (ventas) busque promociones vigentes (promocion_alcance) sin consultar
     `producto` directamente."""
     producto = variante.producto
     return producto.id, producto.categoria_id, producto.temporada_id
@@ -119,20 +157,12 @@ def listar_valores_referencia(db: Session) -> ValoresReferenciaCatalogo:
     válidos reales, sin consultar categoria/material/color/talla/temporada
     directamente."""
     return ValoresReferenciaCatalogo(
-        categorias=list(db.scalars(select(Categoria.nombre).where(Categoria.activo.is_(True)))),
-        materiales=list(db.scalars(select(Material.nombre))),
-        colores=list(db.scalars(select(Color.nombre))),
-        tallas=list(db.scalars(select(Talla.codigo))),
-        temporadas=list(
-            db.scalars(select(Temporada.nombre).where(Temporada.activo.is_(True)).distinct())
-        ),
+        categorias=categoria_repo.listar_nombres_activos(db),
+        materiales=material_repo.listar_nombres(db),
+        colores=color_repo.listar_nombres(db),
+        tallas=talla_repo.listar_codigos(db),
+        temporadas=temporada_repo.listar_nombres_vigentes(db),
     )
-
-
-def _resolver_por_nombre(db: Session, columna_id, columna_nombre, nombre: str | None) -> int | None:
-    if not nombre:
-        return None
-    return db.scalar(select(columna_id).where(columna_nombre.ilike(nombre)))
 
 
 def resolver_filtros_por_nombre(
@@ -150,11 +180,11 @@ def resolver_filtros_por_nombre(
     sin match deja ese filtro en None -- nunca rompe la búsqueda, solo la
     deja sin acotar por ese campo."""
     return FiltrosCatalogo(
-        categoria_id=_resolver_por_nombre(db, Categoria.id, Categoria.nombre, categoria),
-        material_id=_resolver_por_nombre(db, Material.id, Material.nombre, material),
-        color_id=_resolver_por_nombre(db, Color.id, Color.nombre, color),
-        talla_id=_resolver_por_nombre(db, Talla.id, Talla.codigo, talla),
-        temporada_id=_resolver_por_nombre(db, Temporada.id, Temporada.nombre, temporada),
+        categoria_id=categoria_repo.id_por_nombre(db, categoria),
+        material_id=material_repo.id_por_nombre(db, material),
+        color_id=color_repo.id_por_nombre(db, color),
+        talla_id=talla_repo.id_por_codigo(db, talla),
+        temporada_id=temporada_repo.id_por_nombre(db, temporada),
         genero=genero,
         precio_max=precio_max,
     )
@@ -164,7 +194,7 @@ def resolver_categoria_por_nombre(db: Session, nombre: str | None) -> int | None
     """Para `inteligencia` (reporte por voz): matchea el nombre de
     categoría que devolvió Groq sin consultar `categoria` directamente.
     Sin match, devuelve None -- no rompe el reporte."""
-    return _resolver_por_nombre(db, Categoria.id, Categoria.nombre, nombre)
+    return categoria_repo.id_por_nombre(db, nombre)
 
 
 def listar_variantes_temporada_vigente(db: Session) -> set[int]:
@@ -172,19 +202,13 @@ def listar_variantes_temporada_vigente(db: Session) -> set[int]:
     activas cuyo producto pertenece a una temporada vigente
     (`Temporada.activo`, mismo criterio que `listar_valores_referencia`).
     Un producto sin temporada asignada no cuenta como vigente."""
-    filas = db.scalars(
-        select(ProductoVariante.id)
-        .join(Producto, Producto.id == ProductoVariante.producto_id)
-        .join(Temporada, Temporada.id == Producto.temporada_id)
-        .where(ProductoVariante.activo.is_(True), Producto.activo.is_(True), Temporada.activo.is_(True))
-    )
-    return set(filas)
+    return variante_repo.listar_ids_de_temporada_vigente(db)
 
 
 def listar_variantes_de_producto(db: Session, producto_id: int) -> set[int]:
     """Para `inteligencia`: variantes de un producto, para excluirlo de su
     propio carrusel de recomendaciones (detalle de prenda)."""
-    return set(db.scalars(select(ProductoVariante.id).where(ProductoVariante.producto_id == producto_id)))
+    return variante_repo.listar_ids_por_producto(db, producto_id)
 
 
 def listar_items_por_variantes(db: Session, variante_ids: list[int]) -> dict[int, CatalogoItemRespuesta]:
@@ -195,9 +219,221 @@ def listar_items_por_variantes(db: Session, variante_ids: list[int]) -> dict[int
     colapsarlas."""
     if not variante_ids:
         return {}
-    filas = db.execute(
-        select(ProductoVariante.id, Producto)
-        .join(Producto, Producto.id == ProductoVariante.producto_id)
-        .where(ProductoVariante.id.in_(variante_ids))
-    ).all()
+    filas = variante_repo.listar_productos_por_variantes(db, variante_ids)
     return {variante_id: a_item_catalogo(producto) for variante_id, producto in filas}
+
+
+# ---- Inventario ----
+# Corazón de la sección Inventario: actualizar_stock_operacion() es la
+# operación atómica compartida (kardex + costeo promedio ponderado) que usan
+# CU-08 (abastecimiento), CU-09, CU-13 y CU-14 (ventas, en `comercial`) y CU-17 (devolución).
+# reservar_stock()/liberar_stock() manejan la cantidad_reservada sin nunca
+# generar un movimiento ni tocar cantidad_fisica.
+#
+# Ninguna de las tres es un caso de uso del catálogo: son la lógica interna
+# que evita que cada caso de uso reimplemente el cálculo del promedio
+# ponderado o el manejo de reservas.
+
+
+stock_repo = StockRepository()
+movimiento_repo = MovimientoRepository()
+tipo_movimiento_repo = TipoMovimientoRepository()
+
+_CUATRO_DECIMALES = Decimal("0.0001")
+
+
+def bloquear_stock_en_orden(db: Session, claves: Iterable[tuple[int, int]]) -> None:
+    """Adquiere de antemano los bloqueos (FOR UPDATE) de las filas de stock
+    de un lote de líneas, SIEMPRE en orden ascendente por (variante_id,
+    sucursal_id) y sin repetir claves. Es el único punto donde se ordena:
+    toda operación que recorre varias líneas tocando stock (recepción,
+    transferencia, venta, reserva, anulación...) lo llama una vez antes del
+    bucle, y el bucle sigue procesando las líneas en su orden original (las
+    respuestas, el detalle y el historial no cambian). Evita el deadlock entre
+    dos lotes que traen las mismas variantes en distinto orden.
+
+    Solo bloquea filas que ya existen; las que falten las sigue creando
+    `obtener_o_crear_bloqueado` al procesar cada línea (ver T3 del análisis).
+    No valida nada: un error de variante o sucursal inexistente lo sigue
+    lanzando la línea que lo causa, como antes."""
+    ordenadas = sorted(set(claves))
+    if ordenadas:
+        stock_repo.bloquear_existentes(db, ordenadas)
+
+
+def actualizar_stock_operacion(
+    db: Session,
+    *,
+    variante_id: int,
+    sucursal_id: int,
+    tipo_movimiento_codigo: str,
+    cantidad: int,
+    costo_unitario: Decimal | None = None,
+    referencia_tipo: str | None = None,
+    referencia_id: int | None = None,
+    usuario_id: int | None = None,
+    observacion: str | None = None,
+    commit: bool = True,
+) -> MovimientoInventario:
+    """`commit=False` lo usan las operaciones (de este paquete y de `comercial`) que registran
+    varios movimientos como una sola transacción (p. ej.
+    RegistrarRecepcionMercaderia.registrar con varias líneas, o
+    enviar_transferencia/recibir_transferencia de CU-09): si una línea
+    falla, ninguna de las anteriores debe quedar aplicada. Quien pasa
+    `commit=False` es responsable de hacer `db.commit()` al final."""
+    if cantidad <= 0:
+        raise DomainError("cantidad debe ser positiva")
+
+    obtener_variante(db, variante_id)  # 404 si no existe
+    plataforma_politicas.obtener_sucursal(db, sucursal_id)  # 404 si no existe
+
+    tipo = tipo_movimiento_repo.obtener_por_codigo(db, tipo_movimiento_codigo)
+
+    if tipo.afecta_costo and costo_unitario is None:
+        raise DomainError(f"El tipo de movimiento '{tipo.codigo}' requiere costo_unitario")
+
+    # Bloquea la fila de stock (SELECT FOR UPDATE en Postgres) para que dos
+    # movimientos concurrentes sobre la misma variante+sucursal no pisen el
+    # saldo el uno al otro.
+    stock = stock_repo.obtener_o_crear_bloqueado(db, variante_id, sucursal_id)
+
+    cantidad_firmada = cantidad * tipo.signo
+    stock_anterior = stock.cantidad_fisica
+    nueva_cantidad_fisica = stock_anterior + cantidad_firmada
+
+    if nueva_cantidad_fisica < 0:
+        raise ConflictoError("El movimiento dejaría el stock físico en negativo")
+    if nueva_cantidad_fisica < stock.cantidad_reservada:
+        raise ConflictoError("El movimiento dejaría stock reservado sin respaldo físico")
+
+    # Si el tipo afecta el costo (siempre una entrada: no tiene sentido
+    # recalcular el promedio con una salida), recalcula el promedio
+    # ponderado con la cantidad y el costo de ESTE ingreso.
+    if tipo.afecta_costo and tipo.signo > 0:
+        costo_anterior = stock.costo_promedio
+        promedio_exacto = (
+            Decimal(stock_anterior) * costo_anterior + Decimal(cantidad) * costo_unitario
+        ) / Decimal(stock_anterior + cantidad)
+        # NUMERIC(12,4) en la base: se redondea acá para que el valor que
+        # ve el código sea el mismo que va a quedar persistido.
+        nuevo_promedio = promedio_exacto.quantize(_CUATRO_DECIMALES, rounding=ROUND_HALF_UP)
+    else:
+        nuevo_promedio = stock.costo_promedio
+
+    # Actualiza stock.cantidad_fisica y costo_promedio.
+    stock.cantidad_fisica = nueva_cantidad_fisica
+    stock.costo_promedio = nuevo_promedio
+
+    # Inserta el movimiento con su saldo_post y costo_promedio_post.
+    movimiento = MovimientoInventario(
+        variante_id=variante_id,
+        sucursal_id=sucursal_id,
+        tipo_movimiento_id=tipo.id,
+        cantidad=cantidad_firmada,
+        costo_unitario=costo_unitario,
+        costo_promedio_post=nuevo_promedio if tipo.afecta_costo else None,
+        saldo_post=nueva_cantidad_fisica,
+        referencia_tipo=referencia_tipo,
+        referencia_id=referencia_id,
+        usuario_id=usuario_id,
+        observacion=observacion,
+    )
+    movimiento_repo.crear(db, movimiento)
+
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    db.refresh(movimiento)
+    return movimiento
+
+
+def reservar_stock(
+    db: Session, variante_id: int, sucursal_id: int, cantidad: int, commit: bool = True
+) -> Stock:
+    """Incrementa cantidad_reservada. Nunca toca cantidad_fisica ni genera
+    movimiento de inventario. `commit=False`: ver el comentario en
+    actualizar_stock_operacion (lo usa reservas.CU-12, que reserva varias
+    líneas como una sola transacción)."""
+    if cantidad <= 0:
+        raise DomainError("cantidad debe ser positiva")
+
+    obtener_variante(db, variante_id)
+    plataforma_politicas.obtener_sucursal(db, sucursal_id)
+
+    # La fila llega bloqueada (SELECT FOR UPDATE) desde acá: si dos clientes
+    # reservan la misma variante+sucursal al mismo tiempo, el segundo espera
+    # a que el primero confirme y recién ahí lee el saldo ya actualizado, en
+    # vez de que ambos lean "disponible" antes de que el otro reserve.
+    stock = stock_repo.obtener_o_crear_bloqueado(db, variante_id, sucursal_id)
+    disponible = stock.cantidad_fisica - stock.cantidad_reservada
+    if cantidad > disponible:
+        raise ConflictoError("No hay stock disponible suficiente para reservar")
+
+    stock.cantidad_reservada += cantidad
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    db.refresh(stock)
+    return stock
+
+
+def liberar_stock(
+    db: Session, variante_id: int, sucursal_id: int, cantidad: int, commit: bool = True
+) -> Stock:
+    """Decrementa cantidad_reservada. Nunca toca cantidad_fisica ni genera
+    movimiento de inventario. `commit=False`: ver el comentario en
+    actualizar_stock_operacion."""
+    if cantidad <= 0:
+        raise DomainError("cantidad debe ser positiva")
+
+    stock = stock_repo.obtener_o_crear_bloqueado(db, variante_id, sucursal_id)
+    if cantidad > stock.cantidad_reservada:
+        raise ConflictoError("No se puede liberar más de lo reservado")
+
+    stock.cantidad_reservada -= cantidad
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+    db.refresh(stock)
+    return stock
+
+
+def obtener_stock(db: Session, variante_id: int, sucursal_id: int) -> Stock:
+    """Para que `comercial` (ventas) lea el costo_promedio actual antes de congelarlo en
+    el detalle de la venta, sin consultar `stock` directamente."""
+    stock = stock_repo.obtener_por_variante_sucursal(db, variante_id, sucursal_id)
+    if stock is None:
+        raise NoEncontradoError("Todavía no hay stock registrado para esa variante en esa sucursal")
+    return stock
+
+
+def listar_variantes_con_stock(db: Session, sucursal_id: int | None = None) -> set[int]:
+    """Para `inteligencia` (capa de reglas del recomendador) y `catalogo`
+    (CU-06, filtro `solo_disponibles`): variantes con stock disponible, en
+    cualquier sucursal si no se pasa `sucursal_id` o en esa sola si se
+    pasa, sin consultar `stock` directamente."""
+    return stock_repo.listar_variantes_con_stock(db, sucursal_id)
+
+
+# ---- Probador ----
+# Funciones de la sección Probador que usa `inteligencia` (recomendador y
+# reportes), sin ser casos de uso del catálogo: son consultas sobre la tabla de
+# generaciones, para que nadie más tenga que tocarla directamente.
+
+
+generacion_repo = GeneracionRepository()
+
+
+def listar_generaciones_recientes_cliente(db: Session, cliente_id: int, limite: int = 50) -> list[ProbadorGeneracion]:
+    """Para `inteligencia` (capa de reglas del recomendador): usos recientes
+    del probador de un cliente, sin consultar `probador_generacion`
+    directamente."""
+    return generacion_repo.listar_reciente_por_cliente(db, cliente_id, limite)
+
+
+def reporte_uso_probador(db: Session, periodo: ParametrosPeriodo) -> list[dict]:
+    """Para `inteligencia` (reportes): generaciones del probador por estado en el período."""
+    return generacion_repo.contar_por_periodo(db, periodo.desde, periodo.hasta)

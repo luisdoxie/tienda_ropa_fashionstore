@@ -10,7 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-from app.inventario.repository import VW_INVENTARIO_CONSOLIDADO_SQL
+from app.catalogo.repository import VW_INVENTARIO_CONSOLIDADO_SQL
 
 
 # revision identifiers, used by Alembic.

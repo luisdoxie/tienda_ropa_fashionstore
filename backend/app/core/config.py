@@ -55,10 +55,9 @@ class Settings(BaseSettings):
     tareas_token: str = ""
 
     # Modo generativo del probador (Vertex AI). Sin vertex_project_id
-    # configurado, VertexAIProbadorGenerativo falla al primer uso: el modo
-    # espejo (Flutter, sin backend) sigue funcionando igual, es el
-    # generativo el que queda inhabilitado hasta configurar el proyecto de
-    # GCP. Las credenciales van por GOOGLE_APPLICATION_CREDENTIALS (ruta a
+    # configurado, VertexAIProbadorGenerativo falla al primer uso: el probador
+    # (único modo que queda) queda inhabilitado hasta configurar el proyecto
+    # de GCP. Las credenciales van por GOOGLE_APPLICATION_CREDENTIALS (ruta a
     # archivo, entorno local) o por GOOGLE_CREDENTIALS_JSON (el contenido
     # del JSON de la cuenta de servicio, para Railway que no tiene archivos).
     vertex_project_id: str = ""
@@ -77,7 +76,7 @@ class Settings(BaseSettings):
     tareas_intervalo_segundos: int = 300
 
     # Secretos para verificar la firma HMAC de los webhooks de pago (ver
-    # app/pagos/pasarela.py). Sin valor por defecto (regla 9): un secreto
+    # app/comercial/pasarela.py). Sin valor por defecto (regla 9): un secreto
     # escrito acá es público para cualquiera con el repo y permitiría
     # firmar un webhook "aprobado". Sin configurar, el webhook de esa
     # pasarela se rechaza siempre (mismo criterio que tareas_token).
@@ -89,7 +88,7 @@ class Settings(BaseSettings):
     qr_online_webhook_secret: str = Field(default_factory=lambda: secrets.token_hex(32))
 
     # Base para construir URLs absolutas hacia esta misma API (p. ej. la
-    # pantalla pública de pago con QR, ver app/pagos/pasarela.py) desde
+    # pantalla pública de pago con QR, ver app/comercial/pasarela.py) desde
     # código que no tiene acceso a un `Request` (arma la URL antes de que
     # exista ningún request entrante). En producción se sobreescribe por
     # variable de entorno con el dominio real de Railway, igual que
@@ -109,9 +108,9 @@ class Settings(BaseSettings):
 
     # Búsqueda por voz (paquete `inteligencia`, P6.1): Groq expone una API
     # HTTP compatible con OpenAI, sin SDK propio en requirements.txt (se
-    # llama con httpx, igual que probador/casos_uso/cu39_generar_prueba_realista_ia.py
+    # llama con httpx, igual que catalogo/casos_uso/cu11_probar_prenda_con_ia.py
     # llama a otras APIs externas). Sin groq_api_key configurada, el parser
-    # de voz falla y inteligencia.casos_uso.cu37_buscar_comando_voz cae
+    # de voz falla y inteligencia.casos_uso.cu21_buscar_prendas_por_voz cae
     # directo al fallback de texto plano.
     # `llama-3.3-70b-versatile` (el que sugiere el enunciado) ya no está
     # disponible en cuentas nuevas de Groq -- comprobado contra
@@ -122,7 +121,7 @@ class Settings(BaseSettings):
     groq_modelo: str = "openai/gpt-oss-20b"
 
     # Peso promedio de una prenda (kg), para estimar el peso total de un
-    # pedido en entregas.casos_uso.cu42_solicitar_envio_domicilio._peso_pedido()
+    # pedido en comercial.casos_uso.cu19_gestionar_envios_tarifas._peso_pedido()
     # sin modelar el peso real de cada variante (fuera del alcance de P5.3).
     peso_promedio_prenda_kg: Decimal = Decimal("0.3")
 

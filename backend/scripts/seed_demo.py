@@ -12,7 +12,7 @@ para que la app, el back office y los reportes muestren datos reales.
   5. Reparte las fechas de lo creado en el paso 4 entre la última recepción
      de stock y ahora, para que los reportes no muestren todo "hoy".
 
-Todas las escrituras pasan por los services (mismas reglas de negocio que la
+Todas las escrituras pasan por los casos de uso y las políticas (mismas reglas de negocio que la
 app: stock reservado/descontado, costo congelado al pagar, transiciones de
 estado válidas). La única excepción es el paso 5: un UPDATE de fechas solo
 sobre las filas que este script acaba de crear.
@@ -171,8 +171,8 @@ class Contexto:
 
 def cargar_contexto(db: Session) -> Contexto:
     from app.catalogo.models import Categoria, ProductoVariante, Talla
-    from app.organizacion.models import Empleado, Sucursal
-    from app.seguridad.models import Usuario
+    from app.plataforma.models import Empleado, Sucursal
+    from app.plataforma.models import Usuario
 
     errores: list[str] = []
     sucursales = {s.codigo: s for s in db.scalars(select(Sucursal).where(Sucursal.activo.is_(True)))}
@@ -225,13 +225,13 @@ def ean13(variante_id: int) -> str:
 
 
 def seed_maestros(db: Session, ctx: Contexto, ejecutar: bool, resumen: Resumen) -> None:
-    from app.catalogo.casos_uso.cu07_gestionar_catalogo_maestro import (
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import (
         GestionarCategorias,
         GestionarColecciones,
         GestionarMateriales,
         GestionarTemporadas,
     )
-    from app.catalogo.casos_uso.cu08_gestionar_productos import GestionarProductos
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarProductos
     from app.catalogo.models import Categoria, Coleccion, Material, Producto, ProductoVariante, TablaMedida, Temporada
     from app.catalogo.schemas import (
         CategoriaActualizar,
@@ -343,14 +343,14 @@ def seed_maestros(db: Session, ctx: Contexto, ejecutar: bool, resumen: Resumen) 
 
 def seed_clientes(db: Session, password: str | None, ejecutar: bool, resumen: Resumen) -> dict[int, int | None]:
     """Devuelve usuario_id por número de cliente demo."""
-    from app.entregas.casos_uso.cu42_solicitar_envio_domicilio import SolicitarEnvioDomicilio
-    from app.entregas.models import DireccionCliente, ZonaEnvio
-    from app.entregas.schemas import DireccionClienteCrear
+    from app.comercial.casos_uso.cu19_gestionar_envios_tarifas import SolicitarEnvioDomicilio
+    from app.comercial.models import DireccionCliente, ZonaEnvio
+    from app.comercial.schemas import DireccionClienteCrear
 
     cu_solicitar_envio = SolicitarEnvioDomicilio()
-    from app.seguridad.casos_uso.cu01_registrar_cliente import RegistrarCliente
-    from app.seguridad.models import Cliente, Usuario
-    from app.seguridad.schemas import ClientePerfilActualizar, RegistroRequest
+    from app.plataforma.casos_uso.cu01_autenticar_registrar_usuarios import RegistrarCliente
+    from app.plataforma.models import Cliente, Usuario
+    from app.plataforma.schemas import ClientePerfilActualizar, RegistroRequest
 
     cu_registrar_cliente = RegistrarCliente()
 
@@ -421,9 +421,9 @@ def seed_clientes(db: Session, password: str | None, ejecutar: bool, resumen: Re
 
 def seed_promociones(db: Session, ctx: Contexto, ejecutar: bool, resumen: Resumen) -> None:
     from app.catalogo.models import Temporada
-    from app.ventas.casos_uso.cu27_gestionar_promociones import GestionarPromociones
-    from app.ventas.models import Promocion
-    from app.ventas.schemas import PromocionAlcanceCrear, PromocionCrear
+    from app.comercial.casos_uso.cu16_gestionar_promociones import GestionarPromociones
+    from app.comercial.models import Promocion
+    from app.comercial.schemas import PromocionAlcanceCrear, PromocionCrear
 
     cu_promociones = GestionarPromociones()
     invierno = db.scalar(select(Temporada.id).where(Temporada.nombre == "Invierno", Temporada.anio == 2026))
@@ -462,7 +462,7 @@ class Creado:
 
 
 def _variantes_con_stock(db: Session, sucursal_id: int, minimo: int) -> list[int]:
-    from app.inventario.models import Stock
+    from app.catalogo.models import Stock
 
     return list(
         db.scalars(
@@ -476,29 +476,29 @@ def _variantes_con_stock(db: Session, sucursal_id: int, minimo: int) -> list[int
 def seed_operacion(
     db: Session, ctx: Contexto, clientes: dict[int, int | None], ejecutar: bool, resumen: Resumen
 ) -> Creado:
-    from app.entregas.casos_uso.cu42_solicitar_envio_domicilio import SolicitarEnvioDomicilio
-    from app.entregas.casos_uso.cu43_actualizar_estado_envio import ActualizarEstadoEnvio
-    from app.entregas.models import DireccionCliente
-    from app.entregas.schemas import CotizarEnvioRequest, EnvioCrear, EnvioEstadoActualizar
+    from app.comercial.casos_uso.cu19_gestionar_envios_tarifas import SolicitarEnvioDomicilio
+    from app.comercial.casos_uso.cu19_gestionar_envios_tarifas import ActualizarEstadoEnvio
+    from app.comercial.models import DireccionCliente
+    from app.comercial.schemas import CotizarEnvioRequest, EnvioCrear, EnvioEstadoActualizar
     from app.inteligencia.politicas import registrar_evento
     from app.inteligencia.schemas import EventoCrear
-    from app.inventario.casos_uso.cu15_registrar_movimiento_inventario import RegistrarMovimientoInventario
-    from app.inventario.models import Transferencia
-    from app.inventario.schemas import TransferenciaCrear, TransferenciaDetalleCrear
-    from app.pagos.casos_uso.cu30_procesar_pago_caja import ProcesarPagoCaja
-    from app.pagos.schemas import PagoCajaRequest
-    from app.reservas.casos_uso.cu16_reservar_prendas import ReservarPrendas
-    from app.reservas.casos_uso.cu18_cancelar_reserva import CancelarReserva
-    from app.reservas.casos_uso.cu20_atender_prueba_reserva_sucursal import AtenderPruebaReservaSucursal
-    from app.reservas.schemas import ReservaCrear, ReservaDetalleCrear, SeleccionActualizar, SeleccionLinea
-    from app.seguridad.models import Usuario
-    from app.seguridad.politicas import obtener_perfil_cliente
-    from app.ventas.casos_uso.cu23_gestionar_carrito import GestionarCarrito
-    from app.ventas.casos_uso.cu24_realizar_compra_digital import RealizarCompraDigital
-    from app.ventas.casos_uso.cu25_registrar_venta_presencial import RegistrarVentaPresencial
-    from app.ventas.casos_uso.cu40_registrar_devolucion import RegistrarDevolucion
-    from app.ventas.politicas import obtener_venta
-    from app.ventas.schemas import (
+    from app.catalogo.casos_uso.cu09_gestionar_inventario import RegistrarMovimientoInventario
+    from app.catalogo.models import Transferencia
+    from app.catalogo.schemas import TransferenciaCrear, TransferenciaDetalleCrear
+    from app.comercial.casos_uso.cu18_procesar_pagos import ProcesarPagoCaja
+    from app.comercial.schemas import PagoCajaRequest
+    from app.comercial.casos_uso.cu12_gestionar_reservas import ReservarPrendas
+    from app.comercial.casos_uso.cu12_gestionar_reservas import CancelarReserva
+    from app.comercial.casos_uso.cu12_gestionar_reservas import AtenderPruebaReservaSucursal
+    from app.comercial.schemas import ReservaCrear, ReservaDetalleCrear, SeleccionActualizar, SeleccionLinea
+    from app.plataforma.models import Usuario
+    from app.plataforma.politicas import obtener_perfil_cliente
+    from app.comercial.casos_uso.cu13_gestionar_carrito_compra_digital import GestionarCarrito
+    from app.comercial.casos_uso.cu13_gestionar_carrito_compra_digital import RealizarCompraDigital
+    from app.comercial.casos_uso.cu14_registrar_venta_presencial import RegistrarVentaPresencial
+    from app.comercial.casos_uso.cu17_gestionar_devoluciones_cambios import RegistrarDevolucion
+    from app.comercial.politicas import obtener_venta
+    from app.comercial.schemas import (
         CarritoDetalleCrear,
         DevolucionCrear,
         DevolucionDetalleCrear,
@@ -681,7 +681,7 @@ def seed_operacion(
     encargado = ctx.encargados[tienda]
 
     def fecha_con_horario(desde: dt.date, paso: int) -> dt.date:
-        from app.organizacion.politicas import obtener_horario_dia
+        from app.plataforma.politicas import obtener_horario_dia
 
         fecha = desde
         for _ in range(8):
@@ -765,10 +765,10 @@ def seed_operacion(
 def repartir_fechas(db: Session, creado: Creado) -> None:
     """Reparte lo creado entre la última recepción de stock y ahora, en el
     mismo orden en que se creó (nunca antes de que el stock existiera)."""
-    from app.inventario.models import MovimientoInventario, Transferencia
+    from app.catalogo.models import MovimientoInventario, Transferencia
     from app.inteligencia.models import HistorialNavegacion
-    from app.pagos.models import Pago
-    from app.ventas.models import Devolucion, Venta
+    from app.comercial.models import Pago
+    from app.comercial.models import Devolucion, Venta
 
     if not creado.eventos:
         return

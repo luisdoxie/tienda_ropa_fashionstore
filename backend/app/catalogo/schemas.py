@@ -4,7 +4,11 @@ import datetime as dt
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# ---- Catálogo ----
+
 
 # ---- Categoría ------------------------------------------------------------
 
@@ -402,8 +406,8 @@ class VarianteCatalogoRespuesta(BaseModel):
     precio_efectivo: Decimal
     # Suma entre todas las sucursales si el detalle se pidió sin
     # `sucursal_id`, o la de esa sucursal sola si se pidió (ver
-    # ConsultarCatalogo._disponibilidad_variante en cu09_consultar_catalogo.py,
-    # que llama a inventario.casos_uso.cu13, nunca a la tabla `stock`
+    # ConsultarCatalogo._disponibilidad_por_variante en cu06_consultar_buscar_catalogo.py,
+    # que usa StockRepository.disponible_por_variante, nunca la tabla `stock`
     # directamente).
     cantidad_disponible: int = 0
 
@@ -464,3 +468,412 @@ class FavoritoRespuesta(BaseModel):
             sku=favorito.variante.sku,
             creado_en=favorito.creado_en,
         )
+
+
+# ---- Inventario ----
+
+
+class MovimientoCrear(BaseModel):
+    variante_id: int
+    sucursal_id: int
+    tipo_movimiento_codigo: str
+    # Siempre positiva: el signo lo aporta el tipo de movimiento.
+    cantidad: int = Field(gt=0)
+    costo_unitario: Decimal | None = Field(default=None, ge=0)
+    referencia_tipo: str | None = Field(default=None, max_length=25)
+    referencia_id: int | None = None
+    observacion: str | None = Field(default=None, max_length=300)
+
+
+class MovimientoRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    sucursal_id: int
+    tipo_movimiento_id: int
+    tipo_movimiento_codigo: str
+    cantidad: int
+    costo_unitario: Decimal | None
+    costo_promedio_post: Decimal | None
+    saldo_post: int
+    referencia_tipo: str | None
+    referencia_id: int | None
+    usuario_id: int | None
+    observacion: str | None
+    creado_en: dt.datetime
+
+    @classmethod
+    def from_modelo(cls, movimiento, tipo_codigo: str) -> "MovimientoRespuesta":
+        return cls(
+            id=movimiento.id,
+            variante_id=movimiento.variante_id,
+            sucursal_id=movimiento.sucursal_id,
+            tipo_movimiento_id=movimiento.tipo_movimiento_id,
+            tipo_movimiento_codigo=tipo_codigo,
+            cantidad=movimiento.cantidad,
+            costo_unitario=movimiento.costo_unitario,
+            costo_promedio_post=movimiento.costo_promedio_post,
+            saldo_post=movimiento.saldo_post,
+            referencia_tipo=movimiento.referencia_tipo,
+            referencia_id=movimiento.referencia_id,
+            usuario_id=movimiento.usuario_id,
+            observacion=movimiento.observacion,
+            creado_en=movimiento.creado_en,
+        )
+
+
+class StockRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    sucursal_id: int
+    cantidad_fisica: int
+    cantidad_reservada: int
+    cantidad_disponible: int
+    stock_minimo: int
+    stock_maximo: int | None
+    costo_promedio: Decimal
+    actualizado_en: dt.datetime
+
+
+class TipoMovimientoRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    nombre: str
+    signo: int
+    afecta_costo: bool
+
+
+class LimitesActualizar(BaseModel):
+    stock_minimo: int | None = Field(default=None, ge=0)
+    stock_maximo: int | None = Field(default=None, ge=0)
+
+
+class DisponibilidadRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    variante_id: int
+    sucursal_id: int
+    cantidad_disponible: int
+
+
+# ---- Vista vw_inventario_consolidado (también usada por /alertas) -----------
+
+
+class ConsolidadoRespuesta(BaseModel):
+    producto_id: int
+    producto: str
+    variante_id: int
+    sku: str
+    talla: str
+    color: str
+    sucursal_id: int
+    sucursal: str
+    cantidad_fisica: int
+    cantidad_reservada: int
+    cantidad_disponible: int
+    stock_minimo: int
+    costo_promedio: Decimal
+    valor_inventario: Decimal
+
+
+class ValuacionRespuesta(BaseModel):
+    sucursal_id: int
+    sucursal: str
+    valor_total: Decimal
+
+
+# ---- Ajustes ------------------------------------------------------------------
+
+
+class AjusteCrear(BaseModel):
+    variante_id: int
+    sucursal_id: int
+    # Positivo: sobrante (ajuste_positivo). Negativo: faltante (ajuste_negativo).
+    cantidad: int
+    observacion: str | None = Field(default=None, max_length=300)
+
+    @field_validator("cantidad")
+    @classmethod
+    def _cantidad_no_puede_ser_cero(cls, valor: int) -> int:
+        if valor == 0:
+            raise ValueError("cantidad no puede ser cero")
+        return valor
+
+
+# ---- Transferencias -----------------------------------------------------------
+
+
+class TransferenciaDetalleCrear(BaseModel):
+    variante_id: int
+    cantidad: int = Field(gt=0)
+
+
+class TransferenciaDetalleRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    cantidad: int
+
+
+class TransferenciaCrear(BaseModel):
+    codigo: str = Field(max_length=20)
+    sucursal_origen_id: int
+    sucursal_destino_id: int
+    detalle: list[TransferenciaDetalleCrear] = Field(min_length=1)
+
+
+class TransferenciaRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    sucursal_origen_id: int
+    sucursal_destino_id: int
+    estado: str
+    fecha_envio: dt.datetime | None
+    fecha_recepcion: dt.datetime | None
+    usuario_id: int | None
+    detalle: list[TransferenciaDetalleRespuesta]
+
+
+# ---- Abastecimiento ----
+
+
+EstadoOrdenCompra = Literal["borrador", "enviada", "parcial", "recibida", "anulada"]
+
+# ---- Proveedor ----------------------------------------------------------------
+
+
+class ProveedorCrear(BaseModel):
+    nombre: str = Field(max_length=120)
+    nit: str | None = Field(default=None, max_length=20)
+    contacto: str | None = Field(default=None, max_length=80)
+    telefono: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=120)
+    direccion: str | None = Field(default=None, max_length=200)
+    usuario_id: int | None = None
+
+
+class ProveedorActualizar(BaseModel):
+    nombre: str | None = Field(default=None, max_length=120)
+    nit: str | None = Field(default=None, max_length=20)
+    contacto: str | None = Field(default=None, max_length=80)
+    telefono: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=120)
+    direccion: str | None = Field(default=None, max_length=200)
+    usuario_id: int | None = None
+    activo: bool | None = None
+
+
+class ProveedorRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre: str
+    nit: str | None
+    contacto: str | None
+    telefono: str | None
+    email: str | None
+    direccion: str | None
+    usuario_id: int | None
+    activo: bool
+    creado_en: dt.datetime
+
+
+# ---- Producto-proveedor ---------------------------------------------------------
+
+
+class ProductoProveedorCrear(BaseModel):
+    producto_id: int
+    costo_referencial: Decimal | None = Field(default=None, ge=0)
+    dias_entrega: int | None = Field(default=None, ge=0)
+
+
+class ProductoProveedorRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    proveedor_id: int
+    producto_id: int
+    costo_referencial: Decimal | None
+    dias_entrega: int | None
+
+
+# ---- Orden de compra ------------------------------------------------------------
+
+
+class OrdenCompraDetalleCrear(BaseModel):
+    variante_id: int
+    cantidad: int = Field(gt=0)
+    costo_unitario: Decimal = Field(ge=0)
+
+
+class OrdenCompraDetalleRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    cantidad: int
+    costo_unitario: Decimal
+
+
+class OrdenCompraCrear(BaseModel):
+    codigo: str = Field(max_length=20)
+    proveedor_id: int
+    sucursal_id: int
+    fecha_esperada: dt.date | None = None
+    detalle: list[OrdenCompraDetalleCrear] = Field(min_length=1)
+
+
+class OrdenCompraActualizar(BaseModel):
+    """Solo se puede editar mientras la orden está en 'borrador'. Si viene
+    `detalle`, reemplaza la lista completa (no hace merge línea por línea)."""
+
+    proveedor_id: int | None = None
+    sucursal_id: int | None = None
+    fecha_esperada: dt.date | None = None
+    detalle: list[OrdenCompraDetalleCrear] | None = Field(default=None, min_length=1)
+
+
+class OrdenCompraRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    proveedor_id: int
+    sucursal_id: int
+    fecha_emision: dt.date
+    fecha_esperada: dt.date | None
+    estado: EstadoOrdenCompra
+    total: Decimal
+    creado_por: int | None
+    creado_en: dt.datetime
+    detalle: list[OrdenCompraDetalleRespuesta]
+
+
+# ---- Recepción --------------------------------------------------------------------
+
+
+class RecepcionDetalleCrear(BaseModel):
+    variante_id: int
+    cantidad: int = Field(gt=0)
+    costo_unitario: Decimal = Field(ge=0)
+
+
+class RecepcionDetalleRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    cantidad: int
+    costo_unitario: Decimal
+
+
+class RecepcionCrear(BaseModel):
+    codigo: str = Field(max_length=20)
+    orden_compra_id: int | None = None
+    proveedor_id: int
+    sucursal_id: int
+    empleado_id: int | None = None
+    observacion: str | None = Field(default=None, max_length=300)
+    detalle: list[RecepcionDetalleCrear] = Field(min_length=1)
+
+
+class RecepcionRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    orden_compra_id: int | None
+    proveedor_id: int
+    sucursal_id: int
+    empleado_id: int | None
+    fecha: dt.datetime
+    observacion: str | None
+    detalle: list[RecepcionDetalleRespuesta]
+
+
+# ---- Probador ----
+
+
+TipoActivo = Literal["overlay_2d", "flatlay_ia", "thumb"]
+EstadoActivo = Literal["pendiente", "validado", "rechazado"]
+
+
+class ActivoRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    variante_id: int
+    tipo: str
+    public_id: str
+    url: str
+    ancho_px: int | None = None
+    alto_px: int | None = None
+    estado: str
+    creado_en: dt.datetime
+
+    @classmethod
+    def from_modelo(cls, activo, url: str) -> "ActivoRespuesta":
+        return cls(
+            id=activo.id,
+            variante_id=activo.variante_id,
+            tipo=activo.tipo,
+            public_id=activo.url,
+            url=url,
+            ancho_px=activo.ancho_px,
+            alto_px=activo.alto_px,
+            estado=activo.estado,
+            creado_en=activo.creado_en,
+        )
+
+
+class AssetsVarianteRespuesta(BaseModel):
+    """Lo que necesita el probador en Flutter para una variante: el
+    overlay validado (obligatorio para probar) y el flat-lay, si algún
+    admin ya lo subió y validó."""
+
+    overlay: ActivoRespuesta
+    flatlay: ActivoRespuesta | None = None
+
+
+EstadoGeneracion = Literal["en_proceso", "completado", "fallido"]
+
+
+class GeneracionIniciadaRespuesta(BaseModel):
+    id: int
+    estado: EstadoGeneracion
+    url_resultado: str | None = None
+    desde_cache: bool
+
+
+class GeneracionEstadoRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    estado: EstadoGeneracion
+    url_resultado: str | None = None
+    mensaje_error: str | None = None
+
+
+PreferenciaAjuste = Literal["ajustado", "regular", "holgado"]
+
+
+class TallaRequest(BaseModel):
+    variante_id: int
+    estatura_cm: float = Field(ge=100, le=230)
+    peso_kg: float = Field(ge=30, le=250)
+    preferencia_ajuste: PreferenciaAjuste = "regular"
+
+
+class TallaRecomendadaRespuesta(BaseModel):
+    talla_id: int | None
+    talla_codigo: str | None
+    pecho_estimado_cm: float
+    cintura_estimado_cm: float
+    advertencia: str | None = None

@@ -16,8 +16,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.entregas.models import ReglaTarifaEnvio, ZonaEnvio
-from app.organizacion.models import Ciudad
+from app.comercial.models import ReglaTarifaEnvio, ZonaEnvio
+from app.plataforma.models import Ciudad
 
 CIUDAD_NOMBRE = "Santa Cruz de la Sierra"
 CIUDAD_DEPARTAMENTO = "Santa Cruz"

@@ -6,12 +6,19 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.catalogo.schemas import CatalogoItemRespuesta, FiltrosCatalogo
+from app.catalogo.schemas import (
+    CatalogoItemRespuesta,
+    ConsolidadoRespuesta,
+    FiltrosCatalogo,
+    ValuacionRespuesta,
+)
+
+# ---- Inteligencia ----
 
 # Los únicos valores que catalogo.schemas.Genero acepta. FiltrosVoz recibe el
 # género tal cual lo devuelve Groq (str libre, no el Literal), porque un
 # valor fuera de esta lista no debe tirar abajo la validación de todo el
-# JSON -- se descarta ese campo puntual en el service, no la respuesta entera.
+# JSON -- se descarta ese campo puntual en el caso de uso, no la respuesta entera.
 GENEROS_VALIDOS = {"hombre", "mujer", "unisex", "nino"}
 
 
@@ -41,7 +48,7 @@ class VozRespuesta(BaseModel):
     cantidad: int
 
 
-# ---- Recomendador (P6.2) ------------------------------------------------------
+# ---- Recomendador ------------------------------------------------------
 
 
 class EventoCrear(BaseModel):
@@ -101,7 +108,7 @@ class RecomendacionesRespuesta(BaseModel):
     recomendaciones: list[RecomendacionItemRespuesta]
 
 
-# ---- Reporte por voz (P6.3) ----------------------------------------------------
+# ---- Reporte por voz ----------------------------------------------------
 
 TIPOS_REPORTE_VALIDOS = {"ventas", "inventario", "reservas", "dashboard"}
 
@@ -114,8 +121,8 @@ class FiltrosReporteVoz(BaseModel):
     """Contrato exacto que debe devolver Groq: qué reporte y con qué
     filtros -- nunca SQL, nunca texto libre que se ejecute. `tipo_reporte`
     es uno de los 4 valores fijos; los filtros son nombres/fechas que
-    `inteligencia.casos_uso.cu38_generar_reporte_comando_voz` resuelve a id
-    antes de llamar a `reportes`."""
+    `inteligencia.casos_uso.cu23_generar_reportes_con_ia` resuelve a id
+    antes de llamar a los reportes (CU-22)."""
 
     tipo_reporte: str
     desde: dt.date | None = None
@@ -131,3 +138,117 @@ class ReporteVozRespuesta(BaseModel):
     tipo_reporte: str
     filtros_aplicados: dict
     resultado: dict
+
+
+# ---- Reportes ----
+
+# ---- Ventas ---------------------------------------------------------------------
+
+
+class FilaVentasDetalle(BaseModel):
+    """Una fila de vw_ventas_detalle (comercial/repository.py)."""
+
+    venta_id: int
+    codigo: str
+    canal: str
+    fecha: dt.datetime
+    sucursal_id: int
+    sucursal: str
+    producto_id: int
+    producto: str
+    categoria_id: int
+    categoria: str
+    cantidad: int
+    precio_unitario: Decimal
+    subtotal: Decimal
+    costo_unitario: Decimal | None
+    margen: Decimal
+
+
+class ResumenVentas(BaseModel):
+    transacciones: int
+    total_ventas: Decimal
+    ticket_promedio: Decimal
+    margen_bruto: Decimal
+
+
+class FilaTopProducto(BaseModel):
+    producto_id: int
+    producto: str
+    cantidad_vendida: int
+    total_vendido: Decimal
+
+
+class FilaVentasPorCanal(BaseModel):
+    canal: str
+    transacciones: int
+    total_ventas: Decimal
+
+
+class FilaVentasPorSucursal(BaseModel):
+    sucursal_id: int
+    sucursal: str
+    transacciones: int
+    total_ventas: Decimal
+
+
+class ReporteVentasRespuesta(BaseModel):
+    resumen: ResumenVentas
+    top_productos: list[FilaTopProducto]
+    por_canal: list[FilaVentasPorCanal]
+    por_sucursal: list[FilaVentasPorSucursal]
+    detalle: list[FilaVentasDetalle]
+
+
+# ---- Inventario -------------------------------------------------------------------
+
+
+class ReporteInventarioRespuesta(BaseModel):
+    consolidado: list[ConsolidadoRespuesta]
+    alertas: list[ConsolidadoRespuesta]
+    valuacion: list[ValuacionRespuesta]
+
+
+# ---- Reservas ---------------------------------------------------------------------
+
+
+class FilaReservasPorEstado(BaseModel):
+    codigo: str
+    nombre: str
+    cantidad: int
+
+
+class ReporteReservasRespuesta(BaseModel):
+    por_estado: list[FilaReservasPorEstado]
+    tasa_conversion: float
+
+
+# ---- Probador -----------------------------------------------------------------------
+
+
+class FilaUsoProbador(BaseModel):
+    estado: str
+    cantidad: int
+
+
+# ---- Dashboard ---------------------------------------------------------------------
+
+
+class DashboardRespuesta(BaseModel):
+    """Los 12 indicadores del enunciado, livianos (sin el detalle fila por
+    fila de ventas -- eso es solo para /reportes/ventas)."""
+
+    desde: dt.date
+    hasta: dt.date
+    ventas_del_periodo: Decimal
+    transacciones: int
+    ticket_promedio: Decimal
+    margen_bruto: Decimal
+    top_productos: list[FilaTopProducto]
+    ventas_por_canal: list[FilaVentasPorCanal]
+    ventas_por_sucursal: list[FilaVentasPorSucursal]
+    valor_inventario_total: Decimal
+    variantes_bajo_minimo: int
+    reservas_por_estado: list[FilaReservasPorEstado]
+    tasa_conversion_reservas: float
+    uso_probador: list[FilaUsoProbador]

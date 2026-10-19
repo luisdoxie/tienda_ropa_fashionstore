@@ -1,12 +1,12 @@
 """Hash de contraseñas, JWT y dependencias de autenticación/autorización.
 
 Vive en `core` (así lo pide el plan de desarrollo), pero para resolver el
-usuario/los permisos detrás de un JWT necesita al paquete `seguridad`
+usuario/los permisos detrás de un JWT necesita al paquete `plataforma`
 (dueño de esas tablas). En vez de consultar `usuario`/`rol_permiso`/
-`usuario_rol` directamente, llama a `seguridad.politicas` -- mismo patrón
-que CLAUDE.md pide entre los 13 paquetes de negocio ("llama a la política
+`usuario_rol` directamente, llama a `plataforma.politicas` -- mismo patrón
+que CLAUDE.md pide entre los 4 paquetes de negocio ("llama a la política
 del otro paquete, no consulta sus tablas"). El import es diferido (dentro
-de cada función) porque `seguridad.repository` importa `core.security` a
+de cada función) porque `plataforma.repository` importa `core.security` a
 nivel de módulo (para hash_password): con el import acá arriba, cargar
 cualquiera de los dos módulos primero rompería con un ImportError
 circular.
@@ -69,39 +69,60 @@ def crear_reset_token(usuario_id: int) -> str:
     return _crear_token(usuario_id, tipo="reset", expira=dt.timedelta(minutes=30))
 
 
-def decodificar_token(token: str) -> dict:
+def decodificar_token(token: str, tipo: str | None = None) -> dict:
+    """Decodifica y valida el JWT: firma, vencimiento (la claim `exp` es
+    obligatoria: un token firmado sin vencimiento no se acepta) y, si se
+    indica `tipo`, que sea de ese tipo (access/refresh/reset)."""
     try:
-        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp"]},
+        )
     except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado"
         ) from exc
+    if tipo is not None and payload.get("tipo") != tipo:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+    return payload
+
+
+def usuario_id_de_payload(payload: dict) -> int | None:
+    """El id de usuario de la claim `sub`, o `None` si falta o no es numérico
+    (el llamador lo traduce a 401 en vez de dejar escapar un ValueError)."""
+    try:
+        return int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def permisos_de_usuario(db: Session, usuario_id: int) -> list[str]:
     """Códigos de permiso reales del usuario, vía sus roles activos. La
-    consulta real vive en seguridad.politicas (dueño de esas tablas); acá
+    consulta real vive en plataforma.politicas (dueño de esas tablas); acá
     solo se reexpone con el mismo nombre para no obligar a los demás
     paquetes a cambiar su import."""
-    from app.seguridad import politicas as seguridad_politicas
+    from app.plataforma import politicas as plataforma_politicas
 
-    return seguridad_politicas.permisos_de_usuario(db, usuario_id)
+    return plataforma_politicas.permisos_de_usuario(db, usuario_id)
 
 
 def get_current_user(
     credenciales: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ):
-    from app.seguridad import politicas as seguridad_politicas
+    from app.plataforma import politicas as plataforma_politicas
 
     if credenciales is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado")
 
-    payload = decodificar_token(credenciales.credentials)
-    if payload.get("tipo") != "access":
+    payload = decodificar_token(credenciales.credentials, tipo="access")
+    usuario_id = usuario_id_de_payload(payload)
+    if usuario_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
 
-    usuario = seguridad_politicas.obtener_usuario_para_auth(db, int(payload["sub"]))
+    usuario = plataforma_politicas.obtener_usuario_para_auth(db, usuario_id)
     if usuario is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inválido")
     return usuario
@@ -115,17 +136,12 @@ def get_current_user_opcional(
     hay token o es inválido/expirado. Para endpoints públicos que igual
     quieren asociar la acción a un usuario logueado cuando lo hay (p. ej.
     POST /ia/voz, que admite búsqueda anónima)."""
-    from app.seguridad import politicas as seguridad_politicas
-
     if credenciales is None:
         return None
     try:
-        payload = decodificar_token(credenciales.credentials)
+        return get_current_user(credenciales, db)
     except HTTPException:
         return None
-    if payload.get("tipo") != "access":
-        return None
-    return seguridad_politicas.obtener_usuario_para_auth(db, int(payload["sub"]))
 
 
 def require_permission(codigo: str):

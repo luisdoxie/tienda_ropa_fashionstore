@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.inventario.models import TipoMovimiento
+from app.catalogo.models import TipoMovimiento
 
 TIPOS_MOVIMIENTO: list[tuple[str, str, int, bool]] = [
     # codigo, nombre, signo, afecta_costo

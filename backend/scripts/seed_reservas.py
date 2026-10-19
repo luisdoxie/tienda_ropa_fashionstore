@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.reservas.models import EstadoReserva
+from app.comercial.models import EstadoReserva
 
 ESTADOS_RESERVA: list[tuple[str, str, bool]] = [
     # codigo, nombre, es_final

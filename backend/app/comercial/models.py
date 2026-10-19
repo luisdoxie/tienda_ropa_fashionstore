@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+import datetime as dt
+from decimal import Decimal
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Time,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+
+# ---- Reservas ----
+
+
+class EstadoReserva(Base):
+    __tablename__ = "estado_reserva"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    es_final: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class Reserva(Base):
+    __tablename__ = "reserva"
+    __table_args__ = (CheckConstraint("hora_visita_hasta > hora_visita_desde", name="ck_reserva_horas"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id"), nullable=False)
+    sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
+    estado_id: Mapped[int] = mapped_column(ForeignKey("estado_reserva.id"), nullable=False)
+    fecha_visita: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    hora_visita_desde: Mapped[dt.time] = mapped_column(Time, nullable=False)
+    hora_visita_hasta: Mapped[dt.time] = mapped_column(Time, nullable=False)
+    fecha_expiracion: Mapped[dt.datetime] = mapped_column(nullable=False)
+    observacion: Mapped[str | None] = mapped_column(String(300))
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+    detalle: Mapped[list["ReservaDetalle"]] = relationship(
+        back_populates="reserva", order_by="ReservaDetalle.id", cascade="all, delete-orphan"
+    )
+    historial: Mapped[list["ReservaHistorial"]] = relationship(
+        back_populates="reserva", order_by="ReservaHistorial.id", cascade="all, delete-orphan"
+    )
+
+
+class ReservaDetalle(Base):
+    __tablename__ = "reserva_detalle"
+    __table_args__ = (
+        CheckConstraint("cantidad > 0", name="ck_reserva_detalle_cantidad"),
+        UniqueConstraint("reserva_id", "variante_id", name="uq_reserva_detalle_variante"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reserva_id: Mapped[int] = mapped_column(ForeignKey("reserva.id", ondelete="CASCADE"), nullable=False)
+    variante_id: Mapped[int] = mapped_column(ForeignKey("producto_variante.id"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # NULL = aún no probada. TRUE = el cliente la compra. FALSE = se libera al stock.
+    seleccionada: Mapped[bool | None] = mapped_column(Boolean)
+    preparada: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    reserva: Mapped[Reserva] = relationship(back_populates="detalle")
+
+
+class ReservaHistorial(Base):
+    __tablename__ = "reserva_historial"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reserva_id: Mapped[int] = mapped_column(ForeignKey("reserva.id", ondelete="CASCADE"), nullable=False)
+    estado_id: Mapped[int] = mapped_column(ForeignKey("estado_reserva.id"), nullable=False)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuario.id"))
+    comentario: Mapped[str | None] = mapped_column(String(300))
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+    reserva: Mapped[Reserva] = relationship(back_populates="historial")
+
+
+# ---- Ventas ----
+
+
+class EstadoVenta(Base):
+    __tablename__ = "estado_venta"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    es_final: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class Promocion(Base):
+    __tablename__ = "promocion"
+    __table_args__ = (
+        CheckConstraint("tipo IN ('porcentaje','monto')", name="ck_promocion_tipo"),
+        CheckConstraint("valor > 0", name="ck_promocion_valor"),
+        CheckConstraint("fecha_fin >= fecha_inicio", name="ck_promocion_fechas"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(15), nullable=False)
+    valor: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    fecha_inicio: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    fecha_fin: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    alcances: Mapped[list["PromocionAlcance"]] = relationship(
+        back_populates="promocion", cascade="all, delete-orphan"
+    )
+
+
+class PromocionAlcance(Base):
+    __tablename__ = "promocion_alcance"
+    # La regla "exactamente uno de producto_id/categoria_id/temporada_id"
+    # (num_nonnulls(...) = 1 en docs/fashionstore_esquema.sql) se agrega a
+    # mano en la migración solo para Postgres -- num_nonnulls no existe en
+    # SQLite, que es lo que usan los tests. Acá también se valida en
+    # comercial.casos_uso.cu16_gestionar_promociones antes de insertar.
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    promocion_id: Mapped[int] = mapped_column(ForeignKey("promocion.id", ondelete="CASCADE"), nullable=False)
+    producto_id: Mapped[int | None] = mapped_column(ForeignKey("producto.id"))
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("categoria.id"))
+    temporada_id: Mapped[int | None] = mapped_column(ForeignKey("temporada.id"))
+
+    promocion: Mapped[Promocion] = relationship(back_populates="alcances")
+
+
+# Una sola tabla para venta digital y presencial: cambia el canal, no la entidad.
+class Venta(Base):
+    __tablename__ = "venta"
+    __table_args__ = (
+        CheckConstraint("canal IN ('digital','presencial')", name="ck_venta_canal"),
+        # En venta presencial el cajero es obligatorio.
+        CheckConstraint("canal <> 'presencial' OR cajero_id IS NOT NULL", name="ck_venta_cajero_presencial"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    canal: Mapped[str] = mapped_column(String(15), nullable=False)
+    cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"))
+    sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
+    cajero_id: Mapped[int | None] = mapped_column(ForeignKey("empleado.id"))
+    reserva_id: Mapped[int | None] = mapped_column(ForeignKey("reserva.id"))
+    estado_id: Mapped[int] = mapped_column(ForeignKey("estado_venta.id"), nullable=False)
+    fecha: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    descuento: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    costo_envio: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+
+    detalle: Mapped[list["VentaDetalle"]] = relationship(
+        back_populates="venta", order_by="VentaDetalle.id", cascade="all, delete-orphan"
+    )
+
+
+class VentaDetalle(Base):
+    __tablename__ = "venta_detalle"
+    __table_args__ = (CheckConstraint("cantidad > 0", name="ck_venta_detalle_cantidad"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venta_id: Mapped[int] = mapped_column(ForeignKey("venta.id", ondelete="CASCADE"), nullable=False)
+    variante_id: Mapped[int] = mapped_column(ForeignKey("producto_variante.id"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+    precio_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    descuento_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    # Costo congelado al momento de la venta (copiado de stock.costo_promedio
+    # en ese instante), para calcular margen real: nunca se recalcula
+    # después aunque cambie el costo promedio de la variante.
+    costo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    venta: Mapped[Venta] = relationship(back_populates="detalle")
+
+
+class Carrito(Base):
+    __tablename__ = "carrito"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id"), unique=True, nullable=False)
+    sucursal_id: Mapped[int | None] = mapped_column(ForeignKey("sucursal.id"))
+    actualizado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    detalle: Mapped[list["CarritoDetalle"]] = relationship(
+        back_populates="carrito", order_by="CarritoDetalle.id", cascade="all, delete-orphan"
+    )
+
+
+class CarritoDetalle(Base):
+    __tablename__ = "carrito_detalle"
+    __table_args__ = (
+        CheckConstraint("cantidad > 0", name="ck_carrito_detalle_cantidad"),
+        UniqueConstraint("carrito_id", "variante_id", name="uq_carrito_detalle_variante"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carrito_id: Mapped[int] = mapped_column(ForeignKey("carrito.id", ondelete="CASCADE"), nullable=False)
+    variante_id: Mapped[int] = mapped_column(ForeignKey("producto_variante.id"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    carrito: Mapped[Carrito] = relationship(back_populates="detalle")
+
+
+class Devolucion(Base):
+    __tablename__ = "devolucion"
+    __table_args__ = (CheckConstraint("estado IN ('pendiente','aprobada','rechazada')", name="ck_devolucion_estado"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    venta_id: Mapped[int] = mapped_column(ForeignKey("venta.id"), nullable=False)
+    fecha: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    motivo: Mapped[str | None] = mapped_column(String(300))
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuario.id"))
+
+    detalle: Mapped[list["DevolucionDetalle"]] = relationship(
+        back_populates="devolucion", order_by="DevolucionDetalle.id", cascade="all, delete-orphan"
+    )
+
+
+class DevolucionDetalle(Base):
+    __tablename__ = "devolucion_detalle"
+    __table_args__ = (CheckConstraint("cantidad > 0", name="ck_devolucion_detalle_cantidad"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    devolucion_id: Mapped[int] = mapped_column(ForeignKey("devolucion.id", ondelete="CASCADE"), nullable=False)
+    venta_detalle_id: Mapped[int] = mapped_column(ForeignKey("venta_detalle.id"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    devolucion: Mapped[Devolucion] = relationship(back_populates="detalle")
+
+
+# ---- Pagos ----
+
+
+# JSON en general (compatible con SQLite, usado en tests); JSONB solo en
+# Postgres. Mismo patrón que `inteligencia.models` (columnas JSON).
+_TipoJson = JSON().with_variant(JSONB, "postgresql")
+
+
+class MetodoPago(Base):
+    __tablename__ = "metodo_pago"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    requiere_pasarela: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    disponible_caja: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    disponible_online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class EstadoPago(Base):
+    __tablename__ = "estado_pago"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(25), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+
+
+class Pago(Base):
+    __tablename__ = "pago"
+    __table_args__ = (CheckConstraint("monto > 0", name="ck_pago_monto"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venta_id: Mapped[int] = mapped_column(ForeignKey("venta.id"), nullable=False)
+    metodo_pago_id: Mapped[int] = mapped_column(ForeignKey("metodo_pago.id"), nullable=False)
+    estado_id: Mapped[int] = mapped_column(ForeignKey("estado_pago.id"), nullable=False)
+    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    referencia_externa: Mapped[str | None] = mapped_column(String(120))
+    fecha: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# Libro de evidencia de cada ida y vuelta con la pasarela: nunca se edita
+# ni se borra desde el código (igual que movimiento_inventario). Un
+# webhook duplicado agrega una fila más acá, no reemplaza la anterior --
+# es justamente lo que permite auditar que llegó dos veces.
+class TransaccionPasarela(Base):
+    __tablename__ = "transaccion_pasarela"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pago_id: Mapped[int] = mapped_column(ForeignKey("pago.id", ondelete="CASCADE"), nullable=False)
+    pasarela: Mapped[str] = mapped_column(String(30), nullable=False)
+    id_transaccion: Mapped[str | None] = mapped_column(String(120))
+    payload_envio: Mapped[dict | None] = mapped_column(_TipoJson)
+    payload_respuesta: Mapped[dict | None] = mapped_column(_TipoJson)
+    estado: Mapped[str] = mapped_column(String(25), nullable=False)
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# ---- Entregas ----
+
+
+class ZonaEnvio(Base):
+    __tablename__ = "zona_envio"
+    __table_args__ = (CheckConstraint("tarifa_base >= 0", name="ck_zona_envio_tarifa_base"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ciudad_id: Mapped[int] = mapped_column(ForeignKey("ciudad.id"), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    anillo_desde: Mapped[int | None] = mapped_column(SmallInteger)
+    anillo_hasta: Mapped[int | None] = mapped_column(SmallInteger)
+    tarifa_base: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ReglaTarifaEnvio(Base):
+    __tablename__ = "regla_tarifa_envio"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    zona_envio_id: Mapped[int] = mapped_column(ForeignKey("zona_envio.id", ondelete="CASCADE"), nullable=False)
+    peso_desde_kg: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=0)
+    peso_hasta_kg: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    recargo: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+
+
+class DireccionCliente(Base):
+    __tablename__ = "direccion_cliente"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id", ondelete="CASCADE"), nullable=False)
+    zona_envio_id: Mapped[int | None] = mapped_column(ForeignKey("zona_envio.id"))
+    alias: Mapped[str | None] = mapped_column(String(40))
+    direccion: Mapped[str] = mapped_column(String(200), nullable=False)
+    referencia: Mapped[str | None] = mapped_column(String(200))
+    latitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    longitud: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    es_principal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class Envio(Base):
+    __tablename__ = "envio"
+    __table_args__ = (
+        CheckConstraint(
+            "estado IN ('programado','en_ruta','entregado','fallido')", name="ck_envio_estado"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    venta_id: Mapped[int] = mapped_column(ForeignKey("venta.id"), unique=True, nullable=False)
+    direccion_id: Mapped[int] = mapped_column(ForeignKey("direccion_cliente.id"), nullable=False)
+    zona_envio_id: Mapped[int] = mapped_column(ForeignKey("zona_envio.id"), nullable=False)
+    costo: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    peso_kg: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="programado")
+    fecha_programada: Mapped[dt.datetime | None]
+    fecha_entrega: Mapped[dt.datetime | None]
+    repartidor: Mapped[str | None] = mapped_column(String(80))

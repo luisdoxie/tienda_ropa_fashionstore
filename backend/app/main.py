@@ -16,25 +16,15 @@ from sqlalchemy.orm import Session
 # de Google leen directo de os.environ, no de la app.
 load_dotenv()
 
+from app.catalogo.router import routers as catalogo_routers
+from app.comercial.politicas import expirar_reservas_vencidas, expirar_ventas_pendientes
+from app.comercial.router import routers as comercial_routers
 from app.core.config import get_settings
 from app.core.database import SessionLocal, get_db
-from app.pagos.politicas import expirar_ventas_pendientes
-from app.reservas.politicas import expirar_reservas_vencidas
 from app.core.exceptions import registrar_handlers
 from app.core.rate_limit import limiter
-from app.abastecimiento.router import routers as abastecimiento_routers
-from app.catalogo.router import routers as catalogo_routers
-from app.core.router import routers as core_routers
-from app.entregas.router import routers as entregas_routers
 from app.inteligencia.router import routers as inteligencia_routers
-from app.inventario.router import routers as inventario_routers
-from app.organizacion.router import routers as organizacion_routers
-from app.pagos.router import routers as pagos_routers
-from app.probador.router import routers as probador_routers
-from app.reportes.router import routers as reportes_routers
-from app.reservas.router import routers as reservas_routers
-from app.seguridad.router import routers as seguridad_routers
-from app.ventas.router import routers as ventas_routers
+from app.plataforma.router import routers as plataforma_routers
 
 logger = logging.getLogger(__name__)
 
@@ -109,20 +99,11 @@ def health(db: Session = Depends(get_db)) -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
-# Los routers de cada paquete de negocio se registran acá a medida que existen.
+# Acá se registran los routers de cada paquete (plataforma, catalogo, comercial, inteligencia).
 for router in (
-    core_routers
-    + seguridad_routers
-    + organizacion_routers
+    plataforma_routers
     + catalogo_routers
-    + probador_routers
-    + inventario_routers
-    + abastecimiento_routers
-    + reservas_routers
-    + ventas_routers
-    + pagos_routers
-    + entregas_routers
+    + comercial_routers
     + inteligencia_routers
-    + reportes_routers
 ):
     app.include_router(router)

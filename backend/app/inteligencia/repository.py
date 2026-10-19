@@ -5,11 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.inteligencia.models import ConsultaVoz, HistorialNavegacion, Recomendacion
 
+# ---- Inteligencia ----
+
 
 class ConsultaVozRepository:
     """Sin `activo`: es un log de auditoría, nunca se desactiva ni se lista
     de vuelta desde una pantalla administrable (igual criterio que
-    NotificacionRepository en core/repository.py)."""
+    NotificacionRepository en plataforma/repository.py)."""
 
     def crear(
         self,
@@ -83,3 +85,11 @@ class RecomendacionRepository:
         for fila in filas:
             db.refresh(fila)
         return filas
+
+
+# ---- Reportes ----
+# Los reportes no consultan ninguna tabla ni vista directamente: toda su
+# lectura pasa por las `politicas` y los casos de uso de `comercial` (ventas y
+# reservas) y de `catalogo` (inventario y probador). Este bloque existe por
+# consistencia con la estructura del paquete y no define ningún acceso a datos
+# propio.

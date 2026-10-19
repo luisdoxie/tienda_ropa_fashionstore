@@ -161,3 +161,15 @@ def test_coleccion_sin_temporada_es_valida(client, admin_headers):
         "/api/v1/colecciones", json={"nombre": "Coleccion X"}, headers=admin_headers
     )
     assert respuesta.status_code == 201
+
+
+def test_resolver_categoria_por_nombre_es_exacto_y_no_usa_comodines(client, admin_headers, db_session):
+    from app.catalogo.politicas import resolver_categoria_por_nombre
+
+    creada = client.post("/api/v1/categorias", json={"nombre": "Camisas"}, headers=admin_headers).json()
+
+    assert resolver_categoria_por_nombre(db_session, "camisas") == creada["id"]
+    assert resolver_categoria_por_nombre(db_session, " Camisas ") == creada["id"]
+    assert resolver_categoria_por_nombre(db_session, "%") is None
+    assert resolver_categoria_por_nombre(db_session, "Cami%") is None
+    assert resolver_categoria_por_nombre(db_session, "Camisa_") is None

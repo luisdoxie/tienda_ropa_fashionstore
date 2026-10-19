@@ -1,7 +1,7 @@
 """Seed de los 5 roles (según docs/fashionstore_esquema.sql) y sus permisos.
 
 El SQL solo trae los nombres de los roles; los permisos no existen todavía
-en ningún lado, así que se definen acá, uno por paquete de negocio, y se
+en ningún lado, así que se definen acá, uno por dominio de negocio (el prefijo del permiso), y se
 asignan por rol según lo que cada uno necesita operar. Idempotente: correrlo
 más de una vez no duplica filas.
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.seguridad.models import Permiso, Rol
+from app.plataforma.models import Permiso, Rol
 
 ROLES: list[tuple[str, str]] = [
     ("administrador", "Acceso total al sistema"),
@@ -44,7 +44,7 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("entregas.gestionar", "entregas", "Gestionar zonas de envío y el estado de los envíos"),
     ("reportes.ver", "reportes", "Consultar reportes y el dashboard"),
     ("probador.usar", "probador", "Usar el vestidor virtual"),
-    ("probador.gestionar", "probador", "Subir y validar assets del probador (editor de anclajes)"),
+    ("probador.gestionar", "probador", "Subir y validar assets del probador"),
 ]
 
 PERMISOS_POR_ROL: dict[str, list[str]] = {
@@ -69,7 +69,7 @@ PERMISOS_POR_ROL: dict[str, list[str]] = {
         # en venta, no solo el encargado del depósito.
         "reservas.gestionar_sucursal",
     ],
-    # Sin abastecimiento.gestionar: ese permiso protege TODO el paquete
+    # Sin abastecimiento.gestionar: ese permiso protege TODA la sección de Abastecimiento
     # (proveedores ajenos, órdenes de compra y recepciones, que suben stock
     # y fijan el costo promedio en cualquier sucursal) y no hay endpoints
     # acotados al proveedor dueño de la sesión. Es un tercero externo: solo

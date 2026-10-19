@@ -57,7 +57,7 @@ def test_catalogo_detalle_es_publico(client, admin_headers, categoria_camisas, t
     assert cuerpo["codigo"] == "PUB-2"
     assert len(cuerpo["variantes"]) == 1
     assert cuerpo["variantes"][0]["precio_efectivo"] == "150.00"
-    # Sin stock registrado en `inventario` para esta variante, 0 disponible.
+    # Sin stock registrado (sección Inventario) para esta variante, 0 disponible.
     assert cuerpo["variantes"][0]["cantidad_disponible"] == 0
 
 
@@ -156,7 +156,7 @@ def test_buscar_genero_invalido_rechazado(client):
     assert respuesta.status_code == 422
 
 
-# ---- solo_disponibles / sucursal_id (CU-10, disponibilidad real) --------------
+# ---- solo_disponibles / sucursal_id (CU-06, disponibilidad real) --------------
 
 
 def _registrar_stock(client, admin_headers, variante_id, sucursal_id, cantidad=10):

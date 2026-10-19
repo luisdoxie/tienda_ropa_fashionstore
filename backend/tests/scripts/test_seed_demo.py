@@ -35,12 +35,12 @@ def _preparar_catalogo(client, admin_headers, db_session):
 
 def _conteos(db):
     from app.catalogo.models import Coleccion, TablaMedida, Temporada
-    from app.entregas.models import DireccionCliente, Envio
+    from app.comercial.models import DireccionCliente, Envio
     from app.inteligencia.models import HistorialNavegacion
-    from app.inventario.models import Transferencia
-    from app.reservas.models import Reserva
-    from app.seguridad.models import Cliente
-    from app.ventas.models import Devolucion, Promocion, Venta
+    from app.catalogo.models import Transferencia
+    from app.comercial.models import Reserva
+    from app.plataforma.models import Cliente
+    from app.comercial.models import Devolucion, Promocion, Venta
 
     modelos = [Temporada, Coleccion, TablaMedida, Cliente, DireccionCliente, Promocion, Transferencia, Venta,
                Envio, Devolucion, Reserva, HistorialNavegacion]
@@ -48,8 +48,8 @@ def _conteos(db):
 
 
 def test_seed_demo_carga_datos_coherentes_y_es_idempotente(client, admin_headers, db_session, monkeypatch):
-    from app.inventario.models import Stock
-    from app.ventas.models import EstadoVenta, Venta, VentaDetalle
+    from app.catalogo.models import Stock
+    from app.comercial.models import EstadoVenta, Venta, VentaDetalle
 
     _preparar_catalogo(client, admin_headers, db_session)
     seed_operativo.seed(db_session, ejecutar=True, password="claveDemo123")

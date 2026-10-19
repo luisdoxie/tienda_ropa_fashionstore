@@ -9,8 +9,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
+# ---- Inteligencia ----
+
 # JSON en general (compatible con sqlite, usado en tests); JSONB solo en
-# Postgres, que es lo que pide el esquema (ver probador/models.py, mismo
+# Postgres, que es lo que pide el esquema (ver catalogo/models.py, mismo
 # patrón).
 _TipoJson = JSON().with_variant(JSONB, "postgresql")
 
@@ -71,3 +73,11 @@ class Recomendacion(Base):
     puntaje: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
     motivo: Mapped[str | None] = mapped_column(String(200))
     generado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# ---- Reportes ----
+# Los reportes no tienen tablas propias: solo leen, combinando datos de
+# `comercial` (ventas y reservas) y de `catalogo` (inventario y probador) a
+# través de las `politicas` y los casos de uso de esos paquetes. Este bloque
+# existe por consistencia con la estructura del paquete y no define ningún
+# modelo.

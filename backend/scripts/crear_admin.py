@@ -19,9 +19,9 @@ import os
 import sys
 
 from app.core.database import SessionLocal
-from app.seguridad import models as _seguridad_models  # noqa: F401  (registra las tablas)
-from app.seguridad.repository import UsuarioRepository
-from app.seguridad.schemas import UsuarioCrear
+from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
+from app.plataforma.repository import UsuarioRepository
+from app.plataforma.schemas import UsuarioCrear
 
 
 def main() -> None:

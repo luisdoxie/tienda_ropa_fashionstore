@@ -10,7 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-from app.ventas.repository import VW_VENTAS_DETALLE_SQL
+from app.comercial.repository import VW_VENTAS_DETALLE_SQL
 
 
 # revision identifiers, used by Alembic.

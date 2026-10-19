@@ -3,16 +3,16 @@ catálogo y al probador virtual. Idempotente y reanudable.
 
 Por cada prenda del JSON:
   1. Producto `FS-{id}` (categoría Poleras/Chamarras, género hombre, tallas
-     L y XL, precio fijo) vía catalogo.service.crear_producto().
+     L y XL, precio fijo) vía GestionarProductos.crear().
   2. Foto JPG de catálogo -> fashionstore/productos/{producto_id}/ vía
-     catalogo.service.subir_imagen_producto().
+     GestionarProductos.subir_imagen().
   3. Overlay PNG -> fashionstore/probador/{variante_L_id}/ vía
-     probador.service.subir_asset(), con anclajes calculados a partir de
-     la máscara alfa, y validado. La variante XL reutiliza el mismo archivo
-     (probador.service.clonar_asset_a_variante), sin volver a subirlo.
+     CargarAssetsProbador.subir(), y validado. La variante XL reutiliza el
+     mismo archivo (CargarAssetsProbador.clonar_a_variante), sin volver a
+     subirlo. Es la imagen de la prenda que usa el modo generativo.
 
 Por defecto NO escribe nada (dry-run): muestra lo que haría y genera una
-hoja de vista previa con los anclajes dibujados. Para escribir de verdad
+hoja de vista previa de los overlays. Para escribir de verdad
 hace falta --ejecutar. Cada corrida real deja un manifiesto en backups/
 con todo lo creado, que sirve para deshacer con --revertir.
 
@@ -32,7 +32,6 @@ import argparse
 import datetime as dt
 import io
 import json
-import statistics
 import sys
 from dataclasses import dataclass
 from decimal import Decimal
@@ -42,7 +41,7 @@ from PIL import Image, ImageDraw
 
 DIR_BACKUPS = Path(__file__).resolve().parent.parent / "backups"
 
-TAMANIO_MAXIMO_PNG = 3 * 1024 * 1024  # mismo límite que probador.service
+TAMANIO_MAXIMO_PNG = 3 * 1024 * 1024  # mismo límite que CargarAssetsProbador
 LADO_MINIMO_PX = 512
 TALLAS = ["L", "XL"]
 
@@ -171,8 +170,7 @@ def planificar(origen: Path, solo: set[int] | None) -> list[PrendaPlan]:
 
 def preparar_png(contenido: bytes) -> tuple[bytes, Image.Image]:
     """Deja el PNG por debajo de 3MB sin perder el canal alfa. Primero
-    re-comprime sin pérdida; si no alcanza, reduce el tamaño de a 10%.
-    Los anclajes son fracciones 0..1, así que achicar no los invalida."""
+    re-comprime sin pérdida; si no alcanza, reduce el tamaño de a 10%."""
     imagen = Image.open(io.BytesIO(contenido))
     imagen.load()
     if imagen.mode != "RGBA":
@@ -195,109 +193,20 @@ def preparar_png(contenido: bytes) -> tuple[bytes, Image.Image]:
         escala -= 0.1
 
 
-# ---- Anclajes automáticos a partir de la máscara alfa -----------------------
-
-_UMBRAL_ALFA = 32
-_ANCHO_ANALISIS = 360
+# ---- Vista previa -------------------------------------------------------------
 
 
-def _tramo_que_contiene(fila: list[bool], x: int) -> tuple[int, int]:
-    izq = x
-    while izq > 0 and fila[izq - 1]:
-        izq -= 1
-    der = x
-    while der < len(fila) - 1 and fila[der + 1]:
-        der += 1
-    return izq, der
-
-
-def calcular_anclajes(imagen: Image.Image) -> dict[str, dict[str, float]]:
-    """Estima hombro_izq, hombro_der y cadera (fracciones 0..1, izquierda =
-    lado izquierdo de la imagen, igual que las plantillas del editor).
-
-    - El torso es el tramo opaco que contiene la columna central, medido
-      entre el 55% y el 75% del alto de la prenda (debajo de las mangas
-      cortas). La mediana de sus bordes da el ancho del torso.
-    - Cada hombro está en el borde del torso, un 3% por debajo del primer
-      píxel opaco de esa columna (la costura del hombro, no el contorno).
-    - La cadera está en el centro del torso, un 3% por encima del ruedo.
-    Es una estimación: se afina a mano en el editor de anclajes si hace falta."""
-    alfa = imagen.getchannel("A")
-    ancho = _ANCHO_ANALISIS
-    alto = max(1, round(imagen.height * ancho / imagen.width))
-    datos = alfa.resize((ancho, alto), Image.Resampling.BILINEAR).tobytes()
-    filas = [[datos[y * ancho + x] > _UMBRAL_ALFA for x in range(ancho)] for y in range(alto)]
-
-    filas_opacas = [y for y in range(alto) if any(filas[y])]
-    if not filas_opacas:
-        raise ValueError("El PNG no tiene píxeles opacos")
-    y0, y1 = filas_opacas[0], filas_opacas[-1]
-    alto_prenda = y1 - y0
-    xs = [x for y in filas_opacas for x in (filas[y].index(True), ancho - 1 - filas[y][::-1].index(True))]
-    centro_x = (min(xs) + max(xs)) // 2
-
-    izqs: list[int] = []
-    ders: list[int] = []
-    for y in range(y0 + int(0.55 * alto_prenda), y0 + int(0.75 * alto_prenda) + 1):
-        if filas[y][centro_x]:
-            izq, der = _tramo_que_contiene(filas[y], centro_x)
-            izqs.append(izq)
-            ders.append(der)
-    torso_izq = int(statistics.median(izqs)) if izqs else min(xs)
-    torso_der = int(statistics.median(ders)) if ders else max(xs)
-    torso_centro = (torso_izq + torso_der) // 2
-
-    def primera_opaca(x: int) -> int:
-        return next((y for y in range(y0, y1 + 1) if filas[y][x]), y0)
-
-    def ultima_opaca(x: int) -> int:
-        return next((y for y in range(y1, y0 - 1, -1) if filas[y][x]), y1)
-
-    margen = round(0.03 * alto_prenda)
-
-    def punto(x: int, y: int) -> dict[str, float]:
-        return {"x": round(min(max(x / ancho, 0.0), 1.0), 4), "y": round(min(max(y / alto, 0.0), 1.0), 4)}
-
-    hombro_izq_y = primera_opaca(torso_izq) + margen
-    hombro_der_y = primera_opaca(torso_der) + margen
-    limite_hombros = y0 + 0.4 * alto_prenda
-    if hombro_izq_y > limite_hombros or hombro_der_y > limite_hombros:
-        # Manga larga pegada al cuerpo: el "torso" medido incluye los brazos
-        # y sus bordes no tienen hombro arriba. Se busca bajando desde arriba
-        # la primera fila donde la prenda alcanza el 60% de su ancho total
-        # (debajo del cuello o de la capucha) y se entra un 8% desde los bordes.
-        ancho_total = max(xs) - min(xs)
-        for y in range(y0, y1 + 1):
-            if filas[y][centro_x]:
-                izq, der = _tramo_que_contiene(filas[y], centro_x)
-                if der - izq >= 0.6 * ancho_total:
-                    entrada = round(0.08 * (der - izq))
-                    torso_izq, torso_der = izq + entrada, der - entrada
-                    hombro_izq_y = hombro_der_y = y + margen
-                    break
-
-    return {
-        "hombro_izq": punto(torso_izq, hombro_izq_y),
-        "hombro_der": punto(torso_der, hombro_der_y),
-        "cadera": punto(torso_centro, ultima_opaca(torso_centro) - margen),
-    }
-
-
-def generar_vista_previa(planes_con_anclajes: list[tuple[PrendaPlan, Image.Image, dict]], destino: Path) -> None:
+def generar_vista_previa(planes_con_imagen: list[tuple[PrendaPlan, Image.Image]], destino: Path) -> None:
     celda_w, celda_h, columnas = 240, 320, 6
-    filas = (len(planes_con_anclajes) + columnas - 1) // columnas
+    filas = (len(planes_con_imagen) + columnas - 1) // columnas
     hoja = Image.new("RGB", (celda_w * columnas, (celda_h + 20) * filas), "#EAE4DA")
     dibujo = ImageDraw.Draw(hoja)
-    for i, (plan, imagen, anclajes) in enumerate(planes_con_anclajes):
+    for i, (plan, imagen) in enumerate(planes_con_imagen):
         miniatura = imagen.copy()
         miniatura.thumbnail((celda_w, celda_h))
         ox = (i % columnas) * celda_w + (celda_w - miniatura.width) // 2
         oy = (i // columnas) * (celda_h + 20) + (celda_h - miniatura.height) // 2
         hoja.paste(miniatura, (ox, oy), miniatura)
-        for nombre, color in (("hombro_izq", "#16A34A"), ("hombro_der", "#1D4ED8"), ("cadera", "#DC2626")):
-            px = ox + anclajes[nombre]["x"] * miniatura.width
-            py = oy + anclajes[nombre]["y"] * miniatura.height
-            dibujo.ellipse((px - 5, py - 5, px + 5, py + 5), fill=color, outline="white")
         dibujo.text(((i % columnas) * celda_w + 6, (i // columnas) * (celda_h + 20) + celda_h), plan.codigo, fill="#1C1713")
     destino.parent.mkdir(parents=True, exist_ok=True)
     hoja.save(destino)
@@ -330,7 +239,7 @@ def _host_de_la_base() -> str:
 
 
 def _obtener_o_crear_categoria(db, manifiesto: Manifiesto, nombre: str, padre_id: int | None) -> int:
-    from app.catalogo.casos_uso.cu07_gestionar_catalogo_maestro import GestionarCategorias
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarCategorias
     from app.catalogo.models import Categoria
     from app.catalogo.schemas import CategoriaCrear
 
@@ -343,7 +252,7 @@ def _obtener_o_crear_categoria(db, manifiesto: Manifiesto, nombre: str, padre_id
 
 
 def _obtener_o_crear_color(db, manifiesto: Manifiesto, nombre: str, hexa: str) -> int:
-    from app.catalogo.casos_uso.cu07_gestionar_catalogo_maestro import GestionarColores
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarColores
     from app.catalogo.models import Color
     from app.catalogo.schemas import ColorCrear
 
@@ -356,7 +265,7 @@ def _obtener_o_crear_color(db, manifiesto: Manifiesto, nombre: str, hexa: str) -
 
 
 def _obtener_o_crear_temporada(db, manifiesto: Manifiesto, plan: PrendaPlan) -> int:
-    from app.catalogo.casos_uso.cu07_gestionar_catalogo_maestro import GestionarTemporadas
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarTemporadas
     from app.catalogo.models import Temporada
     from app.catalogo.schemas import TemporadaCrear
 
@@ -375,17 +284,16 @@ def _obtener_o_crear_temporada(db, manifiesto: Manifiesto, plan: PrendaPlan) -> 
 
 def cargar(planes: list[PrendaPlan]) -> None:
     import app.main  # noqa: F401  (registra todos los modelos y configura Cloudinary)
-    from app.catalogo.casos_uso.cu08_gestionar_productos import GestionarProductos
+    from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarProductos
     from app.catalogo.models import Producto, ProductoImagen, ProductoVariante, Talla
     from app.catalogo.schemas import ProductoCrear
     from app.core.config import get_settings
     from app.core.database import SessionLocal
-    from app.probador.casos_uso.cu21_cargar_assets_anclajes import CargarAssetsAnclajes
-    from app.probador.models import ActivoProbador
-    from app.probador.schemas import AnclajesActualizar
+    from app.catalogo.casos_uso.cu10_gestionar_assets_probador import CargarAssetsProbador
+    from app.catalogo.models import ActivoProbador
 
     cu_productos = GestionarProductos()
-    cu_assets = CargarAssetsAnclajes()
+    cu_assets = CargarAssetsProbador()
     settings = get_settings()
     if not (settings.cloudinary_cloud_name and settings.cloudinary_api_key and settings.cloudinary_api_secret):
         sys.exit("Faltan las variables CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET")
@@ -469,14 +377,12 @@ def cargar(planes: list[PrendaPlan]) -> None:
 
             base = overlay_de(variante_base.id)
             if base is None:
-                png, imagen_png = preparar_png(plan.ruta_png.read_bytes())
-                anclajes = calcular_anclajes(imagen_png)
+                png, _ = preparar_png(plan.ruta_png.read_bytes())
                 base, _ = cu_assets.subir(db, variante_base.id, "overlay_2d", png, "image/png", None)
                 manifiesto.agregar("activos", base.id)
                 manifiesto.agregar("public_ids", base.url)
-                cu_assets.guardar_anclajes(db, base.id, AnclajesActualizar.model_validate(anclajes))
                 base, _ = cu_assets.validar(db, base.id)
-                print(f"  overlay subido y validado ({base.url}) anclajes={anclajes}")
+                print(f"  overlay subido y validado ({base.url})")
             else:
                 print(f"  overlay ya existía en talla {TALLAS[0]}")
 
@@ -508,7 +414,7 @@ def revertir(ruta_manifiesto: Path, ejecutar: bool) -> None:
     from app.catalogo.models import Categoria, Color, Producto, ProductoImagen, ProductoVariante, Temporada
     from app.core import storage
     from app.core.database import SessionLocal
-    from app.probador.models import ActivoProbador
+    from app.catalogo.models import ActivoProbador
 
     host = _host_de_la_base()
     if host != datos["host"]:
@@ -570,19 +476,18 @@ def main() -> None:
         cargar(planes)
         return
 
-    vista: list[tuple[PrendaPlan, Image.Image, dict]] = []
+    vista: list[tuple[PrendaPlan, Image.Image]] = []
     for plan in planes:
         original = plan.ruta_png.read_bytes()
         png, imagen = preparar_png(original)
-        anclajes = calcular_anclajes(imagen)
-        vista.append((plan, imagen, anclajes))
+        vista.append((plan, imagen))
         comprimido = f" -> {len(png) / 1048576:.2f}MB {imagen.size}" if png is not original else ""
         print(
             f"{plan.codigo:9} {plan.categoria:9} {plan.precio:>7} Bs  {plan.color:12} "
             f"{plan.temporada} {plan.anio}  {plan.nombre}\n"
-            f"          png {len(original) / 1048576:.2f}MB{comprimido}  anclajes {anclajes}"
+            f"          png {len(original) / 1048576:.2f}MB{comprimido}"
         )
-    destino = DIR_BACKUPS / "vista_previa_anclajes.png"
+    destino = DIR_BACKUPS / "vista_previa_overlays.png"
     generar_vista_previa(vista, destino)
     print(f"\n{len(planes)} prendas, tallas {TALLAS}. Vista previa: {destino}")
     print("(dry-run: no se escribió nada en la base ni en Cloudinary; agregar --ejecutar)")

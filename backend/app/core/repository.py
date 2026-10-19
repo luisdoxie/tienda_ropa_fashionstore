@@ -1,46 +1,41 @@
-from sqlalchemy import select
+from typing import Any, TypeVar
+
+from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NoEncontradoError
-from app.core.models import Notificacion
+from app.core.database import Base
+
+ModeloT = TypeVar("ModeloT", bound=Base)
 
 
-class NotificacionRepository:
-    """Sin `activo`: una notificación no se desactiva, se marca leída o
-    simplemente se acumula."""
+def confirmar(db: Session, commit: bool = True) -> None:
+    """Cierra una escritura según quién sea el dueño de la transacción.
 
-    def crear(
-        self,
-        db: Session,
-        usuario_id: int,
-        titulo: str,
-        mensaje: str | None,
-        tipo: str | None,
-        referencia_id: int | None,
-    ) -> Notificacion:
-        notificacion = Notificacion(
-            usuario_id=usuario_id, titulo=titulo, mensaje=mensaje, tipo=tipo, referencia_id=referencia_id
-        )
-        db.add(notificacion)
-        db.flush()
-        return notificacion
-
-    def listar_por_usuario(self, db: Session, usuario_id: int) -> list[Notificacion]:
-        return list(
-            db.scalars(
-                select(Notificacion)
-                .where(Notificacion.usuario_id == usuario_id)
-                # `id` desempata: dos avisos creados en el mismo instante (la misma transacción)
-                # comparten `creado_en` y sin esto su orden sería indeterminado.
-                .order_by(Notificacion.creado_en.desc(), Notificacion.id.desc())
-            )
-        )
-
-    def marcar_leida(self, db: Session, usuario_id: int, notificacion_id: int) -> Notificacion:
-        notificacion = db.get(Notificacion, notificacion_id)
-        if notificacion is None or notificacion.usuario_id != usuario_id:
-            raise NoEncontradoError("Notificación no encontrada")
-        notificacion.leida = True
+    `commit=True` (por defecto) confirma: es el comportamiento de siempre del
+    endpoint HTTP. `commit=False` solo hace flush: los cambios quedan visibles
+    dentro de la sesión (ids, restricciones de la base) pero la transacción
+    sigue abierta para que quien llama (un caso de uso compuesto o la
+    sincronización offline, CU-25) decida el commit o el rollback de todo el
+    lote. Evita repetir `if commit: db.commit() else: db.flush()`."""
+    if commit:
         db.commit()
-        db.refresh(notificacion)
-        return notificacion
+    else:
+        db.flush()
+
+
+def obtener_por_clave(
+    db: Session, modelo: type[ModeloT], id_: Any, consulta: Select | None = None
+) -> ModeloT | None:
+    """La fila de `modelo` con esa clave primaria (`id_` es una tupla si la
+    clave es compuesta), o None; no filtra por `activo`.
+
+    Es el reemplazo de `db.get` en los repositorios: `db.get` no pasa por
+    ninguna consulta, así que no podría recibir un filtro de alcance (la
+    empresa, en el multitenant). `consulta` es la consulta de partida (los
+    CRUD le pasan la suya ya con el alcance aplicado). Igual que `db.get`,
+    devuelve la instancia del mapa de identidad si ya está cargada."""
+    claves = modelo.__mapper__.primary_key
+    valores = id_ if isinstance(id_, (tuple, list)) else (id_,)
+    condicion = and_(*(columna == valor for columna, valor in zip(claves, valores)))
+    base = consulta if consulta is not None else select(modelo)
+    return db.scalars(base.where(condicion)).first()

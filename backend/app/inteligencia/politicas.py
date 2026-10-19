@@ -2,9 +2,9 @@
 
 - Registrar el historial de navegación no es un caso de uso (no tiene un
   actor que lo "haga" con un objetivo propio: es una traza que queda como
-  efecto secundario de navegar, probar o comprar). Soporta CU-32
+  efecto secundario de navegar, probar o comprar). Soporta CU-20
   (recomendar productos).
-- Redactar la respuesta en lenguaje natural de CU-38 (reporte por comando de
+- Redactar la respuesta en lenguaje natural de CU-23 (reporte por comando de
   voz). Es una plantilla en español armada con las cifras reales del
   reporte: ningún dato del negocio sale a un tercero y ninguna cifra la
   inventa un modelo.
@@ -16,14 +16,16 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.inteligencia.repository import HistorialNavegacionRepository
-from app.inteligencia.schemas import EventoCrear
-from app.reportes.schemas import (
+from app.inteligencia.schemas import (
     DashboardRespuesta,
+    EventoCrear,
     ReporteInventarioRespuesta,
     ReporteReservasRespuesta,
     ReporteVentasRespuesta,
 )
-from app.seguridad.politicas import obtener_perfil_cliente
+from app.plataforma.politicas import obtener_perfil_cliente
+
+# ---- Inteligencia ----
 
 historial_repo = HistorialNavegacionRepository()
 
@@ -34,7 +36,7 @@ def registrar_evento(db: Session, datos: EventoCrear, usuario) -> None:
     historial_repo.crear(db, cliente_id, None, datos.producto_id, datos.variante_id, datos.tipo_evento)
 
 
-# ---- Respuesta en lenguaje natural de CU-38 -----------------------------------------
+# ---- Respuesta en lenguaje natural de CU-23 -----------------------------------------
 
 ResultadoReporte = ReporteVentasRespuesta | ReporteInventarioRespuesta | ReporteReservasRespuesta | DashboardRespuesta
 
@@ -142,7 +144,7 @@ def redactar_respuesta_reporte(
     canal: str | None,
     resultado: ResultadoReporte,
 ) -> str:
-    """Para CU-38: convierte el reporte ya consultado en una respuesta en
+    """Para CU-23: convierte el reporte ya consultado en una respuesta en
     español. `entendida=False` (Groq falló, sin API key o tipo inválido)
     antepone el aviso de que se muestra el resumen general."""
     rango = f"El {_fecha(desde)}" if desde == hasta else f"Entre el {_fecha(desde)} y el {_fecha(hasta)}"
@@ -155,3 +157,23 @@ def redactar_respuesta_reporte(
     else:
         texto = _texto_dashboard(rango + _filtros(sucursal=sucursal), resultado)
     return texto if entendida else _AVISO_NO_ENTENDIDO + texto
+
+
+# ---- Reportes ----
+# Cálculos compartidos entre los reportes y el dashboard (CU-22): no son un
+# caso de uso aparte, son fórmulas de una línea que ambos necesitan.
+
+_CERO = Decimal("0")
+
+
+def ticket_promedio(total_ventas: Decimal, transacciones: int) -> Decimal:
+    if transacciones == 0:
+        return _CERO
+    return (total_ventas / transacciones).quantize(Decimal("0.01"))
+
+
+def tasa_conversion(por_estado: list[dict], ventas_con_reserva: int) -> float:
+    total_reservas = sum(fila["cantidad"] for fila in por_estado)
+    if total_reservas == 0:
+        return 0.0
+    return round(ventas_con_reserva / total_reservas, 4)

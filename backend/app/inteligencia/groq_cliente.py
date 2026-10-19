@@ -2,12 +2,13 @@
 
 Todo lo que sabe llamar al proveedor externo que interpreta la frase
 transcrita vive detrás de `ParserVozBase`. El resto del paquete
-(`service.py`) solo conoce esta interfaz, nunca al proveedor concreto --
-mismo patrón que `probador/generativo.py` usa para Vertex AI.
+(`cu21_buscar_prendas_por_voz.py`) solo conoce esta interfaz, nunca al proveedor concreto --
+mismo patrón que `catalogo/generativo.py` usa para Vertex AI.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -17,6 +18,7 @@ from pydantic import ValidationError
 
 from app.catalogo.schemas import ValoresReferenciaCatalogo
 from app.core.config import get_settings
+from app.core.tiempo import hoy_utc
 from app.inteligencia.schemas import (
     CandidatoRecomendacion,
     FiltrosReporteVoz,
@@ -109,7 +111,7 @@ def obtener_parser_voz() -> ParserVozBase:
     return GroqParserVoz()
 
 
-# ---- Recomendador (P6.2) -------------------------------------------------------
+# ---- Recomendador -------------------------------------------------------
 
 
 def _armar_prompt_recomendacion(candidatos: list[CandidatoRecomendacion], perfil: PerfilClienteRecomendacion) -> str:
@@ -202,13 +204,14 @@ def obtener_rankeador_recomendacion() -> RankeadorRecomendacionBase:
     return GroqRankeadorRecomendacion()
 
 
-# ---- Reporte por voz (P6.3) -----------------------------------------------------
+# ---- Reporte por voz -----------------------------------------------------
 
 
-def _armar_prompt_reporte_voz() -> str:
+def _armar_prompt_reporte_voz(hoy: dt.date) -> str:
     return (
         "Sos el intérprete de reportes por voz del back office de una tienda "
-        "de ropa. A partir de la frase de un empleado, devolvé ÚNICAMENTE un "
+        f"de ropa. Hoy es {hoy.isoformat()}. A partir de la frase de un "
+        "empleado, devolvé ÚNICAMENTE un "
         "JSON con esta forma exacta, sin texto adicional ni markdown:\n"
         '{"tipo_reporte": "dashboard", "desde": null, "hasta": null, '
         '"sucursal": null, "categoria": null, "canal": null}\n\n'
@@ -217,8 +220,8 @@ def _armar_prompt_reporte_voz() -> str:
         '"dashboard" -- el que mejor matchee la frase. Si no queda claro, '
         '"dashboard".\n'
         "- desde/hasta: fechas en formato ISO (AAAA-MM-DD) si la frase "
-        'menciona un período (ej. "el último mes", "esta semana"), o null '
-        "si no.\n"
+        'menciona un período (ej. "el último mes", "esta semana"), calculado '
+        "a partir de la fecha de hoy y nunca posterior a ella, o null si no.\n"
         "- sucursal/categoria: el nombre tal como lo dice la frase, o null.\n"
         '- canal: "digital", "presencial", o null.\n\n'
         "Nunca generes SQL ni ningún otro código: solo este JSON."
@@ -255,7 +258,7 @@ class GroqParserReporteVoz(ParserReporteVozBase):
                 json={
                     "model": self._modelo,
                     "messages": [
-                        {"role": "system", "content": _armar_prompt_reporte_voz()},
+                        {"role": "system", "content": _armar_prompt_reporte_voz(hoy_utc())},
                         {"role": "user", "content": texto},
                     ],
                     "response_format": {"type": "json_object"},

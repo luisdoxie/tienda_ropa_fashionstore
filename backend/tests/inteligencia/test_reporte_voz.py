@@ -1,4 +1,4 @@
-"""CU-38 — Generar reporte por comando de voz: la respuesta en lenguaje natural
+"""CU-23 — Generar reporte por comando de voz: la respuesta en lenguaje natural
 sale de las cifras reales del reporte. Groq se reemplaza por un intérprete
 falso (sin red ni API key); lo que se prueba es qué se hace con lo que
 interpretó."""
@@ -9,25 +9,27 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import text
 
+from app.core.deps import hoy_utc
 from app.core.rate_limit import limiter
-from app.inteligencia.politicas import redactar_respuesta_reporte
-from app.inteligencia.schemas import FiltrosReporteVoz
-from app.reportes.schemas import (
+from app.inteligencia.casos_uso.cu23_generar_reportes_con_ia import _acotar_periodo
+from app.inteligencia.groq_cliente import _armar_prompt_reporte_voz
+from app.inteligencia.politicas import redactar_respuesta_reporte, ticket_promedio
+from app.inteligencia.schemas import (
     DashboardRespuesta,
     FilaReservasPorEstado,
     FilaTopProducto,
+    FiltrosReporteVoz,
     ReporteInventarioRespuesta,
     ReporteReservasRespuesta,
     ReporteVentasRespuesta,
     ResumenVentas,
 )
-from app.reportes.politicas import ticket_promedio
-from app.ventas.repository import VW_VENTAS_DETALLE_SQL
+from app.comercial.repository import VW_VENTAS_DETALLE_SQL
 from tests.conftest import crear_staff
-from tests.ventas.test_ventas import _pagar_en_caja, _payload_presencial, contexto  # noqa: F401
+from tests.comercial.test_ventas import _pagar_en_caja, _payload_presencial, contexto  # noqa: F401
 
 RUTA = "/api/v1/ia/reporte-voz"
-MODULO_CU = "app.inteligencia.casos_uso.cu38_generar_reporte_comando_voz"
+MODULO_CU = "app.inteligencia.casos_uso.cu23_generar_reportes_con_ia"
 HOY = dt.date(2026, 9, 20)
 
 
@@ -53,9 +55,9 @@ def vista_ventas(db_session):
 def sumas_decimales(monkeypatch):
     """SQLite (solo las pruebas) devuelve float en SUM(); PostgreSQL devuelve
     Decimal, que es lo que espera ticket_promedio(). Se convierte acá, sin
-    tocar el paquete `reportes`, para las pruebas que pasan ventas reales por CU-33."""
+    tocar la sección de Reportes, para las pruebas que pasan ventas reales por CU-22."""
     monkeypatch.setattr(
-        "app.reportes.casos_uso.cu33_consultar_reportes_ventas_inventario.ticket_promedio",
+        "app.inteligencia.casos_uso.cu22_consultar_reportes_indicadores.ticket_promedio",
         lambda total, transacciones: ticket_promedio(Decimal(str(total)), transacciones),
     )
 
@@ -265,13 +267,19 @@ def test_sin_interpretacion_valida_muestra_el_dashboard_y_lo_avisa(
 
 
 def test_rango_invertido_se_corrige_en_vez_de_fallar(client, admin_headers, vista_ventas, dictar):
-    dictar(FiltrosReporteVoz(tipo_reporte="ventas", desde=dt.date(2026, 9, 20), hasta=dt.date(2026, 8, 1)))
+    # Fechas relativas a hoy_utc() (no fijas): el CU recorta `hasta` a hoy, así
+    # que con fechas fijas la prueba dependía de que el reloj ya hubiera pasado.
+    hoy = hoy_utc()
+    reciente, antigua = hoy - dt.timedelta(days=10), hoy - dt.timedelta(days=40)
+    dictar(FiltrosReporteVoz(tipo_reporte="ventas", desde=reciente, hasta=antigua))
 
     respuesta = _preguntar(client, admin_headers)
 
     assert respuesta.status_code == 200
-    assert respuesta.json()["filtros_aplicados"]["desde"] == "2026-08-01"
-    assert respuesta.json()["respuesta"].startswith("Entre el 01/08/2026 y el 20/09/2026")
+    assert respuesta.json()["filtros_aplicados"]["desde"] == antigua.isoformat()
+    assert respuesta.json()["respuesta"].startswith(
+        f"Entre el {antigua.strftime('%d/%m/%Y')} y el {reciente.strftime('%d/%m/%Y')}"
+    )
 
 
 def test_filtros_dictados_se_resuelven_y_se_nombran(
@@ -314,3 +322,39 @@ def test_sin_el_permiso_de_reportes_no_se_puede_preguntar(client, cliente_header
 def test_texto_vacio_o_demasiado_largo_se_rechaza(client, admin_headers):
     assert _preguntar(client, admin_headers, texto="").status_code == 422
     assert _preguntar(client, admin_headers, texto="x" * 301).status_code == 422
+
+
+# ---- Fecha de hoy y rango acotado -------------------------------------------------------
+
+
+def test_el_prompt_incluye_la_fecha_de_hoy_inyectada():
+    assert "Hoy es 2026-09-20." in _armar_prompt_reporte_voz(HOY)
+    assert "Hoy es 2025-01-31." in _armar_prompt_reporte_voz(dt.date(2025, 1, 31))
+
+
+def test_acotar_periodo_respeta_un_rango_valido():
+    assert _acotar_periodo(dt.date(2026, 8, 21), dt.date(2026, 9, 10), HOY) == (dt.date(2026, 8, 21), dt.date(2026, 9, 10))
+
+
+def test_acotar_periodo_ajusta_hasta_futuro_a_hoy():
+    assert _acotar_periodo(dt.date(2026, 9, 1), dt.date(2026, 12, 31), HOY) == (dt.date(2026, 9, 1), HOY)
+
+
+def test_acotar_periodo_todo_en_el_futuro_usa_el_periodo_por_defecto():
+    assert _acotar_periodo(dt.date(2026, 11, 1), dt.date(2026, 11, 30), HOY) == (HOY - dt.timedelta(days=30), HOY)
+
+
+def test_acotar_periodo_de_mas_de_366_dias_usa_el_periodo_por_defecto():
+    assert _acotar_periodo(dt.date(2024, 1, 1), HOY, HOY) == (HOY - dt.timedelta(days=30), HOY)
+    assert _acotar_periodo(HOY - dt.timedelta(days=366), HOY, HOY) == (HOY - dt.timedelta(days=366), HOY)
+
+
+def test_reporte_voz_con_fechas_futuras_se_acota_a_hoy(client, admin_headers, vista_ventas, dictar, monkeypatch):
+    monkeypatch.setattr(f"{MODULO_CU}.hoy_utc", lambda: HOY)
+    dictar(FiltrosReporteVoz(tipo_reporte="ventas", desde=dt.date(2026, 9, 1), hasta=dt.date(2027, 3, 1)))
+
+    respuesta = _preguntar(client, admin_headers)
+
+    assert respuesta.status_code == 200
+    assert respuesta.json()["filtros_aplicados"]["desde"] == "2026-09-01"
+    assert respuesta.json()["filtros_aplicados"]["hasta"] == "2026-09-20"

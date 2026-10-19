@@ -2,7 +2,7 @@
 encargados, cajeros, proveedor) con su fila en `empleado`, proveedores,
 producto_proveedor y stock inicial vía orden de compra + recepción.
 
-Todas las escrituras pasan por los services de cada paquete (no INSERT a
+Todas las escrituras pasan por los casos de uso y las políticas de cada paquete (no INSERT a
 mano), así se aplican las mismas validaciones que en la app y el stock
 queda respaldado por movimientos de kardex con costo promedio. Las lecturas
 para decidir si algo ya existe consultan los modelos directo, igual que el
@@ -78,7 +78,7 @@ SUCURSALES: list[SucursalSeed] = [
     ),
 ]
 
-# dia_semana ISO (1=lunes ... 7=domingo), igual que reservas.service.
+# dia_semana ISO (1=lunes ... 7=domingo), igual que comercial.politicas.
 HORARIO_TIENDA: dict[int, tuple[dt.time, dt.time]] = {
     **{dia: (dt.time(9, 0), dt.time(21, 0)) for dia in range(1, 7)},
     7: (dt.time(10, 0), dt.time(14, 0)),
@@ -168,9 +168,9 @@ class Resumen:
 
 def verificar_precondiciones(db: Session) -> int:
     from app.catalogo.models import Producto, ProductoVariante
-    from app.inventario.models import TipoMovimiento
-    from app.organizacion.models import Ciudad
-    from app.seguridad.models import Rol
+    from app.catalogo.models import TipoMovimiento
+    from app.plataforma.models import Ciudad
+    from app.plataforma.models import Rol
 
     errores: list[str] = []
     ciudad = db.scalar(
@@ -202,10 +202,10 @@ def verificar_precondiciones(db: Session) -> int:
 
 
 def seed_sucursales(db: Session, ciudad_id: int, ejecutar: bool, resumen: Resumen) -> dict[str, int | None]:
-    from app.organizacion.casos_uso.cu05_gestionar_sucursales import GestionarSucursales
-    from app.organizacion.models import Sucursal
-    from app.organizacion.politicas import obtener_horario_dia
-    from app.organizacion.schemas import HorarioCrear, SucursalCrear
+    from app.plataforma.casos_uso.cu03_gestionar_organizacion import GestionarSucursales
+    from app.plataforma.models import Sucursal
+    from app.plataforma.politicas import obtener_horario_dia
+    from app.plataforma.schemas import HorarioCrear, SucursalCrear
 
     cu_sucursales = GestionarSucursales()
     ids: dict[str, int | None] = {}
@@ -247,12 +247,12 @@ def seed_staff(
     db: Session, sucursales: dict[str, int | None], password: str | None, ejecutar: bool, resumen: Resumen
 ) -> tuple[dict[str, int | None], dict[str, int | None]]:
     """Devuelve (usuario_id por email, empleado_id por email)."""
-    from app.organizacion.casos_uso.cu06_gestionar_empleados import GestionarEmpleados
-    from app.organizacion.politicas import obtener_empleado_por_usuario
-    from app.organizacion.schemas import EmpleadoCrear
-    from app.seguridad.casos_uso.cu03_gestionar_usuarios_roles_permisos import GestionarUsuarios
-    from app.seguridad.models import Usuario
-    from app.seguridad.schemas import UsuarioCrear
+    from app.plataforma.casos_uso.cu03_gestionar_organizacion import GestionarEmpleados
+    from app.plataforma.politicas import obtener_empleado_por_usuario
+    from app.plataforma.schemas import EmpleadoCrear
+    from app.plataforma.casos_uso.cu02_gestionar_usuarios_roles_permisos import GestionarUsuarios
+    from app.plataforma.models import Usuario
+    from app.plataforma.schemas import UsuarioCrear
 
     cu_empleados = GestionarEmpleados()
     cu_usuarios = GestionarUsuarios()
@@ -306,9 +306,9 @@ def seed_staff(
 def seed_proveedores(
     db: Session, usuarios: dict[str, int | None], ejecutar: bool, resumen: Resumen
 ) -> dict[str, int | None]:
-    from app.abastecimiento.casos_uso.cu11_gestionar_proveedores import GestionarProveedores
-    from app.abastecimiento.models import Proveedor
-    from app.abastecimiento.schemas import ProveedorCrear
+    from app.catalogo.casos_uso.cu08_gestionar_abastecimiento import GestionarProveedores
+    from app.catalogo.models import Proveedor
+    from app.catalogo.schemas import ProveedorCrear
 
     cu_proveedores = GestionarProveedores()
     ids: dict[str, int | None] = {}
@@ -366,7 +366,7 @@ def planificar_compras(db: Session) -> dict[str, list[LineaCompra]]:
 def seed_producto_proveedor(
     db: Session, proveedores: dict[str, int | None], compras: dict[str, list[LineaCompra]], ejecutar: bool, resumen: Resumen
 ) -> None:
-    from app.abastecimiento.casos_uso.cu11_gestionar_proveedores import GestionarProveedores
+    from app.catalogo.casos_uso.cu08_gestionar_abastecimiento import GestionarProveedores
 
     cu_proveedores = GestionarProveedores()
     dias_por_clave = {p.clave: p.dias_entrega for p in PROVEEDORES}
@@ -399,16 +399,16 @@ def seed_stock(
     ejecutar: bool,
     resumen: Resumen,
 ) -> None:
-    from app.abastecimiento.casos_uso.cu12_registrar_recepcion_mercaderia import RegistrarRecepcionMercaderia
-    from app.abastecimiento.models import OrdenCompra, Recepcion
-    from app.abastecimiento.schemas import (
+    from app.catalogo.casos_uso.cu08_gestionar_abastecimiento import RegistrarRecepcionMercaderia
+    from app.catalogo.models import OrdenCompra, Recepcion
+    from app.catalogo.schemas import (
         OrdenCompraCrear,
         OrdenCompraDetalleCrear,
         RecepcionCrear,
         RecepcionDetalleCrear,
     )
-    from app.inventario.casos_uso.cu14_consultar_inventario_global import ConsultarInventarioGlobal
-    from app.inventario.models import Stock
+    from app.catalogo.casos_uso.cu09_gestionar_inventario import ConsultarInventarioGlobal
+    from app.catalogo.models import Stock
 
     cu_recepcion = RegistrarRecepcionMercaderia()
     cu_inventario = ConsultarInventarioGlobal()

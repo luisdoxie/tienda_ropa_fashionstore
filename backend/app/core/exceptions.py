@@ -30,6 +30,11 @@ class PermisoDenegadoError(DomainError):
         super().__init__(mensaje, status_code=status.HTTP_403_FORBIDDEN)
 
 
+class NoAutenticadoError(DomainError):
+    def __init__(self, mensaje: str = "No autenticado") -> None:
+        super().__init__(mensaje, status_code=status.HTTP_401_UNAUTHORIZED)
+
+
 def registrar_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
