@@ -1,6 +1,9 @@
 import 'dart:math' as math;
+import 'dart:ui' show Size;
 
+import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:mobile/features/probador/models/activo_probador.dart';
 import 'package:mobile/features/probador/presentation/probador_screen.dart';
 
@@ -145,6 +148,64 @@ void main() {
         factorAncho: 1,
       );
       expect(transform, isNull);
+    });
+  });
+
+  group('trasladarX', () {
+    // Buffer típico de la cámara en landscape (ML Kit siempre lo entrega
+    // así, antes de rotar): 640x480. Canvas de 400px de ancho.
+    const tamanioImagen = Size(640, 480);
+    const anchoCanvas = 400.0;
+    const x = 100.0;
+
+    // La cámara frontal se ve espejada en pantalla (CameraPreview la
+    // renderiza como un espejo real); la trasera nunca se espeja. Esto
+    // tiene que valer para las CUATRO rotaciones, no solo 0/180deg -antes
+    // del fix, 90/270deg ignoraban `direccionLente` por completo y el
+    // resultado "coincidía" con lo correcto solo gracias a la convención
+    // de fabricación más común (sensorOrientation 270° en la frontal, 90°
+    // en la trasera): con esa convención invertida, habría quedado mal.
+    for (final rotacion in InputImageRotation.values) {
+      test('$rotacion: frontal espeja, trasera no', () {
+        final frontal = trasladarX(x, const Size(anchoCanvas, 800), tamanioImagen, rotacion, CameraLensDirection.front);
+        final trasera = trasladarX(x, const Size(anchoCanvas, 800), tamanioImagen, rotacion, CameraLensDirection.back);
+
+        // Espejar dos veces el mismo punto (frontal) da el reflejo de
+        // (trasera) respecto al centro del canvas: frontal + trasera ==
+        // ancho del canvas, exactamente. Si alguna rama dejara de mirar
+        // `direccionLente`, frontal y trasera darían el mismo valor.
+        expect(frontal, isNot(closeTo(trasera, 0.001)));
+        expect(frontal + trasera, closeTo(anchoCanvas, 0.001));
+      });
+    }
+
+    test('rotation0deg trasera: sin espejar, proporcional directo', () {
+      final resultado = trasladarX(
+        x,
+        const Size(anchoCanvas, 800),
+        tamanioImagen,
+        InputImageRotation.rotation0deg,
+        CameraLensDirection.back,
+      );
+      expect(resultado, closeTo(x * anchoCanvas / tamanioImagen.width, 0.001));
+    });
+
+    test('rotation90deg y rotation270deg dan el mismo resultado para la misma lente', () {
+      // La rotación decide con qué lado del buffer (ancho o alto) se
+      // normaliza X; el espejado lo decide únicamente la lente. Con la
+      // misma lente, ambas rotaciones "verticales" tienen que dar
+      // exactamente el mismo número.
+      for (final lente in CameraLensDirection.values) {
+        final en90 = trasladarX(x, const Size(anchoCanvas, 800), tamanioImagen, InputImageRotation.rotation90deg, lente);
+        final en270 = trasladarX(
+          x,
+          const Size(anchoCanvas, 800),
+          tamanioImagen,
+          InputImageRotation.rotation270deg,
+          lente,
+        );
+        expect(en90, closeTo(en270, 0.001));
+      }
     });
   });
 }

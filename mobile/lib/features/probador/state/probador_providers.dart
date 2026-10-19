@@ -36,20 +36,26 @@ final prendasProbadorProvider = FutureProvider<List<PrendaProbador>>((ref) async
   final items = await catalogoRepo.listar(pagina: 1, tamanio: 50);
   final candidatos = items.where((i) => i.admiteProbador);
 
-  final prendas = <PrendaProbador>[];
-  for (final item in candidatos) {
-    try {
-      final detalle = await catalogoRepo.detalle(item.id);
-      if (detalle.variantes.isEmpty) continue;
-      final varianteId = detalle.variantes.first.id;
-      final assets = await probadorRepo.obtenerAssets(varianteId);
-      prendas.add(PrendaProbador(varianteId: varianteId, productoId: item.id, nombre: item.nombre, assets: assets));
-    } catch (_) {
-      // Sin overlay validado todavía para esta variante: no aparece en el selector.
-      continue;
-    }
-  }
-  return prendas;
+  // Un detalle() + un obtenerAssets() por candidato, EN PARALELO: antes iban
+  // uno detrás de otro en un for, así que con 10 candidatos eran ~20
+  // round-trips secuenciales a Railway antes de que este provider
+  // resolviera -- justo lo que alimenta el selector de "otras prendas",
+  // no la prenda que el cliente ya eligió (ver prendaProbadorPorVarianteProvider).
+  final resultados = await Future.wait(
+    candidatos.map((item) async {
+      try {
+        final detalle = await catalogoRepo.detalle(item.id);
+        if (detalle.variantes.isEmpty) return null;
+        final varianteId = detalle.variantes.first.id;
+        final assets = await probadorRepo.obtenerAssets(varianteId);
+        return PrendaProbador(varianteId: varianteId, productoId: item.id, nombre: item.nombre, assets: assets);
+      } catch (_) {
+        // Sin overlay validado todavía para esta variante: no aparece en el selector.
+        return null;
+      }
+    }),
+  );
+  return resultados.whereType<PrendaProbador>().toList();
 });
 
 /// Los assets del probador de una variante, o null si todavía no tiene un overlay validado (el backend responde 404).
@@ -69,9 +75,14 @@ final prendaProbadorPorVarianteProvider = FutureProvider.autoDispose.family<Pren
   ref,
   varianteId,
 ) async {
-  final assets = await ref.watch(assetsProbadorProvider(varianteId).future);
+  // Los dos pedidos no dependen entre sí: arrancan juntos (no uno después
+  // del otro) para que la prenda que el cliente ya eligió se vea lo antes
+  // posible al entrar al probador.
+  final futureAssets = ref.watch(assetsProbadorProvider(varianteId).future);
+  final futureDatos = ref.watch(catalogoRepositoryProvider).detallePorVariantes([varianteId]);
+  final assets = await futureAssets;
   if (assets == null) return null;
-  final datos = await ref.watch(catalogoRepositoryProvider).detallePorVariantes([varianteId]);
+  final datos = await futureDatos;
   if (datos.isEmpty) return null;
   return PrendaProbador(
     varianteId: varianteId,
@@ -88,16 +99,24 @@ final prendasParaProbadorProvider = FutureProvider.autoDispose.family<List<Prend
   ref,
   varianteInicial,
 ) async {
-  final base = await ref.watch(prendasProbadorProvider.future);
-  if (varianteInicial == null) return base;
+  // futureBase arranca ya mismo: antes se esperaba primero TODA la lista
+  // base (el N+1 de prendasProbadorProvider) para recién después pedir la
+  // prenda inicial, cuando en realidad son independientes. Este provider
+  // sigue tardando lo que tarde la lista completa (la usa el selector de
+  // "otras prendas"), pero eso ya no bloquea nada más: ver
+  // prendaProbadorPorVarianteProvider, que la pantalla también observa por
+  // separado para mostrar la prenda elegida sin esperar acá.
+  final futureBase = ref.watch(prendasProbadorProvider.future);
+  if (varianteInicial == null) return futureBase;
 
   PrendaProbador? inicial;
   try {
     inicial = await ref.watch(prendaProbadorPorVarianteProvider(varianteInicial).future);
   } catch (_) {
     // Sin red o sin sesión para resolver la inicial: el probador abre con su lista habitual.
-    return base;
+    return futureBase;
   }
+  final base = await futureBase;
   if (inicial == null) return base;
   final elegida = inicial;
   return [elegida, ...base.where((p) => p.productoId != elegida.productoId)];

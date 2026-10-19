@@ -45,7 +45,7 @@ class ProbadorRepository {
   Future<void> registrarSesion({required int varianteId, required String modo, int? duracionSeg}) {
     return _dio.post<void>(
       '/probador/sesion',
-      data: {'variante_id': varianteId, 'modo': modo, if (duracionSeg != null) 'duracion_seg': duracionSeg},
+      data: {'variante_id': varianteId, 'modo': modo, 'duracion_seg': ?duracionSeg},
     );
   }
 

@@ -170,10 +170,12 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
   static const _anchoMaximoOverlay = 1280;
 
   CameraController? _controller;
-  CameraDescription? _camaraFrontal;
+  CameraDescription? _camaraActual;
+  List<CameraDescription> _camarasDisponibles = [];
   _EstadoPermiso _estadoPermiso = _EstadoPermiso.pidiendo;
   bool _procesandoFrame = false;
   bool _iniciandoCamara = false;
+  bool _cambiandoCamara = false;
   String? _errorCamara;
 
   /// Lo único que cambia al ritmo de la detección. Va en un `ValueNotifier`
@@ -240,28 +242,29 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
     }
   }
 
-  Future<void> _iniciarCamara() async {
+  Future<void> _iniciarCamara({CameraDescription? preferida}) async {
     // Dos arranques solapados dejan una cámara huérfana y la pantalla
     // colgada: puede pasar con un inactive/resumed rápido, o tocando dos
-    // veces "Reintentar".
+    // veces "Reintentar" (o el botón de cambiar de cámara mientras ya está
+    // arrancando).
     if (_iniciandoCamara) return;
     _iniciandoCamara = true;
     if (mounted) setState(() => _errorCamara = null);
     try {
-      final camaras = await availableCameras();
+      final camaras = _camarasDisponibles.isNotEmpty ? _camarasDisponibles : await availableCameras();
       if (camaras.isEmpty) {
         if (!mounted) return;
         setState(() => _errorCamara = 'No se encontró ninguna cámara disponible en este equipo.');
         return;
       }
-      final camaraFrontal = camaras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-        orElse: () => camaras.first,
-      );
-      _camaraFrontal = camaraFrontal;
+      _camarasDisponibles = camaras;
+      final elegida =
+          preferida ??
+          camaras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => camaras.first);
+      _camaraActual = elegida;
 
       final controller = CameraController(
-        camaraFrontal,
+        elegida,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
@@ -287,6 +290,33 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
     }
   }
 
+  /// Alterna entre la cámara frontal y la trasera sin salir de la pantalla:
+  /// apaga el controller actual, reinicia la detección de pose (las
+  /// coordenadas suavizadas son del sistema de buffer de la cámara
+  /// anterior, no sirven con la nueva) y arranca de nuevo con la otra
+  /// lente ya elegida explícitamente.
+  Future<void> _cambiarCamara() async {
+    if (_cambiandoCamara || _iniciandoCamara || _camarasDisponibles.length < 2) return;
+    _cambiandoCamara = true;
+    final actual = _camaraActual;
+    final siguiente = _camarasDisponibles.firstWhere(
+      (c) => c.lensDirection != actual?.lensDirection,
+      orElse: () => _camarasDisponibles.first,
+    );
+    final controllerAnterior = _controller;
+    _controller = null;
+    _hayPose = false;
+    _ultimaPoseValida = null;
+    _hombroIzqSuavizado = null;
+    _hombroDerSuavizado = null;
+    _poseOverlay.value = null;
+    _guia = _GuiaEncuadre.ninguna;
+    if (mounted) setState(() {});
+    await controllerAnterior?.dispose();
+    await _iniciarCamara(preferida: siguiente);
+    _cambiandoCamara = false;
+  }
+
   void _procesarFrame(CameraImage imagen) {
     if (_procesandoFrame) return;
     _procesandoFrame = true;
@@ -301,8 +331,18 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
 
     final metadata = inputImage.metadata!;
     final pose = poses.isNotEmpty ? poses.first : null;
-    final hombroIzq = pose?.landmarks[PoseLandmarkType.leftShoulder];
-    final hombroDer = pose?.landmarks[PoseLandmarkType.rightShoulder];
+    // `hombroIzq`/`hombroDer` de acá para abajo no son "el hombro izquierdo
+    // anatómico de la persona": son "el punto que tiene que calzar con el
+    // ancla hombro_izq del asset", que -por cómo está armado el asset- es
+    // siempre el que cae más a la IZQUIERDA en pantalla. Con la frontal
+    // (espejada) eso coincide con leftShoulder de ML Kit; con la trasera
+    // (sin espejar, el buffer crudo nunca lo está) el hombro izquierdo
+    // anatómico cae más a la derecha en pantalla (confirmado con valores
+    // crudos reales de la trasera), así que hay que tomar el landmark
+    // contrario.
+    final esTrasera = _camaraActual?.lensDirection == CameraLensDirection.back;
+    final hombroIzq = pose?.landmarks[esTrasera ? PoseLandmarkType.rightShoulder : PoseLandmarkType.leftShoulder];
+    final hombroDer = pose?.landmarks[esTrasera ? PoseLandmarkType.leftShoulder : PoseLandmarkType.rightShoulder];
     // Umbral asimétrico: 0.6 para enganchar, 0.45 para soltar.
     final umbral = _hayPose ? _umbralSalida : _umbralEntrada;
     final valido =
@@ -391,7 +431,7 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
 
   InputImage? _construirInputImage(CameraImage imagen) {
     final controller = _controller;
-    final camara = _camaraFrontal;
+    final camara = _camaraActual;
     if (controller == null || camara == null) return null;
 
     InputImageRotation? rotacion;
@@ -507,14 +547,28 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AsyncValue<List<PrendaProbador>>>(prendasParaProbadorProvider(widget.varianteInicial), (previous, next) {
+    final varianteInicial = widget.varianteInicial;
+    // Camino rápido: si ya sabemos qué variante mostrar (el cliente la
+    // eligió en el detalle o el carrito), no hace falta esperar a que
+    // termine de cargar el selector de "otras prendas" completo -que puede
+    // tardar bastante, ver prendasProbadorProvider- para verla puesta.
+    if (varianteInicial != null) {
+      ref.listen<AsyncValue<PrendaProbador?>>(prendaProbadorPorVarianteProvider(varianteInicial), (previous, next) {
+        next.whenData((prenda) {
+          if (prenda != null && _prendaActual == null) {
+            _elegirPrenda(prenda, esInicial: true);
+          }
+        });
+      });
+    }
+    ref.listen<AsyncValue<List<PrendaProbador>>>(prendasParaProbadorProvider(varianteInicial), (previous, next) {
       next.whenData((prendas) {
         if (prendas.isNotEmpty && _prendaActual == null) {
           _elegirPrenda(prendas.first, esInicial: true);
         }
       });
     });
-    final asyncPrendas = ref.watch(prendasParaProbadorProvider(widget.varianteInicial));
+    final asyncPrendas = ref.watch(prendasParaProbadorProvider(varianteInicial));
     return _cuerpo(asyncPrendas);
   }
 
@@ -562,7 +616,7 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
                         imagenPrenda: _imagenPrenda,
                         activo: _prendaActual?.assets.overlay,
                         pose: _poseOverlay,
-                        direccionLente: _camaraFrontal?.lensDirection ?? CameraLensDirection.front,
+                        direccionLente: _camaraActual?.lensDirection ?? CameraLensDirection.front,
                       ),
                     ),
                   ),
@@ -575,6 +629,7 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
               loading: () => const SizedBox.shrink(),
               error: (error, stack) => const SizedBox.shrink(),
             ),
+            if (_camarasDisponibles.length > 1) _botonCambiarCamara(),
             _botonCaptura(),
           ],
         );
@@ -600,10 +655,13 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
   }
 
   Widget _mensajeGuia(String texto) {
+    // Deja libre la esquina donde va el botón de cambiar de cámara (solo
+    // ocupada cuando hay más de una disponible) para que no se solapen.
+    final margenDerecho = _camarasDisponibles.length > 1 ? AppSpacing.xxl + AppSpacing.xs : AppSpacing.md;
     return Positioned(
       top: AppSpacing.xl,
       left: AppSpacing.md,
-      right: AppSpacing.md,
+      right: margenDerecho,
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.sm),
         decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(AppRadius.base)),
@@ -664,6 +722,26 @@ class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObs
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  /// Solo aparece si el equipo tiene más de una cámara (la gran mayoría de
+  /// celulares). Alterna frontal/trasera: útil cuando la trasera tiene
+  /// mejor calidad que la frontal, con otra persona sosteniendo el celular
+  /// y encuadrando al cliente.
+  Widget _botonCambiarCamara() {
+    return Positioned(
+      top: AppSpacing.md,
+      right: AppSpacing.md,
+      child: Material(
+        color: Colors.black54,
+        shape: const CircleBorder(),
+        child: IconButton(
+          icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
+          tooltip: 'Cambiar de cámara',
+          onPressed: _cambiandoCamara ? null : _cambiarCamara,
         ),
       ),
     );
@@ -1321,7 +1399,16 @@ TransformOverlay? calcularTransformOverlay({
 // frontal el CameraPreview de Flutter ya renderiza el video espejado (como
 // un espejo real), pero el buffer que procesa ML Kit NO está espejado —
 // por eso acá se espeja también la coordenada X, para que el punto (y la
-// prenda que se ancla en él) caigan tal como se ven en pantalla.
+// prenda que se ancla en él) caigan tal como se ven en pantalla. La
+// trasera nunca se espeja (ni en pantalla ni acá): NO es un mero detalle
+// de la rotación, así que se decide por `direccionLente` explícitamente en
+// vez de infererirlo del ángulo de rotación. Antes solo la rama 0/180deg
+// miraba `direccionLente` -en 90/270deg (la orientación real en la
+// mayoría de celulares en vertical) el flip salía "gratis" únicamente
+// porque, con la convención más común de fabricación (sensorOrientation
+// 270° en la frontal, 90° en la trasera), cada lente termina cayendo en
+// una rama distinta -- en un equipo con la convención invertida, la
+// trasera habría quedado espejada al revés.
 double trasladarX(
   double x,
   Size tamanioCanvas,
@@ -1329,21 +1416,13 @@ double trasladarX(
   InputImageRotation rotacion,
   CameraLensDirection direccionLente,
 ) {
-  switch (rotacion) {
-    case InputImageRotation.rotation90deg:
-      return x * tamanioCanvas.width / (Platform.isIOS ? tamanioImagen.width : tamanioImagen.height);
-    case InputImageRotation.rotation270deg:
-      return tamanioCanvas.width -
-          x * tamanioCanvas.width / (Platform.isIOS ? tamanioImagen.width : tamanioImagen.height);
-    case InputImageRotation.rotation0deg:
-    case InputImageRotation.rotation180deg:
-      switch (direccionLente) {
-        case CameraLensDirection.back:
-          return x * tamanioCanvas.width / tamanioImagen.width;
-        default:
-          return tamanioCanvas.width - x * tamanioCanvas.width / tamanioImagen.width;
-      }
-  }
+  final vertical = rotacion == InputImageRotation.rotation90deg || rotacion == InputImageRotation.rotation270deg;
+  final anchoBuffer = vertical
+      ? (Platform.isIOS ? tamanioImagen.width : tamanioImagen.height)
+      : tamanioImagen.width;
+  final proyectado = x * tamanioCanvas.width / anchoBuffer;
+  final espejado = direccionLente != CameraLensDirection.back;
+  return espejado ? tamanioCanvas.width - proyectado : proyectado;
 }
 
 double trasladarY(
