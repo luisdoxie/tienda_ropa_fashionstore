@@ -15,7 +15,6 @@ AssetsVariante _assets() => AssetsVariante(
     tipo: 'overlay_2d',
     publicId: 'p7',
     url: 'https://ejemplo.test/7.png',
-    anclajes: null,
     anchoPx: 100,
     altoPx: 100,
     estado: 'validado',

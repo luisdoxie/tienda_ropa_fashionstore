@@ -41,7 +41,7 @@ AuthRepository _repositorio(_AdaptadorRegistrador adaptador, TokenStorageFalso s
 }
 
 void main() {
-  group('AuthRepository - recuperar contraseña (CU-35)', () {
+  group('AuthRepository - recuperar contraseña (CU-01)', () {
     test('solicitarRecuperacion manda el correo y devuelve token_dev cuando el backend lo incluye', () async {
       final adaptador = _AdaptadorRegistrador('{"detail": "Si el correo está registrado...", "token_dev": "abc.def"}');
       final repositorio = _repositorio(adaptador, TokenStorageFalso());

@@ -1,3 +1,5 @@
+import '../../../core/utils/fecha_servidor.dart';
+
 class Pago {
   const Pago({
     required this.id,
@@ -12,7 +14,7 @@ class Pago {
     id: json['id'] as int,
     ventaId: json['venta_id'] as int,
     monto: double.parse(json['monto'].toString()),
-    fecha: DateTime.parse(json['fecha'] as String),
+    fecha: fechaDelServidor(json['fecha'] as String),
     metodoPago: json['metodo_pago'] as String,
     estado: json['estado'] as String,
   );

@@ -1,3 +1,5 @@
+import '../../../core/utils/fecha_servidor.dart';
+
 class Favorito {
   const Favorito({
     required this.varianteId,
@@ -13,7 +15,7 @@ class Favorito {
       productoId: json['producto_id'] as int,
       nombreProducto: json['nombre_producto'] as String,
       sku: json['sku'] as String,
-      creadoEn: DateTime.parse(json['creado_en'] as String),
+      creadoEn: fechaDelServidor(json['creado_en'] as String),
     );
   }
 

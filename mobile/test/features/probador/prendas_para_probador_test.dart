@@ -102,7 +102,6 @@ class _ProbadorFalso extends ProbadorRepository {
         tipo: 'overlay_2d',
         publicId: 'p$varianteId',
         url: 'https://ejemplo.test/$varianteId.png',
-        anclajes: null,
         anchoPx: 100,
         altoPx: 100,
         estado: 'validado',

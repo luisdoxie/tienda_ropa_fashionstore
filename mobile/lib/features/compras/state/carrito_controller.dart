@@ -45,17 +45,7 @@ class CarritoController extends StateNotifier<AsyncValue<Carrito>> {
 
   Future<Carrito> _conExhibicion(Carrito carrito) async {
     if (carrito.detalle.isEmpty) return carrito;
-    final porVariante = await lookupVariantes(_ref, carrito.detalle.map((l) => l.varianteId).toList());
-    final detalleResuelto = carrito.detalle.map((linea) {
-      final item = porVariante[linea.varianteId];
-      return linea.conExhibicion(
-        productoNombre: item?.productoNombre,
-        imagenPrincipal: item?.imagenPrincipal,
-        tallaCodigo: item?.tallaCodigo,
-        colorNombre: item?.colorNombre,
-      );
-    }).toList();
-    return carrito.conDetalle(detalleResuelto);
+    return carrito.conDetalle(await aplicarExhibicion(_ref, carrito.detalle));
   }
 }
 

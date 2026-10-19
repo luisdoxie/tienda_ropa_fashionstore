@@ -1,3 +1,5 @@
+import '../../../core/utils/fecha_servidor.dart';
+
 class Envio {
   const Envio({
     required this.id,
@@ -18,7 +20,7 @@ class Envio {
     costo: double.parse(json['costo'].toString()),
     estado: json['estado'] as String,
     repartidor: json['repartidor'] as String?,
-    fechaEntrega: _fecha(json['fecha_entrega']),
+    fechaEntrega: json['fecha_entrega'] is String ? fechaDelServidor(json['fecha_entrega'] as String) : null,
   );
 
   final int id;
@@ -31,14 +33,6 @@ class Envio {
   final String estado;
   final String? repartidor;
   final DateTime? fechaEntrega;
-
-  /// El backend guarda las fechas en UTC y las manda sin zona
-  /// ("2026-09-20T16:52:29"): sin la 'Z', Dart las tomaría como hora local.
-  static DateTime? _fecha(Object? valor) {
-    if (valor is! String) return null;
-    final tieneZona = valor.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(valor);
-    return DateTime.tryParse(tieneZona ? valor : '${valor}Z')?.toLocal();
-  }
 }
 
 const etiquetasEstadoEnvio = {

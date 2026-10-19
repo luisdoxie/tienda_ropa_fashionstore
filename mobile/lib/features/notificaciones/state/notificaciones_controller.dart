@@ -1,8 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/providers.dart';
 import '../../auth/state/auth_controller.dart';
-import '../../reservas/data/notificaciones_repository.dart';
-import '../../reservas/models/notificacion_app.dart';
-import '../../reservas/state/reservas_providers.dart' show notificacionesRepositoryProvider;
+import '../data/notificaciones_repository.dart';
+import '../models/notificacion_app.dart';
+
+final notificacionesRepositoryProvider = Provider<NotificacionesRepository>(
+  (ref) => NotificacionesRepository(ref.watch(dioProvider)),
+);
 
 /// Las notificaciones del cliente: la lista, cuáles están sin leer y marcarlas como leídas. Se actualiza cuando la app
 /// lo pide (al abrir el catálogo, la lista o Mis reservas) con [refrescar].

@@ -1,4 +1,4 @@
-import '../../reservas/models/notificacion_app.dart';
+import 'notificacion_app.dart';
 
 /// La pantalla a la que lleva una notificación al tocarla, o null si ese tipo no abre nada (queda solo en la lista).
 String? rutaDeNotificacion(NotificacionApp notificacion) {

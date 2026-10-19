@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../state/auth_controller.dart';
 
-/// CU-35: pone la contraseña nueva con el token de recuperación (llega por el query param `token`, igual que en
+/// CU-01: pone la contraseña nueva con el token de recuperación (llega por el query param `token`, igual que en
 /// la web).
 class RestablecerScreen extends ConsumerStatefulWidget {
   const RestablecerScreen({required this.token, super.key});

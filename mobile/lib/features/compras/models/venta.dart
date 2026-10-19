@@ -1,7 +1,10 @@
+import '../../../core/utils/fecha_servidor.dart';
+import 'linea_con_exhibicion.dart';
+
 /// Línea de una venta (comprobante/historial), más los campos de
 /// exhibición resueltos aparte -- mismo motivo que CarritoLinea: el
 /// backend solo conoce variante_id.
-class VentaLinea {
+class VentaLinea implements LineaConExhibicion<VentaLinea> {
   const VentaLinea({
     required this.id,
     required this.varianteId,
@@ -23,6 +26,7 @@ class VentaLinea {
   );
 
   final int id;
+  @override
   final int varianteId;
   final int cantidad;
   final double precioUnitario;
@@ -32,6 +36,7 @@ class VentaLinea {
   final String? tallaCodigo;
   final String? colorNombre;
 
+  @override
   VentaLinea conExhibicion({
     required String? productoNombre,
     required String? imagenPrincipal,
@@ -69,7 +74,7 @@ class Venta {
     id: json['id'] as int,
     codigo: json['codigo'] as String,
     estado: json['estado'] as String,
-    fecha: DateTime.parse(json['fecha'] as String),
+    fecha: fechaDelServidor(json['fecha'] as String),
     subtotal: double.parse(json['subtotal'].toString()),
     descuento: double.parse(json['descuento'].toString()),
     costoEnvio: double.parse(json['costo_envio'].toString()),

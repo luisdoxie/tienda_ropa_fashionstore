@@ -1,34 +1,24 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:camera/camera.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
-import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../tracking/models/evento.dart';
 import '../../tracking/state/tracking_service.dart';
-import '../models/activo_probador.dart';
 import '../state/probador_providers.dart';
 
-/// Pantalla del probador: alterna entre modo espejo (cámara en vivo +
-/// overlay, P4.4/P4.5) y modo realista (foto + generación por IA, P4.6).
-/// Cada modo se dispone/reinicia solo con el cambio de pestaña: al no ser
-/// `IndexedStack`, Flutter destruye por completo el widget que no está
-/// activo (y con él, la cámara o el polling que tuviera en curso).
-class ProbadorScreen extends StatefulWidget {
+/// Pantalla del probador: foto del cliente (cámara o galería) + prenda
+/// elegida -> imagen generada por IA en el backend.
+class ProbadorScreen extends StatelessWidget {
   const ProbadorScreen({this.varianteInicial, super.key});
 
   /// La prenda (variante) que el cliente eligió en el detalle o en el carrito: el probador abre con ella puesta.
@@ -36,759 +26,38 @@ class ProbadorScreen extends StatefulWidget {
   final int? varianteInicial;
 
   @override
-  State<ProbadorScreen> createState() => _ProbadorScreenState();
-}
-
-enum _ModoProbador { espejo, realista }
-
-class _ProbadorScreenState extends State<ProbadorScreen> {
-  var _modo = _ModoProbador.espejo;
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Probador'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: SegmentedButton<_ModoProbador>(
-              style: SegmentedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white70,
-                selectedForegroundColor: Colors.white,
-                selectedBackgroundColor: AppColors.acento,
-                side: const BorderSide(color: Colors.white38),
-              ),
-              segments: const [
-                ButtonSegment(
-                  value: _ModoProbador.espejo,
-                  label: Text('Espejo'),
-                  icon: Icon(Icons.accessibility_new_outlined),
-                ),
-                ButtonSegment(
-                  value: _ModoProbador.realista,
-                  label: Text('Realista'),
-                  icon: Icon(Icons.auto_awesome_outlined),
-                ),
-              ],
-              selected: {_modo},
-              onSelectionChanged: (seleccion) => setState(() => _modo = seleccion.first),
-            ),
-          ),
-        ),
-      ),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: const Text('Probador')),
       // SafeArea: desde que el edge-to-edge es obligatorio (Android 15+),
       // la barra de navegación del sistema se dibuja ENCIMA del contenido
       // en vez de reservarle espacio -- sin esto, cualquier control pegado
-      // al borde inferior (el botón de captura, guardar/compartir del
-      // resultado) queda tapado detrás de la barra y parece que no existe.
-      body: SafeArea(
-        child: _modo == _ModoProbador.espejo
-            ? _ModoEspejo(varianteInicial: widget.varianteInicial)
-            : _ModoRealista(
-                onUsarModoEspejo: () => setState(() => _modo = _ModoProbador.espejo),
-                varianteInicial: widget.varianteInicial,
-              ),
-      ),
-    );
-  }
-}
-
-class _ModoEspejo extends ConsumerStatefulWidget {
-  const _ModoEspejo({this.varianteInicial});
-
-  final int? varianteInicial;
-
-  @override
-  ConsumerState<_ModoEspejo> createState() => _ModoEspejoState();
-}
-
-enum _EstadoPermiso { pidiendo, concedido, denegado, denegadoPermanente }
-
-/// Qué decirle a la persona cuando no hay una pose utilizable. Antes había
-/// un solo cartel, "Acércate a la cámara", para todas las causas: con este
-/// encuadre de medio cuerpo, en el caso más frecuente -estar demasiado
-/// cerca, con los hombros fuera de cuadro- el consejo era el contrario.
-/// `ninguna` es además el estado inicial: hasta la primera detección no se
-/// muestra nada, en vez de recibir a la persona con un cartel de error
-/// antes de que la cámara haya entregado un solo cuadro.
-enum _GuiaEncuadre {
-  ninguna(''),
-  sinPersona('No te veo. Ponete frente a la cámara, en un lugar con buena luz.'),
-  demasiadoCerca('Alejate un poco: tienen que verse los dos hombros.'),
-  dePerfil('Ponete de frente a la cámara.');
-
-  const _GuiaEncuadre(this.mensaje);
-
-  final String mensaje;
-}
-
-/// Lo único que cambia al ritmo de la detección: los dos hombros ya
-/// suavizados (en coordenadas del buffer de la cámara) y la geometría con
-/// la que `trasladarX`/`trasladarY` tienen que traducirlos al canvas.
-/// Viaja junto para que el painter no pueda quedarse con una mitad vieja.
-class _PoseOverlay {
-  const _PoseOverlay({
-    required this.hombroIzq,
-    required this.hombroDer,
-    required this.tamanioImagen,
-    required this.rotacion,
-  });
-
-  final Offset hombroIzq;
-  final Offset hombroDer;
-  final Size tamanioImagen;
-  final InputImageRotation rotacion;
-}
-
-class _ModoEspejoState extends ConsumerState<_ModoEspejo> with WidgetsBindingObserver {
-  final _detectorPose = PoseDetector(options: PoseDetectorOptions(mode: PoseDetectionMode.stream));
-  final _repaintKey = GlobalKey();
-
-  // Histéresis: enganchar la pose cuesta más que quedarse enganchado. Con
-  // un umbral único, un solo cuadro flojo (un brazo que cruza por delante,
-  // un parpadeo de luz) bastaba para esconder la prenda y reiniciar el
-  // suavizado: de ahí salía el parpadeo, y después ~6 detecciones más para
-  // volver a enganchar.
-  static const _umbralEntrada = 0.6;
-  static const _umbralSalida = 0.45;
-
-  /// Cuánto se retiene la última pose buena antes de soltar la prenda.
-  static const _retencion = Duration(milliseconds: 300);
-
-  /// Media móvil exponencial por detección. Estaba en 0.3: tras 6
-  /// detecciones todavía faltaba un 12% del recorrido, que a 10-15 fps son
-  /// 0,4-0,6 s de retraso visible. Con 0.5 baja a ~0,2 s.
-  static const _factorSuavizado = 0.5;
-
-  /// Ancho máximo al que se decodifica el overlay. Ver `_elegirPrenda`.
-  static const _anchoMaximoOverlay = 1280;
-
-  CameraController? _controller;
-  CameraDescription? _camaraActual;
-  List<CameraDescription> _camarasDisponibles = [];
-  _EstadoPermiso _estadoPermiso = _EstadoPermiso.pidiendo;
-  bool _procesandoFrame = false;
-  bool _iniciandoCamara = false;
-  bool _cambiandoCamara = false;
-  String? _errorCamara;
-
-  /// Lo único que cambia al ritmo de la detección. Va en un `ValueNotifier`
-  /// -y no en el `State`- para que cada detección repinte SOLO el overlay:
-  /// antes, el `setState` de `_detectar` reconstruía la vista previa, el
-  /// selector de prendas y el botón de captura 10-15 veces por segundo.
-  final _poseOverlay = ValueNotifier<_PoseOverlay?>(null);
-  var _guia = _GuiaEncuadre.ninguna;
-  bool _hayPose = false;
-  DateTime? _ultimaPoseValida;
-  // Coordenadas suavizadas de los hombros, en el sistema de coordenadas
-  // del buffer de la cámara (antes de trasladarX/Y): la suavización va acá
-  // porque ese sistema no cambia de tamaño entre frames, a diferencia del
-  // canvas donde se pinta.
-  Offset? _hombroIzqSuavizado;
-  Offset? _hombroDerSuavizado;
-
-  PrendaProbador? _prendaActual;
-  ui.Image? _imagenPrenda;
-  bool _cargandoImagen = false;
-  bool _sesionRegistrada = false;
-  bool _capturando = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _pedirPermisoYArrancar();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState estado) {
-    if (estado == AppLifecycleState.inactive || estado == AppLifecycleState.paused) {
-      final controller = _controller;
-      if (controller == null || !controller.value.isInitialized) return;
-      controller.dispose();
-      _controller = null;
-      // Sin este setState la pantalla se queda con el último cuadro
-      // congelado hasta que algo más la reconstruya.
-      if (mounted) setState(() {});
-    } else if (estado == AppLifecycleState.resumed) {
-      // OJO: la guarda de `_controller == null` NO puede ir al principio
-      // del método. Al pausar dejamos `_controller` en null, así que esa
-      // guarda hacía que este `resumed` no se ejecutara NUNCA: la cámara no
-      // volvía y la pantalla quedaba en el spinner para siempre. Pasaba al
-      // salir y volver a la app, y también al aceptar el permiso de galería
-      // que pide el botón de captura.
-      if (_controller == null && _estadoPermiso == _EstadoPermiso.concedido) {
-        _iniciarCamara();
-      }
-    }
-  }
-
-  Future<void> _pedirPermisoYArrancar() async {
-    final resultado = await Permission.camera.request();
-    if (!mounted) return;
-    if (resultado.isGranted) {
-      setState(() => _estadoPermiso = _EstadoPermiso.concedido);
-      await _iniciarCamara();
-    } else if (resultado.isPermanentlyDenied) {
-      setState(() => _estadoPermiso = _EstadoPermiso.denegadoPermanente);
-    } else {
-      setState(() => _estadoPermiso = _EstadoPermiso.denegado);
-    }
-  }
-
-  Future<void> _iniciarCamara({CameraDescription? preferida}) async {
-    // Dos arranques solapados dejan una cámara huérfana y la pantalla
-    // colgada: puede pasar con un inactive/resumed rápido, o tocando dos
-    // veces "Reintentar" (o el botón de cambiar de cámara mientras ya está
-    // arrancando).
-    if (_iniciandoCamara) return;
-    _iniciandoCamara = true;
-    if (mounted) setState(() => _errorCamara = null);
-    try {
-      final camaras = _camarasDisponibles.isNotEmpty ? _camarasDisponibles : await availableCameras();
-      if (camaras.isEmpty) {
-        if (!mounted) return;
-        setState(() => _errorCamara = 'No se encontró ninguna cámara disponible en este equipo.');
-        return;
-      }
-      _camarasDisponibles = camaras;
-      final elegida =
-          preferida ??
-          camaras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => camaras.first);
-      _camaraActual = elegida;
-
-      final controller = CameraController(
-        elegida,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
-      );
-      _controller = controller;
-      await controller.initialize();
-      if (!mounted) return;
-      await controller.startImageStream(_procesarFrame);
-      setState(() {});
-    } catch (_) {
-      // La cámara puede estar ocupada por otra app, no responder, o el
-      // permiso puede haberse revocado justo en este momento -- sin este
-      // catch, el Future queda sin manejar y la pantalla se queda
-      // congelada en el spinner de carga para siempre (M-2 de la
-      // auditoría).
-      _controller = null;
-      if (!mounted) return;
-      setState(
-        () => _errorCamara = 'No se pudo iniciar la cámara. Cerrá otras apps que puedan estar usándola e intentá de nuevo.',
-      );
-    } finally {
-      _iniciandoCamara = false;
-    }
-  }
-
-  /// Alterna entre la cámara frontal y la trasera sin salir de la pantalla:
-  /// apaga el controller actual, reinicia la detección de pose (las
-  /// coordenadas suavizadas son del sistema de buffer de la cámara
-  /// anterior, no sirven con la nueva) y arranca de nuevo con la otra
-  /// lente ya elegida explícitamente.
-  Future<void> _cambiarCamara() async {
-    if (_cambiandoCamara || _iniciandoCamara || _camarasDisponibles.length < 2) return;
-    _cambiandoCamara = true;
-    final actual = _camaraActual;
-    final siguiente = _camarasDisponibles.firstWhere(
-      (c) => c.lensDirection != actual?.lensDirection,
-      orElse: () => _camarasDisponibles.first,
-    );
-    final controllerAnterior = _controller;
-    _controller = null;
-    _hayPose = false;
-    _ultimaPoseValida = null;
-    _hombroIzqSuavizado = null;
-    _hombroDerSuavizado = null;
-    _poseOverlay.value = null;
-    _guia = _GuiaEncuadre.ninguna;
-    if (mounted) setState(() {});
-    await controllerAnterior?.dispose();
-    await _iniciarCamara(preferida: siguiente);
-    _cambiandoCamara = false;
-  }
-
-  void _procesarFrame(CameraImage imagen) {
-    if (_procesandoFrame) return;
-    _procesandoFrame = true;
-    _detectar(imagen).whenComplete(() => _procesandoFrame = false);
-  }
-
-  Future<void> _detectar(CameraImage imagen) async {
-    final inputImage = _construirInputImage(imagen);
-    if (inputImage == null || inputImage.metadata == null) return;
-    final poses = await _detectorPose.processImage(inputImage);
-    if (!mounted) return;
-
-    final metadata = inputImage.metadata!;
-    final pose = poses.isNotEmpty ? poses.first : null;
-    // `hombroIzq`/`hombroDer` de acá para abajo no son "el hombro izquierdo
-    // anatómico de la persona": son "el punto que tiene que calzar con el
-    // ancla hombro_izq del asset", que -por cómo está armado el asset- es
-    // siempre el que cae más a la IZQUIERDA en pantalla. Con la frontal
-    // (espejada) eso coincide con leftShoulder de ML Kit; con la trasera
-    // (sin espejar, el buffer crudo nunca lo está) el hombro izquierdo
-    // anatómico cae más a la derecha en pantalla (confirmado con valores
-    // crudos reales de la trasera), así que hay que tomar el landmark
-    // contrario.
-    final esTrasera = _camaraActual?.lensDirection == CameraLensDirection.back;
-    final hombroIzq = pose?.landmarks[esTrasera ? PoseLandmarkType.rightShoulder : PoseLandmarkType.leftShoulder];
-    final hombroDer = pose?.landmarks[esTrasera ? PoseLandmarkType.leftShoulder : PoseLandmarkType.rightShoulder];
-    // Umbral asimétrico: 0.6 para enganchar, 0.45 para soltar.
-    final umbral = _hayPose ? _umbralSalida : _umbralEntrada;
-    final valido =
-        hombroIzq != null && hombroDer != null && hombroIzq.likelihood >= umbral && hombroDer.likelihood >= umbral;
-
-    if (valido) {
-      _hombroIzqSuavizado = _suavizar(_hombroIzqSuavizado, Offset(hombroIzq.x, hombroIzq.y));
-      _hombroDerSuavizado = _suavizar(_hombroDerSuavizado, Offset(hombroDer.x, hombroDer.y));
-      _hayPose = true;
-      _ultimaPoseValida = DateTime.now();
-      // Sin setState: el ValueNotifier repinta el overlay y nada más.
-      _poseOverlay.value = _PoseOverlay(
-        hombroIzq: _hombroIzqSuavizado!,
-        hombroDer: _hombroDerSuavizado!,
-        tamanioImagen: metadata.size,
-        rotacion: metadata.rotation,
-      );
-      _mostrarGuia(_GuiaEncuadre.ninguna);
-      return;
-    }
-
-    if (_hayPose) {
-      // Retención: la prenda no se suelta al primer cuadro malo, se queda
-      // donde estaba. Recién al pasar `_retencion` desaparece.
-      final ultima = _ultimaPoseValida;
-      if (ultima != null && DateTime.now().difference(ultima) < _retencion) return;
-      _hayPose = false;
-      // El suavizado se reinicia (no se congela) para que, cuando vuelva a
-      // detectarse una pose válida, no arranque desde una posición vieja.
-      _hombroIzqSuavizado = null;
-      _hombroDerSuavizado = null;
-      _poseOverlay.value = null;
-    }
-    _mostrarGuia(_evaluarEncuadre(pose, hombroIzq, hombroDer, metadata));
-  }
-
-  /// Qué guía mostrar cuando no hay una pose utilizable.
-  _GuiaEncuadre _evaluarEncuadre(
-    Pose? pose,
-    PoseLandmark? hombroIzq,
-    PoseLandmark? hombroDer,
-    InputImageMetadata metadata,
-  ) {
-    if (pose == null || hombroIzq == null || hombroDer == null) return _GuiaEncuadre.sinPersona;
-
-    // ML Kit devuelve SIEMPRE los 33 landmarks cuando encuentra una pose:
-    // los que no ve, los extrapola (por eso no alcanza con mirar si el
-    // landmark existe). Que la posición extrapolada caiga fuera del cuadro
-    // es justamente la señal de "estás demasiado cerca"; dentro del cuadro
-    // pero con poca confianza es, casi siempre, estar de perfil.
-    // Las dimensiones van en el marco YA ROTADO, igual que las coordenadas
-    // que devuelve ML Kit: misma convención que trasladarX/trasladarY.
-    final vertical =
-        metadata.rotation == InputImageRotation.rotation90deg ||
-        metadata.rotation == InputImageRotation.rotation270deg;
-    final rotado = vertical && !Platform.isIOS;
-    final ancho = rotado ? metadata.size.height : metadata.size.width;
-    final alto = rotado ? metadata.size.width : metadata.size.height;
-    bool fuera(PoseLandmark l) => l.x < 0 || l.y < 0 || l.x > ancho || l.y > alto;
-
-    if (fuera(hombroIzq) || fuera(hombroDer)) return _GuiaEncuadre.demasiadoCerca;
-    return _GuiaEncuadre.dePerfil;
-  }
-
-  /// El cartel es de los pocos cambios que sí necesitan reconstruir, pero
-  /// solo cuando cambia de estado: no una vez por detección.
-  void _mostrarGuia(_GuiaEncuadre guia) {
-    if (guia == _guia || !mounted) return;
-    setState(() => _guia = guia);
-  }
-
-  Offset _suavizar(Offset? anterior, Offset nuevo) {
-    if (anterior == null) return nuevo;
-    return Offset.lerp(anterior, nuevo, _factorSuavizado)!;
-  }
-
-  // Rotación real del sensor según orientación del dispositivo: la cámara
-  // frontal en Android suma la compensación (en vez de restarla como la
-  // trasera) porque su sensor está montado espejado respecto de la trasera.
-  static const _orientaciones = {
-    DeviceOrientation.portraitUp: 0,
-    DeviceOrientation.landscapeLeft: 90,
-    DeviceOrientation.portraitDown: 180,
-    DeviceOrientation.landscapeRight: 270,
-  };
-
-  InputImage? _construirInputImage(CameraImage imagen) {
-    final controller = _controller;
-    final camara = _camaraActual;
-    if (controller == null || camara == null) return null;
-
-    InputImageRotation? rotacion;
-    if (Platform.isIOS) {
-      rotacion = InputImageRotationValue.fromRawValue(camara.sensorOrientation);
-    } else if (Platform.isAndroid) {
-      var compensacion = _orientaciones[controller.value.deviceOrientation];
-      if (compensacion == null) return null;
-      if (camara.lensDirection == CameraLensDirection.front) {
-        compensacion = (camara.sensorOrientation + compensacion) % 360;
-      } else {
-        compensacion = (camara.sensorOrientation - compensacion + 360) % 360;
-      }
-      rotacion = InputImageRotationValue.fromRawValue(compensacion);
-    }
-    if (rotacion == null) return null;
-
-    final formato = InputImageFormatValue.fromRawValue(imagen.format.raw);
-    if (formato == null ||
-        (Platform.isAndroid && formato != InputImageFormat.nv21) ||
-        (Platform.isIOS && formato != InputImageFormat.bgra8888)) {
-      return null;
-    }
-
-    // Con imageFormatGroup nv21/bgra8888 la cámara ya entrega un solo plano.
-    if (imagen.planes.length != 1) return null;
-    final plano = imagen.planes.first;
-
-    return InputImage.fromBytes(
-      bytes: plano.bytes,
-      metadata: InputImageMetadata(
-        size: Size(imagen.width.toDouble(), imagen.height.toDouble()),
-        rotation: rotacion,
-        format: formato,
-        bytesPerRow: plano.bytesPerRow,
-      ),
-    );
-  }
-
-  Future<void> _elegirPrenda(PrendaProbador prenda, {bool esInicial = false}) async {
-    if (_cargandoImagen) return;
-    setState(() => _cargandoImagen = true);
-    try {
-      final bytes = await ref.read(probadorRepositoryProvider).obtenerImagenOverlay(prenda.assets.overlay);
-      // El backend acepta PNG de hasta 3MB sin redimensionar (CU-21), así
-      // que un overlay puede venir de 2000px de ancho: son ~20MB de textura
-      // que después hay que minificar en CADA repintado. Se decodifica a un
-      // ancho acotado. No cambia en nada cómo queda puesta la prenda: los
-      // anclajes son fracciones 0..1 y el painter escala contra el tamaño
-      // de la imagen ya decodificada, no contra el ancho_px del backend.
-      final anchoOriginal = prenda.assets.overlay.anchoPx ?? 0;
-      final codec = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: anchoOriginal > _anchoMaximoOverlay ? _anchoMaximoOverlay : null,
-      );
-      final frame = await codec.getNextFrame();
-      if (!mounted) return;
-      setState(() {
-        _prendaActual = prenda;
-        _imagenPrenda = frame.image;
-        _cargandoImagen = false;
-      });
-      if (esInicial && !_sesionRegistrada) {
-        _sesionRegistrada = true;
-        unawaited(ref.read(probadorRepositoryProvider).registrarSesion(varianteId: prenda.varianteId, modo: 'espejo'));
-        ref.read(trackingServiceProvider).track(tipo: TipoEvento.probador, varianteId: prenda.varianteId);
-      }
-    } catch (e, stack) {
-      debugPrint('Error cargando overlay de la prenda ${prenda.varianteId}: $e\n$stack');
-      if (!mounted) return;
-      setState(() => _cargandoImagen = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo cargar la prenda.')));
-    }
-  }
-
-  Future<void> _capturar() async {
-    if (_capturando) return;
-    setState(() => _capturando = true);
-    try {
-      final boundary = _repaintKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return;
-      final imagen = await boundary.toImage(pixelRatio: 2.0);
-      final bytes = await imagen.toByteData(format: ui.ImageByteFormat.png);
-      if (bytes == null) return;
-
-      final tienePermiso = await Gal.requestAccess();
-      if (!tienePermiso) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Sin permiso para guardar en la galería.')));
-        return;
-      }
-      await Gal.putImageBytes(bytes.buffer.asUint8List());
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto guardada en la galería.')));
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo guardar la foto.')));
-    } finally {
-      if (mounted) setState(() => _capturando = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _poseOverlay.dispose();
-    _controller?.dispose();
-    _detectorPose.close();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final varianteInicial = widget.varianteInicial;
-    // Camino rápido: si ya sabemos qué variante mostrar (el cliente la
-    // eligió en el detalle o el carrito), no hace falta esperar a que
-    // termine de cargar el selector de "otras prendas" completo -que puede
-    // tardar bastante, ver prendasProbadorProvider- para verla puesta.
-    if (varianteInicial != null) {
-      ref.listen<AsyncValue<PrendaProbador?>>(prendaProbadorPorVarianteProvider(varianteInicial), (previous, next) {
-        next.whenData((prenda) {
-          if (prenda != null && _prendaActual == null) {
-            _elegirPrenda(prenda, esInicial: true);
-          }
-        });
-      });
-    }
-    ref.listen<AsyncValue<List<PrendaProbador>>>(prendasParaProbadorProvider(varianteInicial), (previous, next) {
-      next.whenData((prendas) {
-        if (prendas.isNotEmpty && _prendaActual == null) {
-          _elegirPrenda(prendas.first, esInicial: true);
-        }
-      });
-    });
-    final asyncPrendas = ref.watch(prendasParaProbadorProvider(varianteInicial));
-    return _cuerpo(asyncPrendas);
-  }
-
-  Widget _cuerpo(AsyncValue<List<PrendaProbador>> asyncPrendas) {
-    switch (_estadoPermiso) {
-      case _EstadoPermiso.pidiendo:
-        return const Center(child: CircularProgressIndicator(color: Colors.white));
-      case _EstadoPermiso.denegado:
-        return _mensajePermiso(
-          'Se necesita acceso a la cámara para el probador virtual.',
-          textoBoton: 'Reintentar',
-          onPressed: _pedirPermisoYArrancar,
-        );
-      case _EstadoPermiso.denegadoPermanente:
-        return _mensajePermiso(
-          'El acceso a la cámara está bloqueado. Habilitalo desde los ajustes del sistema.',
-          textoBoton: 'Abrir ajustes',
-          onPressed: openAppSettings,
-        );
-      case _EstadoPermiso.concedido:
-        final errorCamara = _errorCamara;
-        if (errorCamara != null) {
-          return _mensajePermiso(errorCamara, textoBoton: 'Reintentar', onPressed: _iniciarCamara);
-        }
-        final controller = _controller;
-        if (controller == null || !controller.value.isInitialized) {
-          return const Center(child: CircularProgressIndicator(color: Colors.white));
-        }
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // Todo lo que tiene que quedar en la foto capturada (cámara +
-            // prenda) va dentro de este RepaintBoundary; los controles de UI
-            // (mensaje, selector, botón) van afuera, como hermanos en el Stack.
-            RepaintBoundary(
-              key: _repaintKey,
-              child: Center(
-                child: CameraPreview(
-                  controller,
-                  // RepaintBoundary propio: el overlay se repinta a su
-                  // ritmo sin arrastrar la capa de la vista previa.
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _OverlayPainter(
-                        imagenPrenda: _imagenPrenda,
-                        activo: _prendaActual?.assets.overlay,
-                        pose: _poseOverlay,
-                        direccionLente: _camaraActual?.lensDirection ?? CameraLensDirection.front,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (_guia != _GuiaEncuadre.ninguna) _mensajeGuia(_guia.mensaje),
-            asyncPrendas.when(
-              data: (prendas) => prendas.isEmpty ? _mensajeSinPrendas() : _selectorPrendas(prendas),
-              loading: () => const SizedBox.shrink(),
-              error: (error, stack) => const SizedBox.shrink(),
-            ),
-            if (_camarasDisponibles.length > 1) _botonCambiarCamara(),
-            _botonCaptura(),
-          ],
-        );
-    }
-  }
-
-  Widget _mensajePermiso(String mensaje, {required String textoBoton, required VoidCallback onPressed}) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.no_photography_outlined, color: Colors.white54, size: 48),
-            const SizedBox(height: AppSpacing.md),
-            Text(mensaje, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.md),
-            ElevatedButton(onPressed: onPressed, child: Text(textoBoton)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mensajeGuia(String texto) {
-    // Deja libre la esquina donde va el botón de cambiar de cámara (solo
-    // ocupada cuando hay más de una disponible) para que no se solapen.
-    final margenDerecho = _camarasDisponibles.length > 1 ? AppSpacing.xxl + AppSpacing.xs : AppSpacing.md;
-    return Positioned(
-      top: AppSpacing.xl,
-      left: AppSpacing.md,
-      right: margenDerecho,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(AppRadius.base)),
-        child: Text(texto, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white)),
-      ),
-    );
-  }
-
-  Widget _mensajeSinPrendas() {
-    return Positioned(
-      left: AppSpacing.md,
-      right: AppSpacing.md,
-      bottom: AppSpacing.xxl + 64,
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(AppRadius.base)),
-        child: const Text(
-          'Todavía no hay prendas listas para probar.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
-    );
-  }
-
-  Widget _selectorPrendas(List<PrendaProbador> prendas) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: AppSpacing.xxl + 64,
-      child: SizedBox(
-        height: 72,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-          itemCount: prendas.length,
-          separatorBuilder: (context, index) => const SizedBox(width: AppSpacing.sm),
-          itemBuilder: (context, index) {
-            final prenda = prendas[index];
-            final seleccionada = prenda.varianteId == _prendaActual?.varianteId;
-            return GestureDetector(
-              onTap: () => _elegirPrenda(prenda),
-              child: Container(
-                width: 64,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadius.base),
-                  border: Border.all(
-                    color: seleccionada ? AppColors.exito : Colors.white54,
-                    width: seleccionada ? 3 : 1,
-                  ),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: CachedNetworkImage(
-                  imageUrl: prenda.assets.overlay.url,
-                  fit: BoxFit.cover,
-                  placeholder: (context, url) => Container(color: Colors.white24),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  /// Solo aparece si el equipo tiene más de una cámara (la gran mayoría de
-  /// celulares). Alterna frontal/trasera: útil cuando la trasera tiene
-  /// mejor calidad que la frontal, con otra persona sosteniendo el celular
-  /// y encuadrando al cliente.
-  Widget _botonCambiarCamara() {
-    return Positioned(
-      top: AppSpacing.md,
-      right: AppSpacing.md,
-      child: Material(
-        color: Colors.black54,
-        shape: const CircleBorder(),
-        child: IconButton(
-          icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
-          tooltip: 'Cambiar de cámara',
-          onPressed: _cambiandoCamara ? null : _cambiarCamara,
-        ),
-      ),
-    );
-  }
-
-  Widget _botonCaptura() {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: AppSpacing.xl,
-      child: Center(
-        child: FloatingActionButton(
-          backgroundColor: AppColors.acento,
-          onPressed: _capturar,
-          child: _capturando
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Icon(Icons.camera_alt, color: Colors.white),
-        ),
-      ),
+      // al borde inferior (guardar/compartir del resultado) queda tapado
+      // detrás de la barra y parece que no existe.
+      body: SafeArea(child: _PruebaGenerativa(varianteInicial: varianteInicial)),
     );
   }
 }
 
 enum _EstadoGeneracion { ninguna, enviando, enProceso, completado, fallido }
 
-/// Modo realista (P4.6): foto (cámara o galería) -> POST /probador/generar
+/// Prueba generativa (P4.6): foto (cámara o galería) -> POST /probador/generar
 /// -> polling a GET /probador/generar/{id} cada 2s -> resultado a pantalla
 /// completa. Nunca cuelga la app: cualquier falla de red, tanto al subir
 /// como durante el polling, termina en un estado de error explícito con
-/// un mensaje y la sugerencia de usar el modo espejo (ver "Revisar" de la
-/// consigna: desconectar internet a propósito tiene que degradar con
-/// elegancia, no colgarse).
-class _ModoRealista extends ConsumerStatefulWidget {
-  const _ModoRealista({required this.onUsarModoEspejo, this.varianteInicial});
+/// un mensaje y la opción de reintentar (desconectar internet a propósito
+/// tiene que degradar con elegancia, no colgarse).
+class _PruebaGenerativa extends ConsumerStatefulWidget {
+  const _PruebaGenerativa({this.varianteInicial});
 
-  final VoidCallback onUsarModoEspejo;
   final int? varianteInicial;
 
   @override
-  ConsumerState<_ModoRealista> createState() => _ModoRealistaState();
+  ConsumerState<_PruebaGenerativa> createState() => _PruebaGenerativaState();
 }
 
-class _ModoRealistaState extends ConsumerState<_ModoRealista> {
+class _PruebaGenerativaState extends ConsumerState<_PruebaGenerativa> {
   static const _intervaloPolling = Duration(seconds: 2);
 
   bool _consentimiento = false;
@@ -810,7 +79,7 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
   @override
   void initState() {
     super.initState();
-    // Con una prenda inicial (elegida en el detalle o el carrito) el modo realista también empieza con ella, una
+    // Con una prenda inicial (elegida en el detalle o el carrito) el probador empieza con ella, una
     // sola vez. Sin ella sigue como siempre: el cliente elige la prenda en el selector.
     final inicial = widget.varianteInicial;
     if (inicial != null) {
@@ -862,7 +131,6 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
         varianteId: prenda.varianteId,
         fotoBytes: foto,
         nombreArchivo: 'foto.jpg',
-        contentType: DioMediaType('image', 'jpeg'),
       );
       if (!mounted) return;
 
@@ -880,12 +148,9 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
       _intentosFallidosSeguidos = 0;
       _inicioPolling = DateTime.now();
       _programarPolling();
-    } on DioException catch (e) {
+    } catch (e) {
       if (!mounted) return;
       _terminarConError(_mensajeParaError(e));
-    } catch (_) {
-      if (!mounted) return;
-      _terminarConError('No se pudo generar la imagen.');
     }
   }
 
@@ -928,7 +193,7 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
       // Se reintenta unas cuantas veces (podría ser un corte de red
       // momentáneo): recién después de varios intentos seguidos fallidos,
       // el próximo _consultarEstado la abandona por debeAbandonarPolling.
-      // Nunca se queda esperando para siempre (ver "Revisar").
+      // Nunca se queda esperando para siempre (ver debeAbandonarPolling).
       _intentosFallidosSeguidos++;
       if (!mounted) return;
       _programarPolling();
@@ -942,7 +207,6 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
       _urlResultado = url;
     });
     if (prenda != null) {
-      unawaited(ref.read(probadorRepositoryProvider).registrarSesion(varianteId: prenda.varianteId, modo: 'generativo'));
       ref.read(trackingServiceProvider).track(tipo: TipoEvento.probador, varianteId: prenda.varianteId);
     }
   }
@@ -954,19 +218,13 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
     });
   }
 
-  String _mensajeParaError(DioException e) {
-    final data = e.response?.data;
-    final detalle = data is Map ? data['detail'] as String? : null;
-    if (detalle != null && detalle.isNotEmpty) return detalle;
-    switch (e.type) {
-      case DioExceptionType.connectionError:
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return 'Sin conexión a internet. Probá el modo espejo mientras tanto.';
-      default:
-        return 'No se pudo generar la imagen. Probá de nuevo más tarde.';
-    }
+  String _mensajeParaError(Object e) {
+    return mensajeDeError(
+      e,
+      esSinConexion(e)
+          ? 'Sin conexión a internet. Revisá tu conexión e intentá de nuevo.'
+          : 'No se pudo generar la imagen. Probá de nuevo más tarde.',
+    );
   }
 
   void _reiniciar() {
@@ -1067,7 +325,7 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
           else ...[
             const Text('Elegí una prenda', style: TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(height: AppSpacing.xs),
-            _selectorPrendasRealista(prendas),
+            _selectorPrendas(prendas),
           ],
           const SizedBox(height: AppSpacing.lg),
           if (_fotoBytes != null) ...[
@@ -1120,7 +378,7 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
     );
   }
 
-  Widget _selectorPrendasRealista(List<PrendaProbador> prendas) {
+  Widget _selectorPrendas(List<PrendaProbador> prendas) {
     return SizedBox(
       height: 72,
       child: ListView.separated(
@@ -1186,11 +444,6 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
             ),
             const SizedBox(height: AppSpacing.md),
             ElevatedButton(onPressed: _reiniciar, child: const Text('Intentar de nuevo')),
-            const SizedBox(height: AppSpacing.sm),
-            TextButton(
-              onPressed: widget.onUsarModoEspejo,
-              child: const Text('Usar modo espejo', style: TextStyle(color: Colors.white70)),
-            ),
           ],
         ),
       ),
@@ -1262,192 +515,12 @@ class _ModoRealistaState extends ConsumerState<_ModoRealista> {
   }
 }
 
-class _OverlayPainter extends CustomPainter {
-  _OverlayPainter({
-    required this.imagenPrenda,
-    required this.activo,
-    required this.pose,
-    required this.direccionLente,
-  }) : super(repaint: pose);
-
-  final ui.Image? imagenPrenda;
-  final ActivoProbador? activo;
-
-  /// La pose ya suavizada, como `Listenable`: al pasarla por `repaint:`,
-  /// una detección nueva repinta este painter sin reconstruir un solo
-  /// widget. Por eso `_detectar` ya no llama a setState.
-  final ValueListenable<_PoseOverlay?> pose;
-  final CameraLensDirection direccionLente;
-
-  // Factor de ajuste entre el ancho detectado de hombros y el ancho total
-  // del asset (no el ancho entre sus propios anclajes): valor a ojo, se
-  // afina mirando cómo queda puesta la prenda con overlays reales.
-  static const _factorAncho = 2.6;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final imagen = imagenPrenda;
-    final anclajes = activo?.anclajes;
-    final p = pose.value;
-
-    if (imagen == null || anclajes == null || p == null) return;
-
-    // El tamaño del asset sale de la imagen REALMENTE decodificada, no de
-    // ancho_px/alto_px del backend. Como los anclajes son fracciones 0..1,
-    // la transformación es invariante a la escala de decodificación (la
-    // escala y anclaMedioPx se compensan exactamente), así que decodificar
-    // más chico en `_elegirPrenda` no mueve ni achica la prenda. Con el
-    // ancho_px del backend, en cambio, la achicaría por ese mismo factor.
-    final anchoAssetPx = imagen.width.toDouble();
-    final altoAssetPx = imagen.height.toDouble();
-
-    final pIzq = Offset(
-      trasladarX(p.hombroIzq.dx, size, p.tamanioImagen, p.rotacion, direccionLente),
-      trasladarY(p.hombroIzq.dy, size, p.tamanioImagen, p.rotacion, direccionLente),
-    );
-    final pDer = Offset(
-      trasladarX(p.hombroDer.dx, size, p.tamanioImagen, p.rotacion, direccionLente),
-      trasladarY(p.hombroDer.dy, size, p.tamanioImagen, p.rotacion, direccionLente),
-    );
-
-    final transform = calcularTransformOverlay(
-      pIzq: pIzq,
-      pDer: pDer,
-      anclajes: anclajes,
-      anchoAssetPx: anchoAssetPx,
-      altoAssetPx: altoAssetPx,
-      factorAncho: _factorAncho,
-    );
-    if (transform == null) return;
-
-    canvas.save();
-    canvas.translate(transform.centro.dx, transform.centro.dy);
-    canvas.rotate(transform.angulo);
-    canvas.scale(transform.escala);
-    // El punto medio de los anclajes del asset (no el origen de la imagen)
-    // es lo que tiene que caer exactamente en `centro`: sin esta traslación
-    // negativa, la prenda gira/escala alrededor de su esquina superior
-    // izquierda y termina corrida en vez de centrada en el cuerpo.
-    canvas.translate(-transform.anclaMedioPx.dx, -transform.anclaMedioPx.dy);
-    // `medium` y no `high`: acá siempre se MINIFICA (el overlay decodificado
-    // es más grande que lo que ocupa en pantalla), y para minificar el
-    // muestreo con mipmaps de `medium` es más barato que el cúbico de
-    // `high` sin verse peor.
-    canvas.drawImage(imagen, Offset.zero, Paint()..filterQuality = FilterQuality.medium);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _OverlayPainter oldDelegate) {
-    // `pose` va por `repaint:`, así que el movimiento de los hombros -y con
-    // él el tamaño de imagen y la rotación, que ahora viajan adentro- ya
-    // dispara el repintado por su cuenta. Acá quedan las entradas que solo
-    // cambian al reconstruir el widget: antes faltaban `activo` y
-    // `direccionLente`, y el bug estaba tapado porque el setState global
-    // repintaba todo igual.
-    return oldDelegate.imagenPrenda != imagenPrenda ||
-        oldDelegate.activo != activo ||
-        oldDelegate.direccionLente != direccionLente ||
-        oldDelegate.pose != pose;
-  }
-}
-
-/// Los cuatro números que hacen falta para ubicar el overlay: dónde va
-/// (`centro`), cuánto rota, cuánto escala y qué punto del asset es el que
-/// tiene que terminar exactamente en `centro` (`anclaMedioPx`).
-class TransformOverlay {
-  const TransformOverlay({required this.centro, required this.angulo, required this.escala, required this.anclaMedioPx});
-
-  final Offset centro;
-  final double angulo;
-  final double escala;
-  final Offset anclaMedioPx;
-}
-
-/// El paso 6 del overlay, aislado de `Canvas` para poder testearlo: dados
-/// los hombros ya detectados (en coordenadas de canvas) y los anclajes del
-/// asset (fracciones 0..1 de su propio tamaño en píxeles), calcula la
-/// transformación completa. Devuelve `null` si no hay con qué calcular
-/// nada razonable (asset sin tamaño, o los dos hombros en el mismo punto).
-TransformOverlay? calcularTransformOverlay({
-  required Offset pIzq,
-  required Offset pDer,
-  required AnclajesProbador anclajes,
-  required double anchoAssetPx,
-  required double altoAssetPx,
-  required double factorAncho,
-}) {
-  if (anchoAssetPx <= 0 || altoAssetPx <= 0) return null;
-
-  final vector = pDer - pIzq;
-  final ancho = vector.distance;
-  if (ancho <= 0) return null;
-  final angulo = vector.direction;
-  final centro = Offset.lerp(pIzq, pDer, 0.5)!;
-
-  final anclaIzqPx = Offset(anclajes.hombroIzq.x * anchoAssetPx, anclajes.hombroIzq.y * altoAssetPx);
-  final anclaDerPx = Offset(anclajes.hombroDer.x * anchoAssetPx, anclajes.hombroDer.y * altoAssetPx);
-  final anclaMedioPx = Offset.lerp(anclaIzqPx, anclaDerPx, 0.5)!;
-
-  final escala = (ancho / anchoAssetPx) * factorAncho;
-
-  return TransformOverlay(centro: centro, angulo: angulo, escala: escala, anclaMedioPx: anclaMedioPx);
-}
-
-// Traduce un punto de las coordenadas del buffer de la cámara (tal cual lo
-// ve ML Kit) a coordenadas del canvas donde se dibuja. Para la cámara
-// frontal el CameraPreview de Flutter ya renderiza el video espejado (como
-// un espejo real), pero el buffer que procesa ML Kit NO está espejado —
-// por eso acá se espeja también la coordenada X, para que el punto (y la
-// prenda que se ancla en él) caigan tal como se ven en pantalla. La
-// trasera nunca se espeja (ni en pantalla ni acá): NO es un mero detalle
-// de la rotación, así que se decide por `direccionLente` explícitamente en
-// vez de infererirlo del ángulo de rotación. Antes solo la rama 0/180deg
-// miraba `direccionLente` -en 90/270deg (la orientación real en la
-// mayoría de celulares en vertical) el flip salía "gratis" únicamente
-// porque, con la convención más común de fabricación (sensorOrientation
-// 270° en la frontal, 90° en la trasera), cada lente termina cayendo en
-// una rama distinta -- en un equipo con la convención invertida, la
-// trasera habría quedado espejada al revés.
-double trasladarX(
-  double x,
-  Size tamanioCanvas,
-  Size tamanioImagen,
-  InputImageRotation rotacion,
-  CameraLensDirection direccionLente,
-) {
-  final vertical = rotacion == InputImageRotation.rotation90deg || rotacion == InputImageRotation.rotation270deg;
-  final anchoBuffer = vertical
-      ? (Platform.isIOS ? tamanioImagen.width : tamanioImagen.height)
-      : tamanioImagen.width;
-  final proyectado = x * tamanioCanvas.width / anchoBuffer;
-  final espejado = direccionLente != CameraLensDirection.back;
-  return espejado ? tamanioCanvas.width - proyectado : proyectado;
-}
-
-double trasladarY(
-  double y,
-  Size tamanioCanvas,
-  Size tamanioImagen,
-  InputImageRotation rotacion,
-  CameraLensDirection direccionLente,
-) {
-  switch (rotacion) {
-    case InputImageRotation.rotation90deg:
-    case InputImageRotation.rotation270deg:
-      return y * tamanioCanvas.height / (Platform.isIOS ? tamanioImagen.height : tamanioImagen.width);
-    case InputImageRotation.rotation0deg:
-    case InputImageRotation.rotation180deg:
-      return y * tamanioCanvas.height / tamanioImagen.height;
-  }
-}
-
 /// Cuándo el polling de una generación tiene que dejar de reintentar y
 /// terminar en un error explícito, en vez de seguir esperando para
 /// siempre: ya sea porque se acumularon demasiados intentos fallidos
 /// seguidos (probable corte de red) o porque pasó demasiado tiempo desde
-/// que arrancó, tenga o no errores (el servicio externo se colgó). Ver
-/// "Revisar": desconectar internet a propósito no puede colgar la app.
+/// que arrancó, tenga o no errores (el servicio externo se colgó).
+/// Desconectar internet a propósito no puede colgar la app.
 bool debeAbandonarPolling({
   required int intentosFallidosSeguidos,
   required Duration transcurridoDesdeElInicio,

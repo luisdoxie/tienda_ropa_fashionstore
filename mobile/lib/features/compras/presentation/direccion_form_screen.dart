@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/boton_cargando.dart';
 import '../state/compras_providers.dart';
 
 class DireccionFormScreen extends ConsumerStatefulWidget {
@@ -116,13 +117,7 @@ class _DireccionFormScreenState extends ConsumerState<DireccionFormScreen> {
             const SizedBox(height: AppSpacing.lg),
             ElevatedButton(
               onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Guardar dirección'),
+              child: _guardando ? const BotonCargando() : const Text('Guardar dirección'),
             ),
           ],
         ),

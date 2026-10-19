@@ -16,6 +16,7 @@ import '../models/carrito.dart';
 import '../models/cotizacion_envio.dart';
 import '../models/direccion_cliente.dart';
 import '../models/envio.dart';
+import '../models/linea_con_exhibicion.dart';
 import '../models/venta.dart';
 import '../models/zona_envio.dart';
 import 'carrito_controller.dart';
@@ -122,12 +123,12 @@ Future<Map<int, VarianteLookupItem>> lookupVariantes(Ref ref, List<int> variante
   return {for (final item in lookup) if (item.varianteId != null) item.varianteId!: item};
 }
 
-final compraDetalleProvider = FutureProvider.autoDispose.family<Venta, int>((ref, ventaId) async {
-  final venta = await ref.watch(ventasRepositoryProvider).comprobante(ventaId);
-  if (venta.detalle.isEmpty) return venta;
-
-  final porVariante = await lookupVariantes(ref, venta.detalle.map((l) => l.varianteId).toList());
-  final detalleResuelto = venta.detalle.map((linea) {
+/// Completa cada línea (del carrito o de un comprobante) con nombre/foto/talla/color, buscándolos en lote por
+/// variante. Una variante que el catálogo ya no devuelve deja la línea sin esos datos.
+Future<List<L>> aplicarExhibicion<L extends LineaConExhibicion<L>>(Ref ref, List<L> detalle) async {
+  if (detalle.isEmpty) return detalle;
+  final porVariante = await lookupVariantes(ref, detalle.map((l) => l.varianteId).toList());
+  return detalle.map((linea) {
     final item = porVariante[linea.varianteId];
     return linea.conExhibicion(
       productoNombre: item?.productoNombre,
@@ -136,5 +137,10 @@ final compraDetalleProvider = FutureProvider.autoDispose.family<Venta, int>((ref
       colorNombre: item?.colorNombre,
     );
   }).toList();
-  return venta.conDetalle(detalleResuelto);
+}
+
+final compraDetalleProvider = FutureProvider.autoDispose.family<Venta, int>((ref, ventaId) async {
+  final venta = await ref.watch(ventasRepositoryProvider).comprobante(ventaId);
+  if (venta.detalle.isEmpty) return venta;
+  return venta.conDetalle(await aplicarExhibicion(ref, venta.detalle));
 });

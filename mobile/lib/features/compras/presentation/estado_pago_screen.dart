@@ -8,7 +8,7 @@ import '../state/checkout_controller.dart';
 import '../state/compras_providers.dart';
 import '../state/estado_pago_controller.dart';
 
-// Mismas URLs hardcodeadas que backend/app/pagos/pasarela.py -- no hace
+// Mismas URLs hardcodeadas que backend/app/comercial/pasarela.py -- no hace
 // falta que resuelvan de verdad: el WebView intercepta la navegación
 // ANTES de intentar cargarlas.
 const _prefijoRetorno = 'https://fashionstore.example.com/pago/retorno';

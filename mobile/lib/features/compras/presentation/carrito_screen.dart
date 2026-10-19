@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/fila_monto.dart';
 import '../../probador/presentation/boton_probar_prenda.dart';
 import '../../reservas/state/reservas_providers.dart' show disponibilidadPorVarianteProvider, disponibleTotalProvider;
 import '../models/carrito.dart';
@@ -96,43 +97,15 @@ class _ResumenCarrito extends ConsumerWidget {
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Column(
               children: [
-                _FilaResumen('Subtotal', resumen.subtotal),
-                if (resumen.descuento > 0) _FilaResumen('Descuento', -resumen.descuento, color: AppColors.exito),
+                FilaMonto('Subtotal', resumen.subtotal),
+                if (resumen.descuento > 0) FilaMonto('Descuento', -resumen.descuento, color: AppColors.exito),
                 const Divider(),
-                _FilaResumen('Total', resumen.total, negrita: true),
+                FilaMonto('Total', resumen.total, negrita: true),
               ],
             ),
           ),
         );
       },
-    );
-  }
-}
-
-class _FilaResumen extends StatelessWidget {
-  const _FilaResumen(this.etiqueta, this.monto, {this.negrita = false, this.color});
-
-  final String etiqueta;
-  final double monto;
-  final bool negrita;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final estilo = TextStyle(
-      fontWeight: negrita ? FontWeight.w700 : FontWeight.w400,
-      fontSize: negrita ? 16 : 14,
-      color: color ?? AppColors.texto,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(etiqueta, style: estilo),
-          Text('Bs ${monto.toStringAsFixed(2)}', style: estilo),
-        ],
-      ),
     );
   }
 }

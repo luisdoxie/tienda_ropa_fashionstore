@@ -1,6 +1,6 @@
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/mensaje_error.dart';
 import '../../../core/network/providers.dart';
 import '../../catalogo/state/catalogo_providers.dart';
 import '../data/probador_repository.dart';
@@ -64,8 +64,8 @@ final prendasProbadorProvider = FutureProvider<List<PrendaProbador>>((ref) async
 final assetsProbadorProvider = FutureProvider.autoDispose.family<AssetsVariante?, int>((ref, varianteId) async {
   try {
     return await ref.watch(probadorRepositoryProvider).obtenerAssets(varianteId);
-  } on DioException catch (e) {
-    if (e.response?.statusCode == 404) return null;
+  } catch (e) {
+    if (esNoEncontrado(e)) return null;
     rethrow;
   }
 });

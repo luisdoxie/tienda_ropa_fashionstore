@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/boton_cargando.dart';
 import '../state/auth_controller.dart';
 
 class RegistroScreen extends ConsumerStatefulWidget {
@@ -106,13 +107,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
                 const SizedBox(height: AppSpacing.xl),
                 ElevatedButton(
                   onPressed: _cargando ? null : _enviar,
-                  child: _cargando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Registrarme'),
+                  child: _cargando ? const BotonCargando() : const Text('Registrarme'),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextButton(

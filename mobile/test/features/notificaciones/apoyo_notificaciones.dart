@@ -2,9 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile/features/auth/state/auth_controller.dart';
 import 'package:mobile/features/auth/state/auth_state.dart';
-import 'package:mobile/features/reservas/data/notificaciones_repository.dart';
-import 'package:mobile/features/reservas/models/notificacion_app.dart';
-import 'package:mobile/features/reservas/state/reservas_providers.dart' show notificacionesRepositoryProvider;
+import 'package:mobile/features/notificaciones/data/notificaciones_repository.dart';
+import 'package:mobile/features/notificaciones/models/notificacion_app.dart';
+import 'package:mobile/features/notificaciones/state/notificaciones_controller.dart'
+    show notificacionesRepositoryProvider;
 
 NotificacionApp notificacion(
   int id, {

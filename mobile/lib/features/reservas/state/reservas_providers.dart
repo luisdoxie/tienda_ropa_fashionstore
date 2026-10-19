@@ -5,7 +5,6 @@ import '../../catalogo/models/referencia.dart';
 import '../../catalogo/state/catalogo_providers.dart';
 import '../data/disponibilidad_repository.dart';
 import '../data/horarios_repository.dart';
-import '../data/notificaciones_repository.dart';
 import '../data/reservas_repository.dart';
 import '../models/disponibilidad_sucursal.dart';
 import '../models/horario_sucursal.dart';
@@ -19,10 +18,6 @@ final disponibilidadRepositoryProvider = Provider<DisponibilidadRepository>(
 );
 
 final horariosRepositoryProvider = Provider<HorariosRepository>((ref) => HorariosRepository(ref.watch(dioProvider)));
-
-final notificacionesRepositoryProvider = Provider<NotificacionesRepository>(
-  (ref) => NotificacionesRepository(ref.watch(dioProvider)),
-);
 
 final horariosSucursalProvider = FutureProvider.family<List<HorarioSucursal>, int>(
   (ref, sucursalId) => ref.watch(horariosRepositoryProvider).porSucursal(sucursalId),

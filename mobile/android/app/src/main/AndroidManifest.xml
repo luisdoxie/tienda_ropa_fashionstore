@@ -1,16 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <!-- Sin esto el build release no tiene red (debug lo agrega solo). -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Búsqueda por voz (paquete `voz`, P6.1), vía speech_to_text. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
-    <!-- Guardar la captura del probador en la galería (paquete `gal`). Solo
-         hace falta en Android <= 9 (API 29); en versiones más nuevas el
-         acceso a MediaStore no requiere este permiso. El plugin de cámara
-         declara el mismo permiso con maxSdkVersion=28: tools:replace se
-         queda con el de acá (29), que es el que pide `gal`. -->
+    <!-- Guardar la imagen generada por el probador en la galería (paquete
+         `gal`). Solo hace falta en Android <= 9 (API 29); en versiones más
+         nuevas el acceso a MediaStore no requiere este permiso. tools:replace
+         se queda con maxSdkVersion=29, que es el que pide `gal`. La foto del
+         probador se saca con la app de cámara del sistema (image_picker), que
+         no necesita el permiso CAMERA. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29"

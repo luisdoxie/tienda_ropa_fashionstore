@@ -1,8 +1,11 @@
+import '../../../core/utils/fecha_servidor.dart';
+import 'linea_con_exhibicion.dart';
+
 /// Línea del carrito tal como la devuelve el backend, más los campos de
 /// exhibición (nombre/foto/talla/color) que se resuelven aparte con
 /// CatalogoRepository.detallePorVariantes -- el carrito del backend solo
 /// conoce variante_id, nunca el nombre del producto.
-class CarritoLinea {
+class CarritoLinea implements LineaConExhibicion<CarritoLinea> {
   const CarritoLinea({
     required this.id,
     required this.varianteId,
@@ -26,6 +29,7 @@ class CarritoLinea {
   );
 
   final int id;
+  @override
   final int varianteId;
   final int cantidad;
   final double precioUnitario;
@@ -39,6 +43,7 @@ class CarritoLinea {
   final String? tallaCodigo;
   final String? colorNombre;
 
+  @override
   CarritoLinea conExhibicion({
     required String? productoNombre,
     required String? imagenPrincipal,
@@ -74,7 +79,7 @@ class Carrito {
     id: json['id'] as int,
     clienteId: json['cliente_id'] as int,
     sucursalId: json['sucursal_id'] as int?,
-    actualizadoEn: DateTime.parse(json['actualizado_en'] as String),
+    actualizadoEn: fechaDelServidor(json['actualizado_en'] as String),
     detalle: (json['detalle'] as List).map((d) => CarritoLinea.fromJson(d as Map<String, dynamic>)).toList(),
     subtotal: double.parse(json['subtotal'].toString()),
   );

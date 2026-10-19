@@ -5,7 +5,7 @@ import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../state/auth_controller.dart';
 
-/// CU-35: pide el correo para recuperar la contraseña. El backend responde igual exista o no el correo (no revela
+/// CU-01: pide el correo para recuperar la contraseña. El backend responde igual exista o no el correo (no revela
 /// nada). Todavía no hay servicio de correo: solo con ENVIRONMENT=local devuelve el token, y entonces se ofrece
 /// seguir directo a restablecer (igual que la web).
 class RecuperarScreen extends ConsumerStatefulWidget {

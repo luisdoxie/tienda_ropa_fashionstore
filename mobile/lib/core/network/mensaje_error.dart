@@ -12,3 +12,26 @@ String mensajeDeError(Object error, String porDefecto) {
 }
 
 bool esConflicto(Object error) => error is DioException && error.response?.statusCode == 409;
+
+/// El backend respondió 404 (p. ej. una variante sin assets del probador).
+bool esNoEncontrado(Object error) => error is DioException && error.response?.statusCode == 404;
+
+/// No se pudo hablar con el servidor: sin conexión o timeout (conexión, envío o respuesta).
+bool esSinConexion(Object error) {
+  if (error is! DioException) return false;
+  switch (error.type) {
+    case DioExceptionType.connectionError:
+    case DioExceptionType.connectionTimeout:
+    case DioExceptionType.sendTimeout:
+    case DioExceptionType.receiveTimeout:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/// El backend respondió con un error 5xx.
+bool esErrorDeServidor(Object error) {
+  final estado = error is DioException ? error.response?.statusCode : null;
+  return estado != null && estado >= 500;
+}

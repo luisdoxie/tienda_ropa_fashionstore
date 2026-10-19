@@ -24,8 +24,8 @@ class VarianteCatalogo {
   final int colorId;
   final String sku;
   final double precioEfectivo;
-  // TODO(P3.1): siempre null hasta que exista el paquete `inventario` en
-  // el backend. Ver app/catalogo/service.py::_disponibilidad_variante.
+  // El backend la resuelve con inventario (CU-09) en
+  // catalogo/casos_uso/cu06_consultar_buscar_catalogo.py::_disponibilidad_variante.
   final int? cantidadDisponible;
 }
 

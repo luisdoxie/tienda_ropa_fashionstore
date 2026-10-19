@@ -16,11 +16,14 @@ void main() {
       ),
     );
 
-    // No hay token guardado, así que restaurarSesion() resuelve rápido a
-    // "no autenticado" y el router redirige de /splash a /home: el catálogo
-    // es público para invitados (ver app_router.dart). No se usa
-    // pumpAndSettle porque el spinner del splash anima indefinidamente.
-    for (var i = 0; i < 10; i++) {
+    // No hay token guardado, así que restaurarSesion() resuelve a "no
+    // autenticado" y el router redirige de /splash a /home: el catálogo es
+    // público para invitados (ver app_router.dart). El splash se queda 3 s a
+    // propósito para que se vea el logo; se espera ese tiempo y luego la
+    // transición. No se usa pumpAndSettle porque el spinner del splash anima
+    // indefinidamente.
+    await tester.pump(const Duration(seconds: 3));
+    for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
 

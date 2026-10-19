@@ -33,12 +33,9 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
-            // Sin reglas propias de ProGuard todavía: R8 minificaba y eliminaba
-            // el constructor sin argumentos que Room usa por reflexión para
-            // instanciar WorkDatabase_Impl (dependencia transitiva vieja de
-            // google_mlkit_pose_detection), causando un crash al arrancar.
-            // Se apaga hasta auditar reglas de keep para las ~10 librerías
-            // nativas del proyecto.
+            // R8 apagado hasta auditar las reglas de keep de las dependencias
+            // (sin reglas propias de ProGuard, minificar elimina constructores
+            // que algunas librerías nativas usan por reflexión).
             isMinifyEnabled = false
             isShrinkResources = false
         }

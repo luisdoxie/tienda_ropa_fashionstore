@@ -439,12 +439,19 @@ class _BotonAgregarReserva extends ConsumerWidget {
                             imagenUrl: imagenUrl,
                           ),
                         );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Agregado a tu reserva'),
-                        action: SnackBarAction(label: 'Ver', onPressed: () => context.push('/reserva/confirmar')),
-                      ),
-                    );
+                    // `floating`: con el `fixed` de por defecto, el SnackBar
+                    // queda atado a la geometría del Scaffold que lo mostró
+                    // -si esta pantalla se abandona (atrás) antes de que se
+                    // cierre solo, se queda pegado ahí en vez de cerrarse.
+                    ScaffoldMessenger.of(context)
+                      ..clearSnackBars()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: const Text('Agregado a tu reserva'),
+                          behavior: SnackBarBehavior.floating,
+                          action: SnackBarAction(label: 'Ver', onPressed: () => context.push('/reserva/confirmar')),
+                        ),
+                      );
                   },
             icon: Icon(enCarrito ? Icons.check : Icons.event_note_outlined),
             label: Text(enCarrito ? 'Agregado a la reserva' : 'Agregar a reserva'),
@@ -475,12 +482,19 @@ class _BotonAgregarCarritoState extends ConsumerState<_BotonAgregarCarrito> {
       await ref.read(carritoControllerProvider.notifier).agregar(varianteId: widget.varianteId, cantidad: 1);
       ref.read(trackingServiceProvider).track(tipo: TipoEvento.carrito, varianteId: widget.varianteId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Agregado al carrito'),
-          action: SnackBarAction(label: 'Ver carrito', onPressed: () => context.push('/carrito')),
-        ),
-      );
+      // `floating`: con el `fixed` de por defecto, el SnackBar queda atado
+      // a la geometría del Scaffold que lo mostró -si esta pantalla se
+      // abandona (atrás) antes de que se cierre solo, se queda pegado ahí
+      // en vez de cerrarse.
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Agregado al carrito'),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(label: 'Ver carrito', onPressed: () => context.push('/carrito')),
+          ),
+        );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/fecha_servidor.dart';
 import '../models/reserva.dart';
 import '../state/reservas_providers.dart';
 
@@ -98,7 +99,7 @@ class _ReservaDetalleScreenState extends ConsumerState<ReservaDetalleScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     Text(
-                      item.creadoEn.toLocal().toString(),
+                      formatearFechaHora(item.creadoEn),
                       style: const TextStyle(color: AppColors.textoTenue, fontSize: 12),
                     ),
                     if (item.comentario != null) Text(item.comentario!),

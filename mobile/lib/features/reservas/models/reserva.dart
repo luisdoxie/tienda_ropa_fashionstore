@@ -1,3 +1,5 @@
+import '../../../core/utils/fecha_servidor.dart';
+
 class ReservaDetalle {
   const ReservaDetalle({
     required this.id,
@@ -30,7 +32,7 @@ class ReservaHistorialItem {
     id: json['id'] as int,
     estado: json['estado'] as String,
     comentario: json['comentario'] as String?,
-    creadoEn: DateTime.parse(json['creado_en'] as String),
+    creadoEn: fechaDelServidor(json['creado_en'] as String),
   );
 
   final int id;
@@ -62,7 +64,7 @@ class Reserva {
     fechaVisita: json['fecha_visita'] as String,
     horaVisitaDesde: json['hora_visita_desde'] as String,
     horaVisitaHasta: json['hora_visita_hasta'] as String,
-    fechaExpiracion: DateTime.parse(json['fecha_expiracion'] as String),
+    fechaExpiracion: fechaDelServidor(json['fecha_expiracion'] as String),
     observacion: json['observacion'] as String?,
     detalle: (json['detalle'] as List).map((d) => ReservaDetalle.fromJson(d as Map<String, dynamic>)).toList(),
     historial: (json['historial'] as List)

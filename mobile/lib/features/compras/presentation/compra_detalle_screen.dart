@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/boton_cargando.dart';
+import '../../../core/widgets/fila_monto.dart';
+import '../../../core/utils/fecha_servidor.dart';
 import '../models/envio.dart';
 import '../models/venta.dart';
 import '../state/checkout_controller.dart';
@@ -73,11 +76,11 @@ class CompraDetalleScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(AppSpacing.md),
                   child: Column(
                     children: [
-                      _FilaResumen('Subtotal', venta.subtotal),
-                      if (venta.descuento > 0) _FilaResumen('Descuento', -venta.descuento, color: AppColors.exito),
-                      if (venta.costoEnvio > 0) _FilaResumen('Envío', venta.costoEnvio),
+                      FilaMonto('Subtotal', venta.subtotal),
+                      if (venta.descuento > 0) FilaMonto('Descuento', -venta.descuento, color: AppColors.exito),
+                      if (venta.costoEnvio > 0) FilaMonto('Envío', venta.costoEnvio),
                       const Divider(),
-                      _FilaResumen('Total', venta.total, negrita: true),
+                      FilaMonto('Total', venta.total, negrita: true),
                     ],
                   ),
                 ),
@@ -108,10 +111,6 @@ class _SeguimientoEnvio extends ConsumerWidget {
     'fallido': Icons.error_outline,
   };
 
-  static String _dos(int n) => n.toString().padLeft(2, '0');
-
-  static String _formatear(DateTime f) => '${_dos(f.day)}/${_dos(f.month)}/${f.year} ${_dos(f.hour)}:${_dos(f.minute)}';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final envio = ref.watch(envioDeCompraProvider(ventaId)).valueOrNull;
@@ -140,7 +139,7 @@ class _SeguimientoEnvio extends ConsumerWidget {
                   const SizedBox(height: AppSpacing.xs),
                   if (entregado && envio.fechaEntrega != null)
                     Text(
-                      'Entregado el ${_formatear(envio.fechaEntrega!)}',
+                      'Entregado el ${formatearFechaHora(envio.fechaEntrega!)}',
                       style: const TextStyle(color: AppColors.textoTenue, fontSize: 13),
                     ),
                   if (fallido)
@@ -277,41 +276,11 @@ class _AccionesPendienteState extends ConsumerState<_AccionesPendiente> {
         const SizedBox(height: AppSpacing.sm),
         ElevatedButton(
           onPressed: _ocupado ? null : _pagar,
-          child: _ocupado
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Pagar ahora'),
+          child: _ocupado ? const BotonCargando() : const Text('Pagar ahora'),
         ),
         const SizedBox(height: AppSpacing.sm),
         OutlinedButton(onPressed: _ocupado ? null : _cancelar, child: const Text('Cancelar compra')),
       ],
-    );
-  }
-}
-
-class _FilaResumen extends StatelessWidget {
-  const _FilaResumen(this.etiqueta, this.monto, {this.negrita = false, this.color});
-
-  final String etiqueta;
-  final double monto;
-  final bool negrita;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final estilo = TextStyle(
-      fontWeight: negrita ? FontWeight.w700 : FontWeight.w400,
-      fontSize: negrita ? 16 : 14,
-      color: color ?? AppColors.texto,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(etiqueta, style: estilo),
-          Text('Bs ${monto.toStringAsFixed(2)}', style: estilo),
-        ],
-      ),
     );
   }
 }

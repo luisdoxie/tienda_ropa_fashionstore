@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/mensaje_error.dart';
 import '../../../core/network/providers.dart';
 import '../data/auth_repository.dart';
 import 'auth_state.dart';
@@ -52,7 +53,14 @@ class AuthController extends StateNotifier<AuthState> {
         return;
       }
       state = AuthState(estado: EstadoSesion.autenticado, usuario: usuario);
-    } catch (_) {
+    } catch (e) {
+      if (esSinConexion(e) || esErrorDeServidor(e)) {
+        // No se pudo verificar la sesión (sin red, timeout o 5xx): eso NO es un token inválido. Se conservan los
+        // tokens para que la próxima apertura con conexión la restaure. AuthState no tiene un estado "sin verificar",
+        // así que por ahora la app queda como invitado (catálogo público) sin cerrar la sesión guardada.
+        state = const AuthState(estado: EstadoSesion.noAutenticado);
+        return;
+      }
       await tokenStorage.limpiar();
       state = const AuthState(estado: EstadoSesion.noAutenticado);
     }

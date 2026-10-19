@@ -11,7 +11,7 @@ class EstadoPagoEstado {
   final int intentos;
   // Se agotó el polling sin que la pasarela confirme -- pasa siempre con
   // Libélula en este entorno (es un simulador sin servidor real detrás,
-  // ver pagos/pasarela.py). No es un error: hay que mostrar "pendiente"
+  // ver backend/app/comercial/pasarela.py). No es un error: hay que mostrar "pendiente"
   // con opción de reintentar, nunca dejar la pantalla colgada.
   final bool agotado;
 }

@@ -3,9 +3,7 @@ import '../../../core/network/token_storage.dart';
 import '../models/usuario.dart';
 
 class AuthRepository {
-  AuthRepository({required Dio dio, required TokenStorage tokenStorage})
-    : _dio = dio,
-      _tokenStorage = tokenStorage;
+  AuthRepository({required this._dio, required this._tokenStorage});
 
   final Dio _dio;
   final TokenStorage _tokenStorage;

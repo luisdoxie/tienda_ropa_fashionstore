@@ -4,3 +4,9 @@ DateTime fechaDelServidor(String valor) {
   final tieneZona = valor.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(valor);
   return DateTime.parse(tieneZona ? valor : '${valor}Z').toLocal();
 }
+
+/// "dd/MM/yyyy HH:mm" de una fecha ya en hora local (la que devuelve [fechaDelServidor]).
+String formatearFechaHora(DateTime f) {
+  String dos(int n) => n.toString().padLeft(2, '0');
+  return '${dos(f.day)}/${dos(f.month)}/${f.year} ${dos(f.hour)}:${dos(f.minute)}';
+}

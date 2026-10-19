@@ -9,7 +9,7 @@ import '../state/carrito_controller.dart';
 import '../state/checkout_controller.dart';
 import '../state/compras_providers.dart';
 
-// QR primero y por defecto: Libélula es un simulador que nunca confirma el pago (ver backend/app/pagos/pasarela.py).
+// QR primero y por defecto: Libélula es un simulador que nunca confirma el pago (ver backend/app/comercial/pasarela.py).
 const _metodos = {'qr_online': 'QR', 'paypal': 'PayPal', 'libelula': 'Libélula'};
 
 class PagoScreen extends ConsumerStatefulWidget {
