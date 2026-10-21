@@ -7,18 +7,23 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     ForeignKey,
+    Index,
     Numeric,
     SmallInteger,
     String,
+    Text,
     Table,
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.tenant import EmpresaMixin, EmpresaOpcionalMixin
 
 
 # ---- Seguridad ----
@@ -61,13 +66,25 @@ class Permiso(Base):
     roles: Mapped[list[Rol]] = relationship(secondary=rol_permiso, back_populates="permisos")
 
 
-class Usuario(Base):
+class Usuario(EmpresaOpcionalMixin, Base):
     __tablename__ = "usuario"
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "email", name="uq_usuario_empresa_email"),
+        # Superadministradores (empresa_id NULL): NULL no choca en una UNIQUE
+        # compuesta, por eso su correo se protege con este indice parcial.
+        Index(
+            "ux_usuario_email_plataforma",
+            "email",
+            unique=True,
+            postgresql_where=text("empresa_id IS NULL"),
+            sqlite_where=text("empresa_id IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(60), nullable=False)
     apellido: Mapped[str] = mapped_column(String(60), nullable=False)
-    email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(120), nullable=False)
     telefono: Mapped[str | None] = mapped_column(String(20))
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     ultimo_acceso: Mapped[dt.datetime | None]
@@ -79,7 +96,7 @@ class Usuario(Base):
     cliente: Mapped["Cliente | None"] = relationship(back_populates="usuario", uselist=False)
 
 
-class Cliente(Base):
+class Cliente(EmpresaMixin, Base):
     __tablename__ = "cliente"
     __table_args__ = (
         CheckConstraint("estatura_cm BETWEEN 100 AND 250", name="ck_cliente_estatura"),
@@ -105,7 +122,7 @@ class Cliente(Base):
 # ---- Notificaciones ----
 
 
-class Notificacion(Base):
+class Notificacion(EmpresaMixin, Base):
     __tablename__ = "notificacion"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -121,9 +138,11 @@ class Notificacion(Base):
 # ---- Organización ----
 
 
-class Ciudad(Base):
+class Ciudad(EmpresaMixin, Base):
     __tablename__ = "ciudad"
-    __table_args__ = (UniqueConstraint("nombre", "departamento", name="uq_ciudad_nombre_departamento"),)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "nombre", "departamento", name="uq_ciudad_empresa_nombre_departamento"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -131,12 +150,13 @@ class Ciudad(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Sucursal(Base):
+class Sucursal(EmpresaMixin, Base):
     __tablename__ = "sucursal"
+    __table_args__ = (UniqueConstraint("empresa_id", "codigo", name="uq_sucursal_empresa_codigo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ciudad_id: Mapped[int] = mapped_column(ForeignKey("ciudad.id"), nullable=False)
-    codigo: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(15), nullable=False)
     nombre: Mapped[str] = mapped_column(String(80), nullable=False)
     direccion: Mapped[str] = mapped_column(String(200), nullable=False)
     telefono: Mapped[str | None] = mapped_column(String(20))
@@ -147,7 +167,7 @@ class Sucursal(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class HorarioSucursal(Base):
+class HorarioSucursal(EmpresaMixin, Base):
     __tablename__ = "horario_sucursal"
     __table_args__ = (
         CheckConstraint("dia_semana BETWEEN 1 AND 7", name="ck_horario_dia_semana"),
@@ -162,7 +182,7 @@ class HorarioSucursal(Base):
     hora_cierre: Mapped[dt.time] = mapped_column(Time, nullable=False)
 
 
-class Empleado(Base):
+class Empleado(EmpresaMixin, Base):
     __tablename__ = "empleado"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -172,3 +192,72 @@ class Empleado(Base):
     cargo: Mapped[str | None] = mapped_column(String(60))
     fecha_ingreso: Mapped[dt.date | None]
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+# ---- Empresa y suscripción ----
+
+
+class Empresa(Base):
+    """El tenant. Raíz del aislamiento: no lleva `empresa_id`. `codigo` sale
+    del nombre al crearla, es único y NO cambia aunque cambie el nombre
+    comercial (es lo que identifica a la empresa en el login y en la URL)."""
+
+    __tablename__ = "empresa"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    codigo: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
+    logo_url: Mapped[str | None] = mapped_column(Text)
+    color_acento: Mapped[str | None] = mapped_column(String(7))
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+class Plan(Base):
+    """Catálogo global de planes (lo configura el superadministrador). Los
+    límites y las funcionalidades viven acá y no en el código."""
+
+    __tablename__ = "plan"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    max_sucursales: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    reportes_convencionales: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reportes_ia: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    operacion_offline: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    analitica_ml: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    copias_seguridad: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    gestion_productos: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    gestion_ventas: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reservas: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    max_copias_historial: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    plazo_cambio_horas_defecto: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=24)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class Suscripcion(EmpresaMixin, Base):
+    """Plan contratado por una empresa. Hay una sola NO cancelada por empresa;
+    cambiar de plan cancela la actual y crea otra (queda el historial)."""
+
+    __tablename__ = "suscripcion"
+    __table_args__ = (
+        CheckConstraint(
+            "estado IN ('activa','vencida','suspendida','cancelada')", name="ck_suscripcion_estado"
+        ),
+        CheckConstraint("fecha_vencimiento >= fecha_inicio", name="ck_suscripcion_fechas"),
+        Index(
+            "ux_suscripcion_vigente",
+            "empresa_id",
+            unique=True,
+            postgresql_where=text("estado <> 'cancelada'"),
+            sqlite_where=text("estado <> 'cancelada'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("plan.id"), nullable=False)
+    estado: Mapped[str] = mapped_column(String(15), nullable=False, default="activa")
+    fecha_inicio: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    fecha_vencimiento: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())

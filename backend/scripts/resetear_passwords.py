@@ -27,12 +27,14 @@ from sqlalchemy import select
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ejecutar", action="store_true", help="Escribir de verdad (sin esto es dry-run)")
+    parser.add_argument("--empresa", help="Código de la empresa (por defecto SEED_EMPRESA o 'fashionstore')")
     args = parser.parse_args(argv)
 
     import app.main  # noqa: F401  (registra todos los modelos)
-    from app.core.database import SessionLocal, engine
+    from app.core.database import engine
     from app.plataforma.models import Usuario
     from app.plataforma.repository import UsuarioRepository
+    from scripts._empresa import abrir_sesion
 
     print(f"Base destino: {engine.url.host}:{engine.url.port}/{engine.url.database}")
 
@@ -41,7 +43,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit("Falta NUEVA_PASSWORD (mínimo 8 caracteres)")
 
     repo = UsuarioRepository()
-    db = SessionLocal()
+    db, _empresa = abrir_sesion(args.empresa)
     try:
         usuarios = list(db.scalars(select(Usuario).order_by(Usuario.id)))
         print(f"\n{'id':>4}  {'email':40} {'activo':6}  roles")

@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -21,6 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.tenant import EmpresaMixin
 
 
 # ---- Reservas ----
@@ -35,12 +37,16 @@ class EstadoReserva(Base):
     es_final: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Reserva(Base):
+class Reserva(EmpresaMixin, Base):
     __tablename__ = "reserva"
-    __table_args__ = (CheckConstraint("hora_visita_hasta > hora_visita_desde", name="ck_reserva_horas"),)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_reserva_empresa_codigo"),
+        Index("ix_reserva_empresa_estado_expiracion", "empresa_id", "estado_id", "fecha_expiracion"),
+        CheckConstraint("hora_visita_hasta > hora_visita_desde", name="ck_reserva_horas"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id"), nullable=False)
     sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
     estado_id: Mapped[int] = mapped_column(ForeignKey("estado_reserva.id"), nullable=False)
@@ -59,7 +65,7 @@ class Reserva(Base):
     )
 
 
-class ReservaDetalle(Base):
+class ReservaDetalle(EmpresaMixin, Base):
     __tablename__ = "reserva_detalle"
     __table_args__ = (
         CheckConstraint("cantidad > 0", name="ck_reserva_detalle_cantidad"),
@@ -77,7 +83,7 @@ class ReservaDetalle(Base):
     reserva: Mapped[Reserva] = relationship(back_populates="detalle")
 
 
-class ReservaHistorial(Base):
+class ReservaHistorial(EmpresaMixin, Base):
     __tablename__ = "reserva_historial"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -102,7 +108,7 @@ class EstadoVenta(Base):
     es_final: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Promocion(Base):
+class Promocion(EmpresaMixin, Base):
     __tablename__ = "promocion"
     __table_args__ = (
         CheckConstraint("tipo IN ('porcentaje','monto')", name="ck_promocion_tipo"),
@@ -123,7 +129,7 @@ class Promocion(Base):
     )
 
 
-class PromocionAlcance(Base):
+class PromocionAlcance(EmpresaMixin, Base):
     __tablename__ = "promocion_alcance"
     # La regla "exactamente uno de producto_id/categoria_id/temporada_id"
     # (num_nonnulls(...) = 1 en docs/fashionstore_esquema.sql) se agrega a
@@ -141,16 +147,18 @@ class PromocionAlcance(Base):
 
 
 # Una sola tabla para venta digital y presencial: cambia el canal, no la entidad.
-class Venta(Base):
+class Venta(EmpresaMixin, Base):
     __tablename__ = "venta"
     __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_venta_empresa_codigo"),
         CheckConstraint("canal IN ('digital','presencial')", name="ck_venta_canal"),
         # En venta presencial el cajero es obligatorio.
         CheckConstraint("canal <> 'presencial' OR cajero_id IS NOT NULL", name="ck_venta_cajero_presencial"),
+        Index("ix_venta_empresa_fecha", "empresa_id", "fecha"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     canal: Mapped[str] = mapped_column(String(15), nullable=False)
     cliente_id: Mapped[int | None] = mapped_column(ForeignKey("cliente.id"))
     sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
@@ -168,7 +176,7 @@ class Venta(Base):
     )
 
 
-class VentaDetalle(Base):
+class VentaDetalle(EmpresaMixin, Base):
     __tablename__ = "venta_detalle"
     __table_args__ = (CheckConstraint("cantidad > 0", name="ck_venta_detalle_cantidad"),)
 
@@ -187,7 +195,7 @@ class VentaDetalle(Base):
     venta: Mapped[Venta] = relationship(back_populates="detalle")
 
 
-class Carrito(Base):
+class Carrito(EmpresaMixin, Base):
     __tablename__ = "carrito"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -200,7 +208,7 @@ class Carrito(Base):
     )
 
 
-class CarritoDetalle(Base):
+class CarritoDetalle(EmpresaMixin, Base):
     __tablename__ = "carrito_detalle"
     __table_args__ = (
         CheckConstraint("cantidad > 0", name="ck_carrito_detalle_cantidad"),
@@ -215,12 +223,15 @@ class CarritoDetalle(Base):
     carrito: Mapped[Carrito] = relationship(back_populates="detalle")
 
 
-class Devolucion(Base):
+class Devolucion(EmpresaMixin, Base):
     __tablename__ = "devolucion"
-    __table_args__ = (CheckConstraint("estado IN ('pendiente','aprobada','rechazada')", name="ck_devolucion_estado"),)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_devolucion_empresa_codigo"),
+        CheckConstraint("estado IN ('pendiente','aprobada','rechazada')", name="ck_devolucion_estado"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     venta_id: Mapped[int] = mapped_column(ForeignKey("venta.id"), nullable=False)
     fecha: Mapped[dt.datetime] = mapped_column(server_default=func.now())
     motivo: Mapped[str | None] = mapped_column(String(300))
@@ -232,7 +243,7 @@ class Devolucion(Base):
     )
 
 
-class DevolucionDetalle(Base):
+class DevolucionDetalle(EmpresaMixin, Base):
     __tablename__ = "devolucion_detalle"
     __table_args__ = (CheckConstraint("cantidad > 0", name="ck_devolucion_detalle_cantidad"),)
 
@@ -272,7 +283,7 @@ class EstadoPago(Base):
     nombre: Mapped[str] = mapped_column(String(60), nullable=False)
 
 
-class Pago(Base):
+class Pago(EmpresaMixin, Base):
     __tablename__ = "pago"
     __table_args__ = (CheckConstraint("monto > 0", name="ck_pago_monto"),)
 
@@ -289,7 +300,7 @@ class Pago(Base):
 # ni se borra desde el código (igual que movimiento_inventario). Un
 # webhook duplicado agrega una fila más acá, no reemplaza la anterior --
 # es justamente lo que permite auditar que llegó dos veces.
-class TransaccionPasarela(Base):
+class TransaccionPasarela(EmpresaMixin, Base):
     __tablename__ = "transaccion_pasarela"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -305,7 +316,7 @@ class TransaccionPasarela(Base):
 # ---- Entregas ----
 
 
-class ZonaEnvio(Base):
+class ZonaEnvio(EmpresaMixin, Base):
     __tablename__ = "zona_envio"
     __table_args__ = (CheckConstraint("tarifa_base >= 0", name="ck_zona_envio_tarifa_base"),)
 
@@ -318,7 +329,7 @@ class ZonaEnvio(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class ReglaTarifaEnvio(Base):
+class ReglaTarifaEnvio(EmpresaMixin, Base):
     __tablename__ = "regla_tarifa_envio"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -328,7 +339,7 @@ class ReglaTarifaEnvio(Base):
     recargo: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
 
 
-class DireccionCliente(Base):
+class DireccionCliente(EmpresaMixin, Base):
     __tablename__ = "direccion_cliente"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -343,7 +354,7 @@ class DireccionCliente(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Envio(Base):
+class Envio(EmpresaMixin, Base):
     __tablename__ = "envio"
     __table_args__ = (
         CheckConstraint(

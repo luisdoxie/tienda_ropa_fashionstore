@@ -19,7 +19,7 @@ def _usuario_id(client, headers) -> int:
 def test_la_tabla_sigue_siendo_notificacion_y_esta_registrada_en_el_metadata():
     assert Notificacion.__tablename__ == "notificacion"
     assert Base.metadata.tables["notificacion"] is Notificacion.__table__
-    assert {fk.target_fullname for fk in Notificacion.__table__.foreign_keys} == {"usuario.id"}
+    assert {fk.target_fullname for fk in Notificacion.__table__.foreign_keys} == {"usuario.id", "empresa.id"}
 
 
 def test_listar_devuelve_las_del_usuario_de_la_mas_nueva_a_la_mas_vieja(client, db_session, cliente_headers):

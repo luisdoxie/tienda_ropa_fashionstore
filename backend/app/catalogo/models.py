@@ -23,12 +23,13 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.tenant import EmpresaMixin
 
 
 # ---- Catálogo ----
 
 
-class Categoria(Base):
+class Categoria(EmpresaMixin, Base):
     __tablename__ = "categoria"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -38,34 +39,39 @@ class Categoria(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Talla(Base):
+class Talla(EmpresaMixin, Base):
     __tablename__ = "talla"
+    __table_args__ = (UniqueConstraint("empresa_id", "codigo", name="uq_talla_empresa_codigo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(10), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(String(40))
     orden: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
 
 
-class Color(Base):
+class Color(EmpresaMixin, Base):
     __tablename__ = "color"
+    __table_args__ = (UniqueConstraint("empresa_id", "nombre", name="uq_color_empresa_nombre"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    nombre: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(40), nullable=False)
     codigo_hex: Mapped[str | None] = mapped_column(String(7))
 
 
-class Material(Base):
+class Material(EmpresaMixin, Base):
     __tablename__ = "material"
+    __table_args__ = (UniqueConstraint("empresa_id", "nombre", name="uq_material_empresa_nombre"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    nombre: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(40), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(String(200))
 
 
-class Temporada(Base):
+class Temporada(EmpresaMixin, Base):
     __tablename__ = "temporada"
-    __table_args__ = (UniqueConstraint("nombre", "anio", name="uq_temporada_nombre_anio"),)
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "nombre", "anio", name="uq_temporada_empresa_nombre_anio"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(60), nullable=False)
@@ -75,7 +81,7 @@ class Temporada(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Coleccion(Base):
+class Coleccion(EmpresaMixin, Base):
     __tablename__ = "coleccion"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -85,9 +91,10 @@ class Coleccion(Base):
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Producto(Base):
+class Producto(EmpresaMixin, Base):
     __tablename__ = "producto"
     __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_producto_empresa_codigo"),
         CheckConstraint("genero IN ('hombre','mujer','unisex','nino')", name="ck_producto_genero"),
         CheckConstraint("precio_base >= 0", name="ck_producto_precio_base"),
         Index("ix_producto_categoria", "categoria_id", postgresql_where=text("activo")),
@@ -96,7 +103,7 @@ class Producto(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(30), nullable=False)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text)
     categoria_id: Mapped[int] = mapped_column(ForeignKey("categoria.id"), nullable=False)
@@ -119,11 +126,13 @@ class Producto(Base):
 
 # La variante es la unidad real de negocio: el stock, el precio final, la
 # reserva y la venta cuelgan de acá, nunca del producto.
-class ProductoVariante(Base):
+class ProductoVariante(EmpresaMixin, Base):
     __tablename__ = "producto_variante"
     __table_args__ = (
         CheckConstraint("precio IS NULL OR precio >= 0", name="ck_variante_precio"),
         UniqueConstraint("producto_id", "talla_id", "color_id", name="uq_variante_producto_talla_color"),
+        UniqueConstraint("empresa_id", "sku", name="uq_variante_empresa_sku"),
+        UniqueConstraint("empresa_id", "codigo_barras", name="uq_variante_empresa_codigo_barras"),
         Index("ix_variante_producto", "producto_id", postgresql_where=text("activo")),
     )
 
@@ -131,15 +140,15 @@ class ProductoVariante(Base):
     producto_id: Mapped[int] = mapped_column(ForeignKey("producto.id", ondelete="CASCADE"), nullable=False)
     talla_id: Mapped[int] = mapped_column(ForeignKey("talla.id"), nullable=False)
     color_id: Mapped[int] = mapped_column(ForeignKey("color.id"), nullable=False)
-    sku: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    codigo_barras: Mapped[str | None] = mapped_column(String(40), unique=True)
+    sku: Mapped[str] = mapped_column(String(40), nullable=False)
+    codigo_barras: Mapped[str | None] = mapped_column(String(40))
     precio: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     producto: Mapped[Producto] = relationship(back_populates="variantes")
 
 
-class ProductoImagen(Base):
+class ProductoImagen(EmpresaMixin, Base):
     __tablename__ = "producto_imagen"
     __table_args__ = (Index("ix_producto_imagen_producto", "producto_id"),)
 
@@ -152,7 +161,7 @@ class ProductoImagen(Base):
 
 
 # Rangos corporales por talla. Base de la recomendación de talla (CU-11).
-class TablaMedida(Base):
+class TablaMedida(EmpresaMixin, Base):
     __tablename__ = "tabla_medida"
     __table_args__ = (
         CheckConstraint(
@@ -172,7 +181,7 @@ class TablaMedida(Base):
     largo_cm: Mapped[Decimal | None] = mapped_column(Numeric(5, 1))
 
 
-class Favorito(Base):
+class Favorito(EmpresaMixin, Base):
     __tablename__ = "favorito"
 
     cliente_id: Mapped[int] = mapped_column(ForeignKey("cliente.id", ondelete="CASCADE"), primary_key=True)
@@ -187,10 +196,11 @@ class Favorito(Base):
 # ---- Inventario ----
 
 
-class Stock(Base):
+class Stock(EmpresaMixin, Base):
     __tablename__ = "stock"
     __table_args__ = (
         UniqueConstraint("variante_id", "sucursal_id", name="uq_stock_variante_sucursal"),
+        Index("ix_stock_empresa_sucursal", "empresa_id", "sucursal_id"),
         CheckConstraint("cantidad_fisica >= 0", name="ck_stock_cantidad_fisica"),
         CheckConstraint("cantidad_reservada >= 0", name="ck_stock_cantidad_reservada"),
         CheckConstraint("cantidad_reservada <= cantidad_fisica", name="ck_stock_reservada_no_supera_fisica"),
@@ -232,7 +242,7 @@ class TipoMovimiento(Base):
 
 # Libro inmutable: nunca se edita ni se borra desde el código. El stock es
 # la suma de sus movimientos (ver catalogo.politicas.actualizar_stock_operacion).
-class MovimientoInventario(Base):
+class MovimientoInventario(EmpresaMixin, Base):
     __tablename__ = "movimiento_inventario"
     __table_args__ = (CheckConstraint("cantidad <> 0", name="ck_movimiento_cantidad"),)
 
@@ -256,9 +266,10 @@ class MovimientoInventario(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class Transferencia(Base):
+class Transferencia(EmpresaMixin, Base):
     __tablename__ = "transferencia"
     __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_transferencia_empresa_codigo"),
         CheckConstraint("sucursal_origen_id <> sucursal_destino_id", name="ck_transferencia_sucursales"),
         CheckConstraint(
             "estado IN ('pendiente','en_transito','recibida','anulada')", name="ck_transferencia_estado"
@@ -266,7 +277,7 @@ class Transferencia(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     sucursal_origen_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
     sucursal_destino_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
@@ -279,7 +290,7 @@ class Transferencia(Base):
     )
 
 
-class TransferenciaDetalle(Base):
+class TransferenciaDetalle(EmpresaMixin, Base):
     __tablename__ = "transferencia_detalle"
     __table_args__ = (CheckConstraint("cantidad > 0", name="ck_transferencia_detalle_cantidad"),)
 
@@ -296,12 +307,13 @@ class TransferenciaDetalle(Base):
 # ---- Abastecimiento ----
 
 
-class Proveedor(Base):
+class Proveedor(EmpresaMixin, Base):
     __tablename__ = "proveedor"
+    __table_args__ = (UniqueConstraint("empresa_id", "nit", name="uq_proveedor_empresa_nit"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
-    nit: Mapped[str | None] = mapped_column(String(20), unique=True)
+    nit: Mapped[str | None] = mapped_column(String(20))
     contacto: Mapped[str | None] = mapped_column(String(80))
     telefono: Mapped[str | None] = mapped_column(String(20))
     email: Mapped[str | None] = mapped_column(String(120))
@@ -311,7 +323,7 @@ class Proveedor(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class ProductoProveedor(Base):
+class ProductoProveedor(EmpresaMixin, Base):
     """Sin `activo`: es una relación de referencia (qué proveedor surte qué
     producto y a qué costo referencial), se quita con DELETE físico."""
 
@@ -325,16 +337,17 @@ class ProductoProveedor(Base):
     dias_entrega: Mapped[int | None] = mapped_column(SmallInteger)
 
 
-class OrdenCompra(Base):
+class OrdenCompra(EmpresaMixin, Base):
     __tablename__ = "orden_compra"
     __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_orden_compra_empresa_codigo"),
         CheckConstraint(
             "estado IN ('borrador','enviada','parcial','recibida','anulada')", name="ck_orden_compra_estado"
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     proveedor_id: Mapped[int] = mapped_column(ForeignKey("proveedor.id"), nullable=False)
     sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
     fecha_emision: Mapped[dt.date] = mapped_column(Date, server_default=func.current_date())
@@ -349,7 +362,7 @@ class OrdenCompra(Base):
     )
 
 
-class OrdenCompraDetalle(Base):
+class OrdenCompraDetalle(EmpresaMixin, Base):
     __tablename__ = "orden_compra_detalle"
     __table_args__ = (
         CheckConstraint("cantidad > 0", name="ck_orden_compra_detalle_cantidad"),
@@ -372,11 +385,12 @@ class OrdenCompraDetalle(Base):
 # (ver catalogo.casos_uso.cu08_gestionar_abastecimiento
 # .RegistrarRecepcionMercaderia.registrar, que llama a
 # catalogo.politicas.actualizar_stock_operacion por cada línea).
-class Recepcion(Base):
+class Recepcion(EmpresaMixin, Base):
     __tablename__ = "recepcion"
+    __table_args__ = (UniqueConstraint("empresa_id", "codigo", name="uq_recepcion_empresa_codigo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
     orden_compra_id: Mapped[int | None] = mapped_column(ForeignKey("orden_compra.id"))
     proveedor_id: Mapped[int] = mapped_column(ForeignKey("proveedor.id"), nullable=False)
     sucursal_id: Mapped[int] = mapped_column(ForeignKey("sucursal.id"), nullable=False)
@@ -389,7 +403,7 @@ class Recepcion(Base):
     )
 
 
-class RecepcionDetalle(Base):
+class RecepcionDetalle(EmpresaMixin, Base):
     __tablename__ = "recepcion_detalle"
     __table_args__ = (
         CheckConstraint("cantidad > 0", name="ck_recepcion_detalle_cantidad"),
@@ -408,7 +422,7 @@ class RecepcionDetalle(Base):
 # ---- Probador ----
 
 
-class ActivoProbador(Base):
+class ActivoProbador(EmpresaMixin, Base):
     __tablename__ = "activo_probador"
     __table_args__ = (
         CheckConstraint("tipo IN ('overlay_2d','flatlay_ia','thumb')", name="ck_activo_probador_tipo"),
@@ -439,7 +453,7 @@ class ActivoProbador(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class ProbadorGeneracion(Base):
+class ProbadorGeneracion(EmpresaMixin, Base):
     """Caché del modo generativo: evita pagar dos veces la misma
     combinación foto+prenda. La foto original del cliente NUNCA se
     guarda acá ni en ningún otro lado — solo su hash y, si la

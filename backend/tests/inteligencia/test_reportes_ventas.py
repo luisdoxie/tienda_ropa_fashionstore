@@ -8,14 +8,14 @@ from sqlalchemy import text
 
 from app.core.deps import ParametrosPeriodo
 from app.comercial import politicas as comercial_politicas
-from app.comercial.repository import VW_VENTAS_DETALLE_SQL
+from app.comercial.repository import VW_VENTAS_DETALLE_V2_SQL
 from tests.comercial.test_ventas import _pagar_en_caja, _payload_presencial, contexto  # noqa: F401
 
 
 @pytest.fixture()
 def periodo(db_session) -> ParametrosPeriodo:
     # conftest solo crea la vista de inventario; esta la necesitan los reportes.
-    db_session.execute(text(VW_VENTAS_DETALLE_SQL))
+    db_session.execute(text(VW_VENTAS_DETALLE_V2_SQL))
     db_session.commit()
     hoy = dt.date.today()
     return ParametrosPeriodo(desde=hoy - dt.timedelta(days=1), hasta=hoy + dt.timedelta(days=1))

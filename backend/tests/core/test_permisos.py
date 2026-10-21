@@ -13,6 +13,8 @@ VALORES_ESPERADOS = {
     "PERMISO_ROLES": "roles.gestionar",
     "PERMISO_ORGANIZACION": "organizacion.gestionar",
     "PERMISO_ALCANCE_GLOBAL": "organizacion.gestionar",
+    "PERMISO_PLATAFORMA": "plataforma.gestionar",
+    "PERMISO_EMPRESA": "empresa.gestionar",
     "PERMISO_CATALOGO": "catalogo.gestionar",
     "PERMISO_CATALOGO_VER": "catalogo.ver",
     "PERMISO_INVENTARIO_VER": "inventario.ver",

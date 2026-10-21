@@ -542,6 +542,8 @@ class FavoritoRepository:
 # sucursal (de `plataforma`): es una vista de reportes ya definida en el
 # esquema, no una consulta cruda del código a tablas de otro paquete, así
 # que vive acá igual que la migración que la crea.
+# NO EDITAR: la usa la migración 14ba109668a9 (congelada como V1). La vista
+# con empresa_id es VW_INVENTARIO_CONSOLIDADO_V2_SQL.
 VW_INVENTARIO_CONSOLIDADO_SQL = """
 CREATE VIEW vw_inventario_consolidado AS
 SELECT  p.id                AS producto_id,
@@ -564,6 +566,35 @@ JOIN producto p          ON p.id = v.producto_id
 JOIN talla t             ON t.id = v.talla_id
 JOIN color c             ON c.id = v.color_id
 JOIN sucursal s          ON s.id = st.sucursal_id
+"""
+
+# V2 (multitenant, E01): igual que V1 más `empresa_id` AL FINAL de la lista de
+# columnas y cada JOIN exige la misma empresa. La crea la migración
+# multitenant_empresa_plan_suscripcion, que lleva este SQL copiado (embebido);
+# tests/plataforma/test_vistas_empresa.py comprueba que ambos coinciden.
+VW_INVENTARIO_CONSOLIDADO_V2_SQL = """
+CREATE VIEW vw_inventario_consolidado AS
+SELECT  p.id                AS producto_id,
+        p.nombre            AS producto,
+        v.id                AS variante_id,
+        v.sku,
+        t.codigo            AS talla,
+        c.nombre            AS color,
+        s.id                AS sucursal_id,
+        s.nombre            AS sucursal,
+        st.cantidad_fisica,
+        st.cantidad_reservada,
+        st.cantidad_disponible,
+        st.stock_minimo,
+        st.costo_promedio,
+        (st.cantidad_fisica * st.costo_promedio) AS valor_inventario,
+        st.empresa_id       AS empresa_id
+FROM stock st
+JOIN producto_variante v ON v.id = st.variante_id AND v.empresa_id = st.empresa_id
+JOIN producto p          ON p.id = v.producto_id AND p.empresa_id = st.empresa_id
+JOIN talla t             ON t.id = v.talla_id AND t.empresa_id = st.empresa_id
+JOIN color c             ON c.id = v.color_id AND c.empresa_id = st.empresa_id
+JOIN sucursal s          ON s.id = st.sucursal_id AND s.empresa_id = st.empresa_id
 """
 
 

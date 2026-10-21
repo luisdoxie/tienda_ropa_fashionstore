@@ -535,10 +535,12 @@ def seed(db: Session, *, ejecutar: bool, password: str | None) -> Resumen:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ejecutar", action="store_true", help="Escribir de verdad (sin esto es dry-run)")
+    parser.add_argument("--empresa", help="Código de la empresa (por defecto SEED_EMPRESA o 'fashionstore')")
     args = parser.parse_args(argv)
 
     import app.main  # noqa: F401  (registra todos los modelos)
-    from app.core.database import SessionLocal, engine
+    from app.core.database import engine
+    from scripts._empresa import abrir_sesion
 
     print(f"Base destino: {engine.url.host}:{engine.url.port}/{engine.url.database}")
 
@@ -546,7 +548,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.ejecutar and (password is None or len(password) < 8):
         sys.exit("Falta SEED_PASSWORD_INICIAL (mínimo 8 caracteres) para la contraseña inicial del staff")
 
-    db = SessionLocal()
+    db, _empresa = abrir_sesion(args.empresa)
     try:
         resumen = seed(db, ejecutar=args.ejecutar, password=password)
     finally:

@@ -82,9 +82,13 @@ def test_seed_operativo_crea_todo_consistente_e_idempotente(db_session):
         assert stock.costo_promedio > 0
         assert stock.stock_maximo is not None
 
-    # El admin tiene todos los permisos; el cajero queda en su sucursal.
+    # El admin tiene todos los permisos de su empresa (20: los 19 de negocio
+    # mas empresa.gestionar; NO plataforma.gestionar, que es del
+    # superadministrador); el cajero queda en su sucursal.
     admin = db_session.scalar(select(Usuario).where(Usuario.email == "admin@fashionstore.bo"))
-    assert len(permisos_de_usuario(db_session, admin.id)) == 19
+    permisos_admin = permisos_de_usuario(db_session, admin.id)
+    assert len(permisos_admin) == 20
+    assert "plataforma.gestionar" not in permisos_admin
     cajero = db_session.scalar(select(Usuario).where(Usuario.email == "cajero.centro@fashionstore.bo"))
     empleado = db_session.scalar(select(Empleado).where(Empleado.usuario_id == cajero.id))
     centro = db_session.scalar(select(Sucursal).where(Sucursal.codigo == "SC-CENTRO"))

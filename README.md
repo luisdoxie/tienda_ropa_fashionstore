@@ -103,10 +103,14 @@ Hecho:
   ventas, rendimiento y pruebas de red de seguridad.
 - Cimientos para multitenant y offline: unidad de trabajo (`commit=False`),
   punto único de alcance por empresa en `CRUDBase`, constantes de permisos.
+- Modelo multitenant (etapa E01): tablas `empresa`, `plan` y `suscripcion`,
+  `empresa_id` en las 50 tablas propias de cada empresa, llaves únicas por
+  empresa, rol `superadministrador` y vistas SQL conscientes de la empresa. La
+  base real tiene ahora 62 tablas.
 
 Por construir, en este orden:
-1. Multitenant y planes (CU-04): empresa en cada tabla, filtro automático por
-   empresa, llaves únicas por empresa.
+1. Multitenant y planes (CU-04): filtro automático por empresa, empresa en el
+   token de sesión, gestión de empresas, planes y suscripciones.
 2. Sincronización offline (CU-25): idempotencia, fecha de la operación y lotes
    atómicos. PWA con IndexedDB y app Flutter con SQLite, incluido el modo
    vendedor/cajero.
@@ -114,10 +118,10 @@ Por construir, en este orden:
    probador.
 4. Pruebas, rendimiento y documentación ICONIX.
 
-Pruebas: 633 en el backend y 132 en el móvil (`flutter test`). Las del backend
-corren con `pytest`: 624 en SQLite en memoria y 9 en PostgreSQL real
+Pruebas: 699 en el backend y 132 en el móvil (`flutter test`). Las del backend
+corren con `pytest`: 680 en SQLite en memoria y 19 en PostgreSQL real
 (`backend/tests/postgres/`: esquema, bloqueos de stock, cancelar contra
-expirar reservas, deadlocks). Estas últimas se activan con la variable
+expirar reservas, deadlocks y migración multitenant con datos). Estas últimas se activan con la variable
 `TEST_DATABASE_URL` apuntando a una base cuyo nombre termine en `_test`; si
 falta, se omiten.
 

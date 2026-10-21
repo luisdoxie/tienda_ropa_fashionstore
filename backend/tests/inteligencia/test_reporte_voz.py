@@ -24,7 +24,7 @@ from app.inteligencia.schemas import (
     ReporteVentasRespuesta,
     ResumenVentas,
 )
-from app.comercial.repository import VW_VENTAS_DETALLE_SQL
+from app.comercial.repository import VW_VENTAS_DETALLE_V2_SQL
 from tests.conftest import crear_staff
 from tests.comercial.test_ventas import _pagar_en_caja, _payload_presencial, contexto  # noqa: F401
 
@@ -47,7 +47,7 @@ def _limpiar_limite():
 @pytest.fixture()
 def vista_ventas(db_session):
     # conftest solo crea la vista de inventario; los reportes de ventas necesitan esta.
-    db_session.execute(text(VW_VENTAS_DETALLE_SQL))
+    db_session.execute(text(VW_VENTAS_DETALLE_V2_SQL))
     db_session.commit()
 
 

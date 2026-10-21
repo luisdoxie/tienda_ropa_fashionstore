@@ -1,3 +1,4 @@
+import datetime as dt
 import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
@@ -11,7 +12,7 @@ os.environ.setdefault("PAYPAL_WEBHOOK_SECRET", "secreto-paypal-de-pruebas")
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -19,14 +20,17 @@ from app.core.database import Base, get_db
 from app.core.rate_limit import limiter
 from app.main import app
 from app.catalogo import models as _catalogo_models  # noqa: F401  (registra las tablas)
-from app.catalogo.repository import VW_INVENTARIO_CONSOLIDADO_SQL
+from app.catalogo.repository import VW_INVENTARIO_CONSOLIDADO_V2_SQL
 from app.comercial import models as _comercial_models  # noqa: F401  (registra las tablas)
 from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
+from app.core.tenant import CLAVE_EMPRESA, fijar_empresa
+from app.plataforma.models import Empresa, Plan, Suscripcion
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from scripts.seed_entregas import seed as seed_entregas
 from scripts.seed_inventario import seed as seed_inventario
 from scripts.seed_pagos import seed as seed_pagos
+from scripts.seed_planes import sembrar_planes
 from scripts.seed_reservas import seed as seed_reservas
 from scripts.seed_seguridad import seed as seed_seguridad
 from scripts.seed_ventas import seed as seed_ventas
@@ -43,6 +47,36 @@ def _limpiar_limite_de_trafico():
     limiter.reset()
     yield
     limiter.reset()
+
+
+def crear_empresa(db, codigo: str, plan: str = "profesional", nombre: str | None = None) -> Empresa:
+    """Crea una empresa con su suscripción activa del `plan` dado (vence en 365
+    días). Los planes ya existen (la fixture `db_session` los siembra). NO cambia
+    la empresa fijada en la sesión: la suscripción se crea con la empresa nueva
+    y la fijada se restaura al terminar."""
+    empresa = Empresa(nombre=nombre or codigo, codigo=codigo)
+    db.add(empresa)
+    db.flush()
+    plan_id = db.scalar(select(Plan.id).where(Plan.codigo == plan))
+    assert plan_id is not None, f"El plan '{plan}' no existe"
+    hoy = dt.date.today()
+    fijada = db.info.pop(CLAVE_EMPRESA, None)
+    try:
+        db.add(
+            Suscripcion(
+                empresa_id=empresa.id,
+                plan_id=plan_id,
+                estado="activa",
+                fecha_inicio=hoy,
+                fecha_vencimiento=hoy + dt.timedelta(days=365),
+            )
+        )
+        db.flush()
+    finally:
+        if fijada is not None:
+            db.info[CLAVE_EMPRESA] = fijada
+    db.commit()
+    return empresa
 
 
 @pytest.fixture()
@@ -69,9 +103,28 @@ def db_session():
 
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
-        conn.execute(text(VW_INVENTARIO_CONSOLIDADO_SQL))
+        conn.execute(text(VW_INVENTARIO_CONSOLIDADO_V2_SQL))
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = TestingSessionLocal()
+    # El mundo de una sola empresa (E01): los planes, la empresa 'fashionstore'
+    # (id 1) con su suscripción y la empresa fijada en la sesión, ANTES de los
+    # seeds, para que las pruebas existentes no cambien.
+    sembrar_planes(session)
+    empresa = Empresa(nombre="FashionStore", codigo="fashionstore")
+    session.add(empresa)
+    session.flush()
+    hoy = dt.date.today()
+    session.add(
+        Suscripcion(
+            empresa_id=empresa.id,
+            plan_id=session.scalar(select(Plan.id).where(Plan.codigo == "profesional")),
+            estado="activa",
+            fecha_inicio=hoy,
+            fecha_vencimiento=hoy + dt.timedelta(days=365),
+        )
+    )
+    session.commit()
+    fijar_empresa(session, empresa.id)
     seed_seguridad(session)
     seed_inventario(session)
     seed_reservas(session)

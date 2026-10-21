@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
 from app.catalogo.models import Material, Talla
 
 TALLAS: list[tuple[str, str, int]] = [
@@ -48,7 +47,9 @@ def seed(db: Session) -> None:
 
 
 if __name__ == "__main__":
-    session = SessionLocal()
+    from scripts._empresa import abrir_sesion
+
+    session, _empresa = abrir_sesion()
     try:
         seed(session)
         print("Seed de catálogo aplicado.")

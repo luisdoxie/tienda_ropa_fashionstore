@@ -15,6 +15,7 @@ que el nombre de la base debe terminar en `_test`; de lo contrario, las pruebas
 se niegan a correr. Nunca apuntar a `fashionstore_dev` ni a producción.
 """
 
+import datetime as dt
 import os
 import subprocess
 import sys
@@ -27,18 +28,24 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import get_db
+from app.core.tenant import CLAVE_EMPRESA, fijar_empresa
 from app.main import app
+from app.plataforma.models import Empresa, Suscripcion
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from scripts.seed_entregas import seed as seed_entregas
 from scripts.seed_inventario import seed as seed_inventario
 from scripts.seed_pagos import seed as seed_pagos
+from scripts.seed_planes import sembrar_planes
 from scripts.seed_reservas import seed as seed_reservas
 from scripts.seed_seguridad import seed as seed_seguridad
 from scripts.seed_ventas import seed as seed_ventas
 
 DIRECTORIO_BACKEND = Path(__file__).resolve().parents[2]
 CLAVE = "claveSegura123"
+CODIGO_EMPRESA = "fashionstore"
+# Tras `TRUNCATE ... RESTART IDENTITY` la primera empresa sembrada siempre es la 1.
+EMPRESA_ID_PG = 1
 
 
 @pytest.fixture(scope="session")
@@ -55,25 +62,36 @@ def url_pg() -> str:
     return url
 
 
-@pytest.fixture(scope="session")
-def engine_pg(url_pg):
-    """Recrea el esquema desde cero con `alembic upgrade head`: así cada
-    ejecución también prueba que la cadena completa de migraciones se aplica."""
-    engine = create_engine(url_pg, pool_pre_ping=True)
-    with engine.begin() as conexion:
-        conexion.execute(text("DROP SCHEMA public CASCADE"))
-        conexion.execute(text("CREATE SCHEMA public"))
-
-    entorno = {**os.environ, "DATABASE_URL": url_pg, "PYTHONPATH": str(DIRECTORIO_BACKEND)}
+def ejecutar_alembic(url: str, *argumentos: str) -> subprocess.CompletedProcess:
+    """Corre `alembic <argumentos>` contra `url` (siempre una base `_test`)."""
+    assert (make_url(url).database or "").endswith("_test"), "alembic solo contra bases _test"
+    entorno = {**os.environ, "DATABASE_URL": url, "PYTHONPATH": str(DIRECTORIO_BACKEND)}
     entorno.setdefault("JWT_SECRET_KEY", "clave-de-pruebas")
-    resultado = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", *argumentos],
         cwd=DIRECTORIO_BACKEND,
         env=entorno,
         capture_output=True,
         text=True,
     )
-    assert resultado.returncode == 0, f"alembic upgrade head falló:\n{resultado.stdout}\n{resultado.stderr}"
+
+
+def recrear_esquema(engine, url: str, revision: str = "head") -> None:
+    """Vacía el esquema `public` y aplica las migraciones hasta `revision`."""
+    assert (engine.url.database or "").endswith("_test"), "el esquema solo se vacía en bases _test"
+    with engine.begin() as conexion:
+        conexion.execute(text("DROP SCHEMA public CASCADE"))
+        conexion.execute(text("CREATE SCHEMA public"))
+    resultado = ejecutar_alembic(url, "upgrade", revision)
+    assert resultado.returncode == 0, f"alembic upgrade {revision} falló:\n{resultado.stdout}\n{resultado.stderr}"
+
+
+@pytest.fixture(scope="session")
+def engine_pg(url_pg):
+    """Recrea el esquema desde cero con `alembic upgrade head`: así cada
+    ejecución también prueba que la cadena completa de migraciones se aplica."""
+    engine = create_engine(url_pg, pool_pre_ping=True)
+    recrear_esquema(engine, url_pg)
 
     yield engine
     engine.dispose()
@@ -81,12 +99,40 @@ def engine_pg(url_pg):
 
 @pytest.fixture(scope="session")
 def fabrica_pg(engine_pg):
-    return sessionmaker(bind=engine_pg, autoflush=False, autocommit=False)
+    """Sesiones ya fijadas en la empresa de pruebas ('fashionstore', id 1): las
+    tablas de cada empresa exigen `empresa_id` al insertar y todavía no hay
+    token que la fije (eso llega con el filtrado por empresa)."""
+    return sessionmaker(
+        bind=engine_pg, autoflush=False, autocommit=False, info={CLAVE_EMPRESA: EMPRESA_ID_PG}
+    )
+
+
+def sembrar_empresa_de_pruebas(db) -> Empresa:
+    """Planes + empresa 'fashionstore' con suscripción activa del plan
+    profesional. El TRUNCATE de `base_limpia` también borra los planes y la
+    empresa que dejó la migración, así que se vuelven a crear."""
+    planes = sembrar_planes(db)
+    empresa = Empresa(nombre="FashionStore", codigo=CODIGO_EMPRESA, activo=True)
+    db.add(empresa)
+    db.flush()
+    hoy = dt.date.today()
+    db.add(
+        Suscripcion(
+            empresa_id=empresa.id,
+            plan_id=planes["profesional"].id,
+            estado="activa",
+            fecha_inicio=hoy,
+            fecha_vencimiento=hoy + dt.timedelta(days=365),
+        )
+    )
+    db.flush()
+    return empresa
 
 
 @pytest.fixture(autouse=True)
 def base_limpia(engine_pg, fabrica_pg):
-    """Cada prueba parte de tablas vacías con los catálogos sembrados. No se
+    """Cada prueba parte de tablas vacías con los catálogos sembrados, los
+    planes y la empresa de pruebas. No se
     usa el rollback por prueba de la suite en SQLite: acá las pruebas de
     concurrencia necesitan transacciones que de verdad se confirmen."""
     with engine_pg.begin() as conexion:
@@ -96,6 +142,10 @@ def base_limpia(engine_pg, fabrica_pg):
         conexion.execute(text("TRUNCATE TABLE " + ", ".join(f'"{t}"' for t in tablas) + " RESTART IDENTITY CASCADE"))
 
     with fabrica_pg() as db:
+        empresa = sembrar_empresa_de_pruebas(db)
+        assert empresa.id == EMPRESA_ID_PG
+        fijar_empresa(db, empresa.id)
+        db.commit()
         seed_seguridad(db)
         seed_inventario(db)
         seed_reservas(db)

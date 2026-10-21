@@ -28,8 +28,9 @@ Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
 Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
 (más `sincronizacion`, pendiente de crear, para el offline del segundo parcial):
 - `plataforma`: seguridad (autenticación, usuarios, roles, permisos, clientes)
-  y organización (ciudades, sucursales, empleados). Aquí irán empresa, plan y
-  suscripción (multitenant).
+  y organización (ciudades, sucursales, empleados). Aquí viven también los
+  modelos de empresa, plan y suscripción (multitenant); su gestión (CU-04)
+  está sin implementar.
 - `catalogo`: catálogo, inventario, abastecimiento y probador virtual
   (solo modo generativo).
 - `comercial`: reservas, ventas, pagos y entregas.
@@ -153,15 +154,47 @@ que CU-08 referencia de forma opcional). Se implementan con su CRUD normal.
     actuales de bcrypt.
 11. La versión de Python es 3.13, fijada con `.python-version` en la raíz
     del backend para que el entorno local y Railway coincidan.
+12. Un paquete nunca fija ni cambia la empresa de la sesión fuera de
+    `core/tenant.py` (`fijar_empresa`). El `empresa_id` de un registro nuevo
+    lo rellena el evento `before_flush` de ese módulo; no se asigna a mano.
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(60 tablas en el SQL; la base real tiene 59: `bitacora` está en el SQL pero nunca
-se implementó, sin modelo ni migración, y `sesion_probador` se eliminó con el modo
-espejo). No inventar
+(60 tablas en el SQL, que es el del primer parcial). La base real tiene 62:
+las 59 de antes (`bitacora` está en el SQL pero nunca se implementó, y
+`sesion_probador` se eliminó con el modo espejo) más `empresa`, `plan` y
+`suscripcion` del segundo parcial, que no están en el SQL. No inventar
 tablas ni columnas nuevas sin pedirlo explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
+
+## Multitenant
+Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
+NO es un tenant: una empresa tiene varias). Estado: modelo y migración hechos
+(etapa E01); el filtrado automático de lecturas y el tenant desde el token son
+de las etapas E02 y E03, así que hasta entonces el backend no se despliega solo.
+- Clasificación de las 62 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
+  salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
+  globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
+  `estado_reserva`, `estado_venta`, `metodo_pago`, `estado_pago`), `plan`
+  (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario) y
+  `suscripcion` (de la empresa, con historial).
+- Toda tabla nueva de negocio hereda `EmpresaMixin` (`core/tenant.py`) y se
+  clasifica en `tests/plataforma/test_modelo_multitenant.py`: una tabla sin
+  clasificar hace fallar esa prueba.
+- Las llaves únicas de negocio (código de producto, SKU, código de sucursal,
+  número de venta, correo de usuario, etc.) son únicas POR EMPRESA. Los
+  superadministradores (sin empresa) tienen su propio índice único de correo.
+- Roles y permisos son globales; el aislamiento está en `usuario.empresa_id` y
+  en los datos. El rol `superadministrador` tiene `plataforma.gestionar`; el
+  `administrador` de cada empresa NO lo tiene y recibe `empresa.gestionar`.
+- Las vistas `vw_ventas_detalle` y `vw_inventario_consolidado` están en versión
+  V2 (con `empresa_id`). Las constantes V1 de los `repository.py` están
+  congeladas porque las usan migraciones históricas: no editarlas.
+- Las migraciones de multitenant se escriben a mano. Nunca usar autogenerate
+  sobre `stock` (propone mal la columna generada `cantidad_disponible`).
+- Los scripts de seeds trabajan sobre una empresa (`--empresa <codigo>`, por
+  defecto `fashionstore`) mediante `scripts/_empresa.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

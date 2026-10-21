@@ -144,6 +144,8 @@ class ReservaRepository:
 # la vista pertenece conceptualmente a la sección Ventas (agrega venta_detalle),
 # mismo criterio que vw_inventario_consolidado vive en la sección Inventario
 # de `catalogo`.
+# NO EDITAR: la usa la migración 6f4501e2abc6 (congelada como V1). La vista
+# con empresa_id es VW_VENTAS_DETALLE_V2_SQL.
 VW_VENTAS_DETALLE_SQL = """
 CREATE VIEW vw_ventas_detalle AS
 SELECT  ve.id              AS venta_id,
@@ -167,6 +169,37 @@ JOIN sucursal s          ON s.id = ve.sucursal_id
 JOIN producto_variante v ON v.id = vd.variante_id
 JOIN producto p          ON p.id = v.producto_id
 JOIN categoria cat       ON cat.id = p.categoria_id
+"""
+
+# V2 (multitenant, E01): igual que V1 más `empresa_id` AL FINAL de la lista de
+# columnas y cada JOIN exige la misma empresa (una fila con referencias
+# cruzadas entre empresas no aparece). La crea la migración
+# multitenant_empresa_plan_suscripcion, que lleva este SQL copiado (embebido);
+# tests/plataforma/test_vistas_empresa.py comprueba que ambos coinciden.
+VW_VENTAS_DETALLE_V2_SQL = """
+CREATE VIEW vw_ventas_detalle AS
+SELECT  ve.id              AS venta_id,
+        ve.codigo,
+        ve.canal,
+        ve.fecha,
+        s.id               AS sucursal_id,
+        s.nombre           AS sucursal,
+        p.id               AS producto_id,
+        p.nombre           AS producto,
+        cat.id             AS categoria_id,
+        cat.nombre         AS categoria,
+        vd.cantidad,
+        vd.precio_unitario,
+        vd.subtotal,
+        vd.costo_unitario,
+        (vd.subtotal - (vd.cantidad * COALESCE(vd.costo_unitario, 0))) AS margen,
+        ve.empresa_id      AS empresa_id
+FROM venta_detalle vd
+JOIN venta ve            ON ve.id = vd.venta_id AND ve.empresa_id = vd.empresa_id
+JOIN sucursal s          ON s.id = ve.sucursal_id AND s.empresa_id = ve.empresa_id
+JOIN producto_variante v ON v.id = vd.variante_id AND v.empresa_id = ve.empresa_id
+JOIN producto p          ON p.id = v.producto_id AND p.empresa_id = ve.empresa_id
+JOIN categoria cat       ON cat.id = p.categoria_id AND cat.empresa_id = ve.empresa_id
 """
 
 

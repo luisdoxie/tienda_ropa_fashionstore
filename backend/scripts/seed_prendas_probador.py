@@ -282,14 +282,14 @@ def _obtener_o_crear_temporada(db, manifiesto: Manifiesto, plan: PrendaPlan) -> 
     return temporada.id
 
 
-def cargar(planes: list[PrendaPlan]) -> None:
+def cargar(planes: list[PrendaPlan], empresa: str | None = None) -> None:
     import app.main  # noqa: F401  (registra todos los modelos y configura Cloudinary)
     from app.catalogo.casos_uso.cu05_gestionar_catalogo import GestionarProductos
     from app.catalogo.models import Producto, ProductoImagen, ProductoVariante, Talla
     from app.catalogo.schemas import ProductoCrear
     from app.core.config import get_settings
-    from app.core.database import SessionLocal
     from app.catalogo.casos_uso.cu10_gestionar_assets_probador import CargarAssetsProbador
+    from scripts._empresa import abrir_sesion
     from app.catalogo.models import ActivoProbador
 
     cu_productos = GestionarProductos()
@@ -304,7 +304,7 @@ def cargar(planes: list[PrendaPlan]) -> None:
     print(f"Base destino: {host}")
     print(f"Manifiesto:   {manifiesto.ruta}")
 
-    db = SessionLocal()
+    db, _empresa = abrir_sesion(empresa)
     try:
         tallas = {t.codigo: t.id for t in db.query(Talla).filter(Talla.codigo.in_(TALLAS))}
         faltantes = set(TALLAS) - set(tallas)
@@ -401,7 +401,7 @@ def cargar(planes: list[PrendaPlan]) -> None:
         print("\nListo. No se creó nada nuevo (todo ya existía).")
 
 
-def revertir(ruta_manifiesto: Path, ejecutar: bool) -> None:
+def revertir(ruta_manifiesto: Path, ejecutar: bool, empresa: str | None = None) -> None:
     datos = json.loads(ruta_manifiesto.read_text(encoding="utf-8"))
     resumen = {clave: len(datos.get(clave, [])) for clave in Manifiesto.CLAVES}
     print(f"Manifiesto de {datos['creado_en']} contra {datos['host']}")
@@ -413,8 +413,8 @@ def revertir(ruta_manifiesto: Path, ejecutar: bool) -> None:
     import app.main  # noqa: F401
     from app.catalogo.models import Categoria, Color, Producto, ProductoImagen, ProductoVariante, Temporada
     from app.core import storage
-    from app.core.database import SessionLocal
     from app.catalogo.models import ActivoProbador
+    from scripts._empresa import abrir_sesion
 
     host = _host_de_la_base()
     if host != datos["host"]:
@@ -423,7 +423,7 @@ def revertir(ruta_manifiesto: Path, ejecutar: bool) -> None:
     # Borrado físico a propósito: deshace un seed recién creado, sin ventas
     # ni stock asociados. Si alguna fila ya tiene uso (FK), la transacción
     # entera se revierte y Cloudinary no se toca.
-    db = SessionLocal()
+    db, _empresa = abrir_sesion(empresa)
     try:
         for modelo, clave in (
             (ActivoProbador, "activos"),
@@ -460,10 +460,11 @@ def main() -> None:
     parser.add_argument("--solo", type=int, nargs="*", help="Ids del dataset a procesar (por defecto, todos)")
     parser.add_argument("--ejecutar", action="store_true", help="Escribir de verdad (sin esto es dry-run)")
     parser.add_argument("--revertir", type=Path, help="Manifiesto de una corrida anterior a deshacer")
+    parser.add_argument("--empresa", help="Código de la empresa (por defecto SEED_EMPRESA o 'fashionstore')")
     args = parser.parse_args()
 
     if args.revertir:
-        revertir(args.revertir, args.ejecutar)
+        revertir(args.revertir, args.ejecutar, args.empresa)
         return
     if not args.origen:
         parser.error("--origen es obligatorio")
@@ -473,7 +474,7 @@ def main() -> None:
         sys.exit("Ninguna prenda coincide con --solo")
 
     if args.ejecutar:
-        cargar(planes)
+        cargar(planes, args.empresa)
         return
 
     vista: list[tuple[PrendaPlan, Image.Image]] = []

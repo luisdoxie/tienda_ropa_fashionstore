@@ -42,13 +42,14 @@ SEEDS_BASE = [
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--ejecutar", action="store_true", help="Escribir de verdad (sin esto es dry-run)")
+    parser.add_argument("--empresa", help="Código de la empresa (por defecto SEED_EMPRESA o 'fashionstore')")
     args = parser.parse_args()
 
     if args.ejecutar:
         import app.main  # noqa: F401  (registra todos los modelos)
-        from app.core.database import SessionLocal
+        from scripts._empresa import abrir_sesion
 
-        db = SessionLocal()
+        db, _empresa = abrir_sesion(args.empresa)
         try:
             for nombre, seed in SEEDS_BASE:
                 seed(db)
@@ -58,7 +59,10 @@ def main() -> None:
     else:
         print("(dry-run: los seeds base no se aplican)")
 
-    seed_operativo.main(["--ejecutar"] if args.ejecutar else [])
+    argv_operativo = ["--ejecutar"] if args.ejecutar else []
+    if args.empresa:
+        argv_operativo += ["--empresa", args.empresa]
+    seed_operativo.main(argv_operativo)
 
 
 if __name__ == "__main__":

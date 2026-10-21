@@ -11,6 +11,9 @@ queda en el historial de la terminal).
 Uso (después de scripts.seed_seguridad):
     $env:ADMIN_EMAIL="admin@tudominio.com"; $env:ADMIN_PASSWORD="..."
     python -m scripts.crear_admin
+
+El administrador se crea en la empresa de ADMIN_EMPRESA (código de la empresa;
+por defecto SEED_EMPRESA o 'fashionstore').
 """
 
 from __future__ import annotations
@@ -18,10 +21,10 @@ from __future__ import annotations
 import os
 import sys
 
-from app.core.database import SessionLocal
 from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
+from scripts._empresa import abrir_sesion
 
 
 def main() -> None:
@@ -31,7 +34,7 @@ def main() -> None:
         sys.exit("Definí ADMIN_EMAIL y ADMIN_PASSWORD (mínimo 8 caracteres) como variables de entorno")
 
     repo = UsuarioRepository()
-    db = SessionLocal()
+    db, _empresa = abrir_sesion(os.environ.get("ADMIN_EMPRESA"))
     try:
         usuario = repo.obtener_por_email(db, email)
         if usuario is None:

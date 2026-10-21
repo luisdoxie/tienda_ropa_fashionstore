@@ -12,6 +12,11 @@ PERMISO_ORGANIZACION = "organizacion.gestionar"
 # decisión: con multitenant pasa a "alcance dentro de la empresa" y puede
 # separarse. Por eso son dos constantes y no una.
 PERMISO_ALCANCE_GLOBAL = "organizacion.gestionar"
+# Multitenant: PERMISO_PLATAFORMA es solo del superadministrador (empresas,
+# planes y suscripciones de toda la plataforma); PERMISO_EMPRESA lo tiene el
+# administrador de cada empresa para gestionar la suya.
+PERMISO_PLATAFORMA = "plataforma.gestionar"
+PERMISO_EMPRESA = "empresa.gestionar"
 
 # ---- catalogo ----
 PERMISO_CATALOGO = "catalogo.gestionar"

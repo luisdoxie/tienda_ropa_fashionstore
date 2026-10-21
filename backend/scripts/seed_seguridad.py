@@ -17,6 +17,7 @@ from app.core.database import SessionLocal
 from app.plataforma.models import Permiso, Rol
 
 ROLES: list[tuple[str, str]] = [
+    ("superadministrador", "Administrador de la plataforma, sin empresa"),
     ("administrador", "Acceso total al sistema"),
     ("encargado_sucursal", "Gestiona reservas e inventario de su sucursal"),
     ("cajero", "Registra ventas presenciales y cobros"),
@@ -45,10 +46,18 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("reportes.ver", "reportes", "Consultar reportes y el dashboard"),
     ("probador.usar", "probador", "Usar el vestidor virtual"),
     ("probador.gestionar", "probador", "Subir y validar assets del probador"),
+    ("plataforma.gestionar", "plataforma", "Gestionar empresas, planes y suscripciones de la plataforma"),
+    ("empresa.gestionar", "plataforma", "Gestionar la empresa propia y su suscripción"),
 ]
 
+# Permisos que NO recibe el administrador de una empresa: son del
+# superadministrador (si no, cada administrador sería superadministrador).
+PERMISOS_SOLO_PLATAFORMA = ["plataforma.gestionar"]
+
 PERMISOS_POR_ROL: dict[str, list[str]] = {
-    "administrador": [codigo for codigo, _, _ in PERMISOS],
+    # El superadministrador no opera negocio: solo la plataforma y los roles.
+    "superadministrador": ["plataforma.gestionar", "roles.gestionar"],
+    "administrador": [codigo for codigo, _, _ in PERMISOS if codigo not in PERMISOS_SOLO_PLATAFORMA],
     "encargado_sucursal": [
         "catalogo.ver",
         "inventario.gestionar",

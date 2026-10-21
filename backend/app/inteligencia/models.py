@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.tenant import EmpresaMixin
 
 # ---- Inteligencia ----
 
@@ -17,7 +18,7 @@ from app.core.database import Base
 _TipoJson = JSON().with_variant(JSONB, "postgresql")
 
 
-class ConsultaVoz(Base):
+class ConsultaVoz(EmpresaMixin, Base):
     """Log de cada búsqueda por voz (P6.1): qué se transcribió, qué filtros
     se aplicaron (los haya resuelto Groq o el fallback de texto plano) y
     cuántos resultados dio. `cliente_id` es nullable a propósito: la
@@ -33,7 +34,7 @@ class ConsultaVoz(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class HistorialNavegacion(Base):
+class HistorialNavegacion(EmpresaMixin, Base):
     """Log de eventos de navegación (P6.2): vista, búsqueda, carrito, uso
     del probador o favorito. Alimenta la capa 2 (ponderación por historial)
     del recomendador. `cliente_id` es nullable a propósito -- el registro
@@ -58,7 +59,7 @@ class HistorialNavegacion(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 
 
-class Recomendacion(Base):
+class Recomendacion(EmpresaMixin, Base):
     """Log histórico de las recomendaciones finales que arma el
     recomendador (P6.2): qué variante, con qué motivo, para qué cliente.
     A diferencia de `ConsultaVoz`/`HistorialNavegacion`, `cliente_id` es
