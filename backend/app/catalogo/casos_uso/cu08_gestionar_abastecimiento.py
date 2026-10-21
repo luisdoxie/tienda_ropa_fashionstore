@@ -65,9 +65,13 @@ class GestionarProveedores:
         return self._proveedores.obtener(db, proveedor_id)
 
     def crear(self, db: Session, datos: ProveedorCrear) -> Proveedor:
+        if datos.usuario_id is not None:
+            plataforma_politicas.obtener_usuario(db, datos.usuario_id)  # 404 si no existe o es de otra empresa
         return self._proveedores.crear(db, datos)
 
     def actualizar(self, db: Session, proveedor_id: int, datos: ProveedorActualizar) -> Proveedor:
+        if datos.usuario_id is not None:
+            plataforma_politicas.obtener_usuario(db, datos.usuario_id)  # 404 si no existe o es de otra empresa
         return self._proveedores.actualizar(db, proveedor_id, datos)
 
     def desactivar(self, db: Session, proveedor_id: int) -> Proveedor:

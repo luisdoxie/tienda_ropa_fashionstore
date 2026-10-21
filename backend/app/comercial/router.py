@@ -26,8 +26,8 @@ from app.comercial.casos_uso.cu19_gestionar_envios_tarifas import (
 )
 from app.comercial.politicas import (
     construir_pago_respuesta,
-    expirar_reservas_vencidas,
-    expirar_ventas_pendientes,
+    expirar_reservas_de_todas_las_empresas,
+    expirar_ventas_de_todas_las_empresas,
     mapa_codigos_estado_reserva,
     mapa_codigos_estado_venta,
 )
@@ -173,7 +173,7 @@ tareas_reservas_router = APIRouter(prefix="/api/v1/tareas", tags=["tareas"], dep
 
 @tareas_reservas_router.post("/expirar-reservas")
 def expirar_reservas(db: Session = Depends(get_db)) -> dict:
-    cantidad = expirar_reservas_vencidas(db)
+    cantidad = expirar_reservas_de_todas_las_empresas(db)
     return {"expiradas": cantidad}
 
 
@@ -438,7 +438,7 @@ tareas_pagos_router = APIRouter(prefix="/api/v1/tareas", tags=["tareas"], depend
 
 @tareas_pagos_router.post("/expirar-ventas-pendientes")
 def expirar_ventas_pendientes_endpoint(db: Session = Depends(get_db)) -> dict:
-    return expirar_ventas_pendientes(db)
+    return expirar_ventas_de_todas_las_empresas(db)
 
 
 _routers_pagos = [pagos_router, tareas_pagos_router]
@@ -578,4 +578,27 @@ def actualizar_estado_envio(
 _routers_entregas = [zonas_router, direcciones_router, envios_router]
 
 
-routers = _routers_reservas + _routers_ventas + _routers_pagos + _routers_entregas
+# ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
+# Los MISMOS handlers públicos de zonas de envío y cotización, bajo el código de
+# la tienda (D02, D10). La empresa la fija `contexto_empresa` (core/tenant.py)
+# desde el código de la ruta; `_codigo_tienda` solo documenta el parámetro en
+# OpenAPI. No se copian handlers.
+
+
+def _codigo_tienda(codigo: str) -> str:
+    return codigo
+
+
+publico_tienda_router = APIRouter(
+    prefix="/api/v1/public/{codigo}", tags=["tienda-publica"], dependencies=[Depends(_codigo_tienda)]
+)
+
+for _ruta, _metodo, _handler, _modelo in (
+    ("/zonas-envio", "GET", listar_zonas, list[ZonaEnvioRespuesta]),
+    ("/zonas-envio/{zona_id}", "GET", obtener_zona, ZonaEnvioRespuesta),
+    ("/envios/cotizar", "POST", cotizar_envio, CotizarEnvioRespuesta),
+):
+    publico_tienda_router.add_api_route(_ruta, _handler, methods=[_metodo], response_model=_modelo)
+
+
+routers = _routers_reservas + _routers_ventas + _routers_pagos + _routers_entregas + [publico_tienda_router]

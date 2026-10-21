@@ -34,7 +34,8 @@ from app.comercial.schemas import (
 from app.core.crud_base import CRUDBase
 from app.core.deps import ParametrosPaginacion
 from app.core.exceptions import NoEncontradoError
-from app.core.repository import confirmar
+from app.core.repository import confirmar, obtener_por_clave
+from app.core.tenant import condicion_empresa
 
 
 # ---- Reservas ----
@@ -419,6 +420,7 @@ _CONDICION_VENTA_EFECTIVA = (
 
 
 def _condiciones_ventas(
+    db: Session,
     desde: dt.date,
     hasta: dt.date,
     sucursal_id: int | None,
@@ -428,8 +430,13 @@ def _condiciones_ventas(
     # hasta_exclusiva: `fecha` es timestamp, desde/hasta son solo fecha --
     # sin esto, las ventas del día `hasta` (con hora > 00:00) quedarían
     # afuera del rango.
-    condiciones = ["fecha >= :desde", "fecha < :hasta_exclusiva", _CONDICION_VENTA_EFECTIVA]
-    parametros: dict = {"desde": desde, "hasta_exclusiva": hasta + dt.timedelta(days=1)}
+    condicion_tenant, parametros_tenant = condicion_empresa(db)
+    condiciones = [condicion_tenant, "fecha >= :desde", "fecha < :hasta_exclusiva", _CONDICION_VENTA_EFECTIVA]
+    parametros: dict = {
+        **parametros_tenant,
+        "desde": desde,
+        "hasta_exclusiva": hasta + dt.timedelta(days=1),
+    }
     if sucursal_id is not None:
         condiciones.append("sucursal_id = :sucursal_id")
         parametros["sucursal_id"] = sucursal_id
@@ -450,7 +457,7 @@ def detalle(
     categoria_id: int | None = None,
     canal: str | None = None,
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
     consulta = "SELECT * FROM vw_ventas_detalle WHERE " + " AND ".join(condiciones) + " ORDER BY fecha DESC"
     return _filas_a_dicts(db, consulta, parametros)
 
@@ -463,7 +470,7 @@ def resumen(
     categoria_id: int | None = None,
     canal: str | None = None,
 ) -> dict:
-    condiciones, parametros = _condiciones_ventas(desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
     consulta = (
         "SELECT COUNT(DISTINCT venta_id) AS transacciones, "
         "COALESCE(SUM(subtotal), 0) AS total_ventas, "
@@ -483,7 +490,7 @@ def top_productos(
     canal: str | None = None,
     limite: int = 10,
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
     parametros["limite"] = limite
     consulta = (
         "SELECT producto_id, producto, SUM(cantidad) AS cantidad_vendida, SUM(subtotal) AS total_vendido "
@@ -497,7 +504,7 @@ def top_productos(
 def por_canal(
     db: Session, desde: dt.date, hasta: dt.date, sucursal_id: int | None = None, categoria_id: int | None = None
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(desde, hasta, sucursal_id, categoria_id, None)
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, None)
     consulta = (
         "SELECT canal, COUNT(DISTINCT venta_id) AS transacciones, SUM(subtotal) AS total_ventas "
         "FROM vw_ventas_detalle WHERE " + " AND ".join(condiciones) + " GROUP BY canal ORDER BY canal"
@@ -513,7 +520,7 @@ def por_sucursal(
     canal: str | None = None,
     sucursal_id: int | None = None,
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
     consulta = (
         "SELECT sucursal_id, sucursal, COUNT(DISTINCT venta_id) AS transacciones, SUM(subtotal) AS total_ventas "
         "FROM vw_ventas_detalle WHERE " + " AND ".join(condiciones) + " GROUP BY sucursal_id, sucursal ORDER BY sucursal_id"
@@ -566,7 +573,7 @@ class EstadoPagoRepository:
 
 class PagoRepository:
     def obtener(self, db: Session, pago_id: int) -> Pago:
-        pago = db.get(Pago, pago_id)
+        pago = obtener_por_clave(db, Pago, pago_id)
         if pago is None:
             raise NoEncontradoError("Pago no encontrado")
         return pago
@@ -659,7 +666,7 @@ class DireccionClienteRepository(CRUDBase[DireccionCliente, DireccionClienteCrea
 
 class EnvioRepository:
     def obtener(self, db: Session, envio_id: int) -> Envio:
-        envio = db.get(Envio, envio_id)
+        envio = obtener_por_clave(db, Envio, envio_id)
         if envio is None:
             raise NoEncontradoError("Envío no encontrado")
         return envio

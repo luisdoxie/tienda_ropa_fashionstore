@@ -5,12 +5,14 @@ import pytest
 from sqlalchemy import select
 
 from app.catalogo.models import Color
+from app.core.exceptions import DomainError
 from app.core.tenant import (
     CLAVE_EMPRESA,
     EmpresaNoDefinidaError,
     empresa_de,
     exigir_empresa,
     fijar_empresa,
+    sin_filtro,
 )
 from app.plataforma.models import Ciudad, Rol, Suscripcion, Usuario
 from tests.conftest import crear_empresa
@@ -38,8 +40,9 @@ def test_exigir_empresa_sin_empresa_lanza(db_session):
     fijar_empresa(db_session, None)
     with pytest.raises(EmpresaNoDefinidaError):
         exigir_empresa(db_session)
-    # Es un error de programación, no de usuario.
-    assert issubclass(EmpresaNoDefinidaError, RuntimeError)
+    # Es un error de dominio: la API lo responde 401, nunca 500.
+    assert issubclass(EmpresaNoDefinidaError, DomainError)
+    assert EmpresaNoDefinidaError().status_code == 401
 
 
 def test_objeto_nuevo_recibe_la_empresa_de_la_sesion(db_session):
@@ -122,4 +125,4 @@ def test_sesion_sin_empresa_respeta_el_empresa_id_explicito(db_session):
     db_session.add(ciudad)
     db_session.flush()
     assert ciudad.empresa_id == otra_id
-    assert db_session.scalar(select(Suscripcion.id).where(Suscripcion.empresa_id == otra_id)) is not None
+    assert db_session.scalar(sin_filtro(select(Suscripcion.id).where(Suscripcion.empresa_id == otra_id))) is not None

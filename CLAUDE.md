@@ -170,9 +170,10 @@ Las tablas las crea Alembic a partir de los modelos.
 
 ## Multitenant
 Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
-NO es un tenant: una empresa tiene varias). Estado: modelo y migración hechos
-(etapa E01); el filtrado automático de lecturas y el tenant desde el token son
-de las etapas E02 y E03, así que hasta entonces el backend no se despliega solo.
+NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01) y
+filtrado automático por empresa (E02) hechos; el login con empresa y el claim
+`empresa_id` del token son de la etapa E03, así que hasta entonces el backend
+no se despliega solo.
 - Clasificación de las 62 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
@@ -195,6 +196,34 @@ de las etapas E02 y E03, así que hasta entonces el backend no se despliega solo
   sobre `stock` (propone mal la columna generada `cantidad_disponible`).
 - Los scripts de seeds trabajan sobre una empresa (`--empresa <codigo>`, por
   defecto `fashionstore`) mediante `scripts/_empresa.py`.
+
+### Cómo se filtra por empresa (`core/tenant.py`)
+- La empresa de la petición vive en `Session.info`, y solo `core/tenant.py` la
+  escribe (`fijar_empresa`). Cada petición tiene su sesión (`get_db`).
+- Un evento `do_orm_execute` agrega `empresa_id = <empresa de la sesión>` a toda
+  consulta ORM (select, update, delete, count, joins, subconsultas) sobre una
+  tabla de empresa. FALLA CERRADO: sin empresa en la sesión la consulta no se
+  ejecuta (`EmpresaNoDefinidaError`, 401) y en modo superadministrador tampoco
+  (`ModoPlataformaError`, 403). Nadie tiene que acordarse de filtrar.
+- Un recurso de otra empresa responde 404, igual que uno inexistente. Nunca 403
+  por pertenencia a otra empresa.
+- La empresa sale SIEMPRE de una fuente confiable: el usuario autenticado
+  (`get_current_user`, o el token aunque la ruta no lo exija), el código de la
+  ruta `/api/v1/public/{codigo}/...` (tienda pública) o la transacción de pago
+  (webhook y pantalla QR). Nunca de una cabecera, query o cuerpo.
+- `sin_filtro(...)` solo vale para `Usuario` (al autenticar), `TransaccionPasarela`
+  (webhook) y `Suscripcion`. Sobre cualquier otra tabla de empresa lanza error.
+- SQL en texto (`text()`): solo con `condicion_empresa(db)`. Una prueba recorre
+  `app/` y falla si aparece otro `text(`.
+- Todo id que llega del cliente (cuerpo, query o ruta) y se guarda como FK se
+  resuelve antes con una búsqueda filtrada (404 si no es de la empresa): la FK
+  de la base, por sí sola, permitiría apuntar a otra empresa.
+- Las tareas sin usuario (expirar reservas y ventas pendientes) corren por
+  empresa con `por_cada_empresa`; el segundo plano del probador recibe la
+  empresa explícita.
+- Las rutas `/api/v1/public/{codigo}/...` (25) reutilizan los mismos handlers del
+  catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador. Sin
+  token, las rutas viejas equivalentes responden 401.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

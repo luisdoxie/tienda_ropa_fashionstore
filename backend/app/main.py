@@ -17,12 +17,13 @@ from sqlalchemy.orm import Session
 load_dotenv()
 
 from app.catalogo.router import routers as catalogo_routers
-from app.comercial.politicas import expirar_reservas_vencidas, expirar_ventas_pendientes
+from app.comercial.politicas import expirar_reservas_de_todas_las_empresas, expirar_ventas_de_todas_las_empresas
 from app.comercial.router import routers as comercial_routers
 from app.core.config import get_settings
 from app.core.database import SessionLocal, get_db
 from app.core.exceptions import registrar_handlers
 from app.core.rate_limit import limiter
+from app.core.tenant import contexto_empresa
 from app.inteligencia.router import routers as inteligencia_routers
 from app.plataforma.router import routers as plataforma_routers
 
@@ -34,8 +35,12 @@ settings = get_settings()
 def _correr_tareas_periodicas() -> None:
     """Vence ventas digitales que quedaron sin pagar y reservas vencidas.
     Sesión propia, igual que la generación en segundo plano del probador.
-    Cada tarea va aislada: si una falla, la otra corre igual."""
-    for nombre, tarea in (("ventas pendientes", expirar_ventas_pendientes), ("reservas", expirar_reservas_vencidas)):
+    Cada tarea recorre todas las empresas activas (una por una, con su
+    empresa fijada) y va aislada: si una falla, la otra corre igual."""
+    for nombre, tarea in (
+        ("ventas pendientes", expirar_ventas_de_todas_las_empresas),
+        ("reservas", expirar_reservas_de_todas_las_empresas),
+    ):
         db = SessionLocal()
         try:
             resultado = tarea(db)
@@ -65,7 +70,14 @@ async def lifespan(_: FastAPI):
         tarea.cancel()
 
 
-app = FastAPI(title="FashionStore API", version="0.1.0", lifespan=lifespan)
+# `contexto_empresa` corre en toda petición: en /api/v1/public/{codigo}/... fija la
+# empresa de la tienda; en las demás no hace nada (la fija get_current_user).
+app = FastAPI(
+    title="FashionStore API",
+    version="0.1.0",
+    lifespan=lifespan,
+    dependencies=[Depends(contexto_empresa)],
+)
 
 # Rate limiting: por ahora solo lo usan los endpoints públicos del
 # catálogo (ver catalogo/router.py) — es el punto más expuesto a tráfico

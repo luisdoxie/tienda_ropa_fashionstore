@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.exceptions import NoAutenticadoError
+from app.core.tenant import fijar_empresa_de_usuario
 from app.core.security import (
     crear_access_token,
     crear_refresh_token,
@@ -115,13 +116,15 @@ class IniciarSesion:
         )
 
     def ejecutar(self, db: Session, datos: LoginRequest) -> TokenRespuesta:
-        usuario = self._usuarios.obtener_por_email(db, datos.email)
+        usuario = self._usuarios.obtener_por_email_sin_empresa(db, datos.email)
         hash_a_verificar = usuario.password_hash if usuario is not None else _HASH_DUMMY
         password_valida = verificar_password(datos.password, hash_a_verificar)
         credenciales_invalidas = usuario is None or not usuario.activo or not password_valida
         if credenciales_invalidas:
             raise NoAutenticadoError("Credenciales inválidas")
 
+        # Desde acá la sesión trabaja en la empresa del usuario.
+        fijar_empresa_de_usuario(db, usuario)
         usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
         db.commit()
 
@@ -137,6 +140,7 @@ class IniciarSesion:
         if usuario is None:
             raise NoAutenticadoError("Usuario inválido")
 
+        fijar_empresa_de_usuario(db, usuario)
         return self._emitir_tokens(db, usuario)
 
 
@@ -157,7 +161,7 @@ class RecuperarContrasena:
         genérica en cuanto al mensaje (ver router) para no revelar si el
         email está registrado.
         """
-        usuario = self._usuarios.obtener_por_email(db, email)
+        usuario = self._usuarios.obtener_por_email_sin_empresa(db, email)
         if usuario is None or not usuario.activo:
             return None
 
@@ -173,4 +177,5 @@ class RecuperarContrasena:
         if usuario is None:
             raise NoAutenticadoError("Token inválido")
 
+        fijar_empresa_de_usuario(db, usuario)
         self._usuarios.actualizar_password(db, usuario, password)

@@ -451,6 +451,29 @@ def desactivar_empleado(empleado_id: int, db: Session = Depends(get_db)) -> None
     cu_gestionar_empleados.desactivar(db, empleado_id)
 
 
+# ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
+# Los MISMOS handlers públicos de sucursales y horarios, bajo el código de la
+# tienda (D02, D10). La empresa la fija `contexto_empresa` (core/tenant.py) desde
+# el código de la ruta; `_codigo_tienda` solo documenta el parámetro en OpenAPI.
+# No se copian handlers. (El registro público por empresa lo agrega la E03.)
+
+
+def _codigo_tienda(codigo: str) -> str:
+    return codigo
+
+
+publico_tienda_router = APIRouter(
+    prefix="/api/v1/public/{codigo}", tags=["tienda-publica"], dependencies=[Depends(_codigo_tienda)]
+)
+
+for _ruta, _handler, _modelo in (
+    ("/sucursales", listar_sucursales, list[SucursalRespuesta]),
+    ("/sucursales/{sucursal_id}", obtener_sucursal, SucursalRespuesta),
+    ("/sucursales/{sucursal_id}/horarios", listar_horarios, list[HorarioRespuesta]),
+):
+    publico_tienda_router.add_api_route(_ruta, _handler, methods=["GET"], response_model=_modelo)
+
+
 routers = [
     auth_router,
     roles_router,
@@ -462,4 +485,5 @@ routers = [
     sucursales_router,
     horarios_router,
     empleados_router,
+    publico_tienda_router,
 ]

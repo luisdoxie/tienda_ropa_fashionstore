@@ -63,6 +63,7 @@ class GestionarZonasTarifas:
         return self._zonas.obtener(db, zona_id)
 
     def crear(self, db: Session, datos: ZonaEnvioCrear) -> ZonaEnvio:
+        plataforma_politicas.obtener_ciudad(db, datos.ciudad_id)  # 404 si no existe o es de otra empresa
         return self._zonas.crear(db, datos)
 
     def actualizar(self, db: Session, zona_id: int, datos: ZonaEnvioActualizar) -> ZonaEnvio:

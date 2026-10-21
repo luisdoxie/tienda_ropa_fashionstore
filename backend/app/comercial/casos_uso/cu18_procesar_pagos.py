@@ -35,6 +35,7 @@ from app.comercial.politicas import (
     cancelar_venta_pendiente,
     cerrar_pagos_iniciados,
     cobrar_en_caja,
+    empresa_de_transaccion,
     obtener_comprobante,
     obtener_estado_codigo,
     obtener_venta,
@@ -51,6 +52,7 @@ from app.comercial.repository import (
 from app.comercial.schemas import PagoCajaRequest, PagoIniciarRequest
 from app.core.config import get_settings
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError, PermisoDenegadoError
+from app.core.tenant import fijar_empresa
 from app.plataforma import politicas as plataforma_politicas
 
 
@@ -166,6 +168,13 @@ class ConfirmarRechazarTransaccion:
             raise ConflictoError("El body del webhook no es JSON válido") from exc
 
         resultado = pasarela.interpretar_webhook(payload)
+
+        # Sin usuario ni token: la empresa sale de la transacción (ya con la
+        # firma validada). Desconocida: la respuesta de siempre, 404.
+        empresa_id = empresa_de_transaccion(db, pasarela_codigo, resultado.id_transaccion)
+        if empresa_id is None:
+            raise NoEncontradoError(f"No hay ningún pago iniciado con id_transaccion '{resultado.id_transaccion}'")
+        fijar_empresa(db, empresa_id)
 
         transaccion_original = self._transacciones.obtener_por_id_transaccion(
             db, pasarela_codigo, resultado.id_transaccion
@@ -319,6 +328,10 @@ class ConfirmarRechazarTransaccion:
         botón de confirmar. El QR codifica esta misma URL -- se puede abrir
         directo (mismo dispositivo del checkout) o escanear con otro
         celular."""
+        empresa_id = empresa_de_transaccion(db, "qr_online", id_transaccion)
+        if empresa_id is None:
+            raise NoEncontradoError("Transacción QR no encontrada")
+        fijar_empresa(db, empresa_id)
         transaccion = self._transacciones.obtener_por_id_transaccion(db, "qr_online", id_transaccion)
         if transaccion is None:
             raise NoEncontradoError("Transacción QR no encontrada")
@@ -341,7 +354,10 @@ class ConfirmarRechazarTransaccion:
         de arriba. Arma el mismo payload+firma que mandaría un webhook real
         y lo procesa por procesar_webhook(): reusa toda la idempotencia/
         auditoría ya probada para Libélula/PayPal en vez de duplicar la
-        resolución acá."""
+        resolución acá.
+
+        La empresa la fija `procesar_webhook` desde la transacción (después
+        de validar la firma); un id desconocido responde 404 como siempre."""
         payload = json.dumps({"id_transaccion": id_transaccion, "estado": "aprobado"}).encode("utf-8")
         firma = QrOnlineGateway().firmar_confirmacion(payload)
         return self.procesar_webhook(db, "qr_online", payload, firma)

@@ -56,6 +56,7 @@ from app.core.crud_base import CRUDBase, CRUDBaseSinActivo
 from app.core.deps import ParametrosPaginacion
 from app.core.exceptions import ConflictoError, NoEncontradoError
 from app.core.repository import confirmar, obtener_por_clave
+from app.core.tenant import condicion_empresa
 
 
 # ---- Catálogo ----
@@ -798,24 +799,22 @@ def _filas_a_dicts(db: Session, consulta: str, parametros: dict) -> list[dict]:
 
 
 def consolidado(db: Session, sucursal_id: int | None = None, producto_id: int | None = None) -> list[dict]:
-    condiciones = []
-    parametros: dict = {}
+    condicion_tenant, parametros = condicion_empresa(db)
+    condiciones = [condicion_tenant]
     if sucursal_id is not None:
         condiciones.append("sucursal_id = :sucursal_id")
         parametros["sucursal_id"] = sucursal_id
     if producto_id is not None:
         condiciones.append("producto_id = :producto_id")
         parametros["producto_id"] = producto_id
-    consulta = "SELECT * FROM vw_inventario_consolidado"
-    if condiciones:
-        consulta += " WHERE " + " AND ".join(condiciones)
+    consulta = "SELECT * FROM vw_inventario_consolidado WHERE " + " AND ".join(condiciones)
     consulta += " ORDER BY producto_id, variante_id, sucursal_id"
     return _filas_a_dicts(db, consulta, parametros)
 
 
 def alertas(db: Session, sucursal_id: int | None = None) -> list[dict]:
-    condiciones = ["cantidad_disponible <= stock_minimo"]
-    parametros: dict = {}
+    condicion_tenant, parametros = condicion_empresa(db)
+    condiciones = [condicion_tenant, "cantidad_disponible <= stock_minimo"]
     if sucursal_id is not None:
         condiciones.append("sucursal_id = :sucursal_id")
         parametros["sucursal_id"] = sucursal_id
@@ -825,13 +824,13 @@ def alertas(db: Session, sucursal_id: int | None = None) -> list[dict]:
 
 
 def valuacion(db: Session, sucursal_id: int | None = None) -> list[dict]:
-    parametros: dict = {}
+    condicion_tenant, parametros = condicion_empresa(db)
     consulta = (
         "SELECT sucursal_id, sucursal, SUM(valor_inventario) AS valor_total "
-        "FROM vw_inventario_consolidado"
+        "FROM vw_inventario_consolidado WHERE " + condicion_tenant
     )
     if sucursal_id is not None:
-        consulta += " WHERE sucursal_id = :sucursal_id"
+        consulta += " AND sucursal_id = :sucursal_id"
         parametros["sucursal_id"] = sucursal_id
     consulta += " GROUP BY sucursal_id, sucursal ORDER BY sucursal_id"
     return _filas_a_dicts(db, consulta, parametros)

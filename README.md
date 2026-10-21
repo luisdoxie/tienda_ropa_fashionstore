@@ -107,10 +107,13 @@ Hecho:
   `empresa_id` en las 50 tablas propias de cada empresa, llaves únicas por
   empresa, rol `superadministrador` y vistas SQL conscientes de la empresa. La
   base real tiene ahora 62 tablas.
+- Aislamiento automático por empresa (etapa E02): filtro en un único punto
+  (`core/tenant.py`) que falla cerrado, ids del cliente validados, tareas por
+  empresa y 25 rutas públicas de la tienda `/api/v1/public/{codigo}/...`.
 
 Por construir, en este orden:
-1. Multitenant y planes (CU-04): filtro automático por empresa, empresa en el
-   token de sesión, gestión de empresas, planes y suscripciones.
+1. Multitenant y planes (CU-04): login con empresa y empresa en el token de
+   sesión, gestión de empresas, planes y suscripciones.
 2. Sincronización offline (CU-25): idempotencia, fecha de la operación y lotes
    atómicos. PWA con IndexedDB y app Flutter con SQLite, incluido el modo
    vendedor/cajero.

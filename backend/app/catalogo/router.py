@@ -1061,4 +1061,41 @@ def recomendar_talla(
 _routers_probador = [assets_probador_router, uso_router]
 
 
-routers = _routers_catalogo + _routers_probador + _routers_inventario + _routers_abastecimiento
+# ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
+# Los MISMOS handlers públicos de arriba, publicados bajo el código de la tienda
+# (D02, D10). La empresa la fija `contexto_empresa` (core/tenant.py) desde el
+# código de la ruta; `_codigo_tienda` solo documenta el parámetro en OpenAPI.
+# No se copian handlers: así la ruta vieja y la nueva no se desincronizan, y los
+# `@limiter.limit` viajan con la función.
+
+
+def _codigo_tienda(codigo: str) -> str:
+    return codigo
+
+
+publico_tienda_router = APIRouter(
+    prefix="/api/v1/public/{codigo}", tags=["tienda-publica"], dependencies=[Depends(_codigo_tienda)]
+)
+
+for _ruta, _handler, _modelo in (
+    ("/categorias", listar_categorias, list[CategoriaRespuesta]),
+    ("/categorias/{categoria_id}", obtener_categoria, CategoriaRespuesta),
+    ("/tallas", listar_tallas, list[TallaRespuesta]),
+    ("/tallas/{talla_id}", obtener_talla, TallaRespuesta),
+    ("/colores", listar_colores, list[ColorRespuesta]),
+    ("/colores/{color_id}", obtener_color, ColorRespuesta),
+    ("/materiales", listar_materiales, list[MaterialRespuesta]),
+    ("/materiales/{material_id}", obtener_material, MaterialRespuesta),
+    ("/temporadas", listar_temporadas, list[TemporadaRespuesta]),
+    ("/temporadas/{temporada_id}", obtener_temporada, TemporadaRespuesta),
+    ("/colecciones", listar_colecciones, list[ColeccionRespuesta]),
+    ("/colecciones/{coleccion_id}", obtener_coleccion, ColeccionRespuesta),
+    ("/catalogo", listar_catalogo, list[CatalogoItemRespuesta]),
+    ("/catalogo/buscar", buscar_catalogo, list[CatalogoItemRespuesta]),  # antes de /{producto_id}
+    ("/catalogo/{producto_id}", obtener_detalle_catalogo, CatalogoDetalleRespuesta),
+    ("/inventario/disponibilidad", consultar_disponibilidad, list[DisponibilidadRespuesta]),
+):
+    publico_tienda_router.add_api_route(_ruta, _handler, methods=["GET"], response_model=_modelo)
+
+
+routers = _routers_catalogo + _routers_probador + _routers_inventario + _routers_abastecimiento + [publico_tienda_router]

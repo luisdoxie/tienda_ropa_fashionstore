@@ -134,4 +134,30 @@ def reporte_dashboard(
 
 _routers_reportes = [reportes_router]
 
-routers = _routers_inteligencia + _routers_reportes
+# ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
+# Los MISMOS handlers públicos de /ia (voz, recomendaciones, eventos) bajo el
+# código de la tienda (D02, D10). La empresa la fija `contexto_empresa`
+# (core/tenant.py) desde el código de la ruta; `_codigo_tienda` solo documenta el
+# parámetro en OpenAPI. No se copian handlers: los `@limiter.limit` viajan con la
+# función.
+
+
+def _codigo_tienda(codigo: str) -> str:
+    return codigo
+
+
+publico_tienda_router = APIRouter(
+    prefix="/api/v1/public/{codigo}", tags=["tienda-publica"], dependencies=[Depends(_codigo_tienda)]
+)
+publico_tienda_router.add_api_route(
+    "/ia/voz", buscar_por_voz, methods=["POST"], response_model=VozRespuesta
+)
+publico_tienda_router.add_api_route(
+    "/ia/recomendaciones", obtener_recomendaciones, methods=["POST"], response_model=RecomendacionesRespuesta
+)
+publico_tienda_router.add_api_route(
+    "/ia/eventos", registrar_evento_endpoint, methods=["POST"], status_code=status.HTTP_201_CREATED
+)
+
+
+routers = _routers_inteligencia + _routers_reportes + [publico_tienda_router]

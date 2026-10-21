@@ -13,6 +13,7 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from app.catalogo.models import (
+    Categoria,
     MovimientoInventario,
     ProbadorGeneracion,
     Producto,
@@ -20,6 +21,7 @@ from app.catalogo.models import (
     Stock,
     TablaMedida,
     Talla,
+    Temporada,
 )
 from app.catalogo.repository import (
     CategoriaRepository,
@@ -106,6 +108,20 @@ def obtener_producto(db: Session, producto_id: int) -> Producto:
     producto_proveedor) y `comercial` validen un producto sin consultar la tabla
     `producto` directamente."""
     return producto_repo.obtener(db, producto_id)
+
+
+def obtener_categoria(db: Session, categoria_id: int) -> Categoria:
+    """Para que `comercial` (alcance de una promoción) valide una categoría que
+    llega del cliente antes de guardarla como FK, sin consultar la tabla
+    `categoria` directamente. 404 si no existe, está inactiva o es de otra
+    empresa."""
+    return categoria_repo.obtener(db, categoria_id)
+
+
+def obtener_temporada(db: Session, temporada_id: int) -> Temporada:
+    """Como `obtener_categoria`, para la temporada del alcance de una
+    promoción."""
+    return temporada_repo.obtener(db, temporada_id)
 
 
 def obtener_talla(db: Session, talla_id: int) -> Talla:

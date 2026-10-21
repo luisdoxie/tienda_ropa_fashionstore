@@ -66,6 +66,7 @@ from app.core.tiempo import ahora_utc_naive, hoy_utc
 from app.core.exceptions import ConflictoError, DomainError, PermisoDenegadoError
 from app.core.repository import confirmar
 from app.core.security import permisos_de_usuario
+from app.core.tenant import por_cada_empresa, sin_filtro
 from app.plataforma import politicas as plataforma_politicas
 from app.plataforma.politicas import obtener_perfil_cliente
 
@@ -291,6 +292,15 @@ def expirar_reservas_vencidas(db: Session) -> int:
             logger.exception("No se pudo expirar la reserva %s", reserva_id)
 
     return expiradas
+
+
+def expirar_reservas_de_todas_las_empresas(db: Session) -> int:
+    """Corre `expirar_reservas_vencidas` una vez por cada empresa activa (con
+    o sin suscripción vigente: liberar el stock apartado es mantenimiento,
+    no una operación comercial) y suma lo expirado. Una empresa que falla no
+    frena a las demás y no aporta a la suma. La sesión queda sin empresa."""
+    resultados = por_cada_empresa(db, plataforma_politicas.listar_empresas_activas(db), expirar_reservas_vencidas)
+    return sum(r for r in resultados if r is not None)
 
 
 # ---- Ventas ----
@@ -853,6 +863,23 @@ def primera_transaccion(db: Session, pago_id: int) -> TransaccionPasarela | None
     )
 
 
+def empresa_de_transaccion(db: Session, pasarela: str, id_transaccion: str) -> int | None:
+    """Empresa dueña de la transacción de pasarela con ese (pasarela, id), o
+    `None` si no existe. Es la fuente de la empresa del webhook y de la
+    pantalla QR, que llegan sin usuario: la lectura va SIN filtro de empresa
+    (uno de los tres usos permitidos de `sin_filtro`) y devuelve solo el id
+    de la empresa, nunca datos de la fila. Quien llama debe validar antes la
+    firma del webhook."""
+    return db.scalar(
+        sin_filtro(
+            select(TransaccionPasarela.empresa_id)
+            .where(TransaccionPasarela.pasarela == pasarela, TransaccionPasarela.id_transaccion == id_transaccion)
+            .order_by(TransaccionPasarela.creado_en.asc())
+            .limit(1)
+        )
+    )
+
+
 def _abandonar_pago(db: Session, pago: Pago, *, pasarela_codigo: str, motivo: str) -> None:
     """Marca 'rechazado' un pago 'iniciado' que nunca se completó. A
     diferencia de `resolver_pago(rechazado)`, NO toca la venta: quien
@@ -935,6 +962,18 @@ def expirar_ventas_pendientes(db: Session) -> dict[str, int]:
             db.rollback()
             logger.exception("No se pudo vencer la venta %s", venta_id)
     return {"anuladas": anuladas, "pagadas": pagadas}
+
+
+def expirar_ventas_de_todas_las_empresas(db: Session) -> dict[str, int]:
+    """Corre `expirar_ventas_pendientes` una vez por cada empresa activa y
+    suma los resultados (`anuladas` y `pagadas`). Una empresa que falla no
+    frena a las demás y no aporta a la suma."""
+    total = {"anuladas": 0, "pagadas": 0}
+    for resultado in por_cada_empresa(db, plataforma_politicas.listar_empresas_activas(db), expirar_ventas_pendientes):
+        if resultado is not None:
+            total["anuladas"] += resultado["anuladas"]
+            total["pagadas"] += resultado["pagadas"]
+    return total
 
 
 def _ya_resuelto(codigo_estado: str) -> bool:

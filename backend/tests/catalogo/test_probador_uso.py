@@ -26,7 +26,9 @@ def _sesion_background_en_memoria(monkeypatch, db_session):
     (la del request ya se cerró para cuando el background task corre) --
     acá la apuntamos al mismo engine sqlite en memoria que usa `client`
     (con StaticPool comparten una única conexión), si no `SessionLocal()`
-    real abriría una base `sqlite:///:memory:` nueva y vacía."""
+    real abriría una base `sqlite:///:memory:` nueva y vacía. Las sesiones
+    que produce nacen SIN empresa: la tarea recibe la de la petición como
+    parámetro (`empresa_id`) y la fija ella misma, igual que en producción."""
     fabrica = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
     monkeypatch.setattr(cu11_probar_prenda_con_ia, "SessionLocal", fabrica)
 

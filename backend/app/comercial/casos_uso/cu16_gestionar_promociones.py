@@ -31,8 +31,14 @@ class GestionarPromociones:
     def crear(self, db: Session, datos: PromocionCrear) -> Promocion:
         for alcance in datos.alcances:
             self._validar_alcance(alcance)
+            # Los tres ids llegan del cliente y se guardan como FK: cada uno se
+            # resuelve con una búsqueda filtrada (404 si no existe o es de otra empresa).
             if alcance.producto_id is not None:
-                catalogo_politicas.obtener_producto(db, alcance.producto_id)  # 404 si no existe
+                catalogo_politicas.obtener_producto(db, alcance.producto_id)
+            if alcance.categoria_id is not None:
+                catalogo_politicas.obtener_categoria(db, alcance.categoria_id)
+            if alcance.temporada_id is not None:
+                catalogo_politicas.obtener_temporada(db, alcance.temporada_id)
 
         promocion = Promocion(
             nombre=datos.nombre,

@@ -5,6 +5,7 @@ from app.core.crud_base import CRUDBase
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
 from app.core.repository import confirmar, obtener_por_clave
 from app.core.security import hash_password
+from app.core.tenant import sin_filtro
 from app.plataforma.models import (
     Ciudad,
     Cliente,
@@ -62,7 +63,14 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
         super().__init__(Usuario)
 
     def obtener_por_email(self, db: Session, email: str) -> Usuario | None:
+        """El usuario con ese correo DENTRO de la empresa de la sesión."""
         return db.scalar(select(Usuario).where(Usuario.email == email))
+
+    def obtener_por_email_sin_empresa(self, db: Session, email: str) -> Usuario | None:
+        """Para el inicio de sesión y la recuperación de contraseña, donde la
+        empresa todavía no se conoce: la primera coincidencia por id. Es
+        transitorio: la E03 hace el login con empresa y lo reemplaza."""
+        return db.scalar(sin_filtro(select(Usuario).where(Usuario.email == email).order_by(Usuario.id)))
 
     def listar_por_ids(self, db: Session, ids: list[int]) -> list[Usuario]:
         if not ids:
@@ -115,7 +123,7 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
 
 class ClienteRepository:
     def obtener(self, db: Session, cliente_id: int) -> Cliente:
-        cliente = db.get(Cliente, cliente_id)
+        cliente = obtener_por_clave(db, Cliente, cliente_id)
         if cliente is None:
             raise NoEncontradoError("Cliente no encontrado")
         return cliente
@@ -238,10 +246,18 @@ class SucursalRepository(CRUDBase[Sucursal, SucursalCrear, SucursalActualizar]):
     def crear(self, db: Session, datos: SucursalCrear, commit: bool = True) -> Sucursal:
         if self.obtener_por_codigo(db, datos.codigo) is not None:
             raise ConflictoError("Ya existe una sucursal con ese código")
-        ciudad = db.get(Ciudad, datos.ciudad_id)
+        ciudad = obtener_por_clave(db, Ciudad, datos.ciudad_id)
         if ciudad is None or not ciudad.activo:
             raise NoEncontradoError("Ciudad no encontrada")
         return super().crear(db, datos, commit)
+
+    def actualizar(self, db: Session, id_: int, datos: SucursalActualizar, commit: bool = True) -> Sucursal:
+        # La ciudad llega del cliente y se escribe como FK: se resuelve con una
+        # búsqueda filtrada por empresa (404 si no existe, está inactiva o es
+        # de otra empresa), igual que en `crear`.
+        if datos.ciudad_id is not None:
+            CiudadRepository().obtener(db, datos.ciudad_id)
+        return super().actualizar(db, id_, datos, commit)
 
 
 class HorarioRepository:

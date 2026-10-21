@@ -6,11 +6,14 @@ que nadie más tenga que tocarlas directamente."""
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import DomainError, PermisoDenegadoError
+from app.core.exceptions import DomainError, NoEncontradoError, PermisoDenegadoError
 from app.core.permisos import PERMISO_ALCANCE_GLOBAL
+from app.core.tenant import sin_filtro
 from app.plataforma.models import (
+    Ciudad,
     Cliente,
     Empleado,
+    Empresa,
     HorarioSucursal,
     Notificacion,
     Permiso,
@@ -21,6 +24,7 @@ from app.plataforma.models import (
     usuario_rol,
 )
 from app.plataforma.repository import (
+    CiudadRepository,
     ClienteRepository,
     EmpleadoRepository,
     HorarioRepository,
@@ -59,10 +63,28 @@ def obtener_usuario_para_auth(db: Session, usuario_id: int) -> Usuario | None:
     resuelve el usuario del JWT sin que core tenga que hacer `db.get(Usuario,
     ...)` directamente. Devuelve None (no una excepción) si no existe o está
     inactivo -- decidir si eso es un 401 le corresponde a quien llama."""
-    usuario = db.get(Usuario, usuario_id)
+    # Todavía no se sabe la empresa (de aquí sale): único caso, junto con el
+    # login, en que se consulta un usuario sin filtro de empresa.
+    usuario = db.scalar(sin_filtro(select(Usuario).where(Usuario.id == usuario_id)))
     if usuario is None or not usuario.activo:
         return None
     return usuario
+
+
+# ---- Empresa ----
+
+
+def obtener_empresa_por_codigo(db: Session, codigo: str) -> Empresa | None:
+    """La empresa cuyo `codigo` (inmutable, ver D04) coincide, o None. Para la
+    dependencia `core.tenant.empresa_publica` (rutas /public/{codigo}); decidir
+    si una empresa inactiva cuenta como inexistente le toca a quien llama."""
+    return db.scalar(select(Empresa).where(Empresa.codigo == codigo.strip().lower()))
+
+
+def listar_empresas_activas(db: Session) -> list[int]:
+    """Ids de las empresas activas, para las tareas que corren por empresa
+    (expirar reservas y ventas pendientes)."""
+    return list(db.scalars(select(Empresa.id).where(Empresa.activo.is_(True)).order_by(Empresa.id)))
 
 
 def obtener_usuario(db: Session, usuario_id: int) -> Usuario:
@@ -128,6 +150,7 @@ def marcar_leida(db: Session, usuario_id: int, notificacion_id: int) -> Notifica
 # ---- Organización ----
 
 
+ciudad_repo = CiudadRepository()
 sucursal_repo = SucursalRepository()
 horario_repo = HorarioRepository()
 empleado_repo = EmpleadoRepository()
@@ -166,6 +189,11 @@ def acotar_sucursal(db: Session, usuario_id: int, sucursal_id: int | None) -> in
     (None = todas); si no, siempre la sucursal propia (403 si pidió otra)."""
     propia = sucursal_asignada(db, usuario_id)
     if propia is None:
+        if sucursal_id is not None and sucursal_repo.buscar(db, sucursal_id) is None:
+            # Un id de otra empresa responde igual que uno inexistente (404).
+            # `buscar` no filtra por `activo`: se pueden consultar los datos
+            # históricos de una sucursal dada de baja.
+            raise NoEncontradoError("Sucursal no encontrada")
         return sucursal_id
     if sucursal_id is not None and sucursal_id != propia:
         raise PermisoDenegadoError("No tenés acceso a esa sucursal")
@@ -176,6 +204,13 @@ def obtener_sucursal(db: Session, sucursal_id: int) -> Sucursal:
     """Para que los demás paquetes (p. ej. la sección Inventario de `catalogo`) validen una sucursal
     sin consultar la tabla `sucursal` directamente."""
     return sucursal_repo.obtener(db, sucursal_id)
+
+
+def obtener_ciudad(db: Session, ciudad_id: int) -> Ciudad:
+    """Para que `comercial` (zonas de envío) valide la ciudad que llega del
+    cliente antes de guardarla como FK, sin consultar la tabla `ciudad`
+    directamente. 404 si no existe, está inactiva o es de otra empresa."""
+    return ciudad_repo.obtener(db, ciudad_id)
 
 
 def resolver_sucursal_por_nombre(db: Session, nombre: str | None) -> int | None:

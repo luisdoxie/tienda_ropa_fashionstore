@@ -31,8 +31,9 @@ from app.catalogo.schemas import TallaRecomendadaRespuesta, TallaRequest
 from app.core import storage
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.core.tenant import exigir_empresa, fijar_empresa
 from app.core.tiempo import hoy_utc
-from app.core.exceptions import DomainError, PermisoDenegadoError
+from app.core.exceptions import DomainError, NoEncontradoError, PermisoDenegadoError
 from app.plataforma.politicas import obtener_perfil_cliente
 
 
@@ -62,8 +63,22 @@ def _descargar_bytes(url: str) -> bytes:
     return respuesta.content
 
 
+def _marcar_fallido(generacion_repo: GeneracionRepository, db: Session, generacion_id: int, mensaje: str) -> None:
+    """Marca la generación como fallida. Si no es visible para la empresa de
+    esta tarea (empresa equivocada) no hay nada que marcar: se registra y se
+    sigue, sin dejar escapar un error desde el segundo plano."""
+    try:
+        generacion_repo.marcar_fallido(db, generacion_id, mensaje)
+    except NoEncontradoError:
+        logger.error("La generación %s no existe para la empresa de la tarea", generacion_id)
+
+
 def _ejecutar_generacion(
-    generacion_id: int, imagen_prenda_url: str, foto_cliente: bytes, proveedor: ProbadorGenerativoBase
+    generacion_id: int,
+    imagen_prenda_url: str,
+    foto_cliente: bytes,
+    proveedor: ProbadorGenerativoBase,
+    empresa_id: int,
 ) -> None:
     """Corre en segundo plano (FastAPI BackgroundTasks) después de que la
     respuesta de POST /probador/generar ya se envió. Abre su propia sesión
@@ -75,6 +90,9 @@ def _ejecutar_generacion(
     base de datos, solo su hash (ya guardado por `iniciar`)."""
     generacion_repo = GeneracionRepository()
     db = SessionLocal()
+    # La sesión nueva no sabe de qué empresa es: se la pasa quien disparó la
+    # tarea (la de la petición), antes de cualquier acceso.
+    fijar_empresa(db, empresa_id)
     try:
         imagen_prenda = _descargar_bytes(imagen_prenda_url)
         ejecutor = ThreadPoolExecutor(max_workers=1)
@@ -83,7 +101,7 @@ def _ejecutar_generacion(
             try:
                 resultado_png = futuro.result(timeout=TIMEOUT_GENERACION_SEG)
             except FuturoTimeoutError:
-                generacion_repo.marcar_fallido(db, generacion_id, "Tiempo de espera agotado (60s)")
+                _marcar_fallido(generacion_repo, db, generacion_id, "Tiempo de espera agotado (60s)")
                 return
         finally:
             # wait=False: si el proveedor externo se colgó más allá del
@@ -102,7 +120,7 @@ def _ejecutar_generacion(
         # queda en el log del servidor -- al cliente le llega un mensaje
         # genérico, nunca la excepción cruda.
         logger.exception("Falló la generación %s", generacion_id)
-        generacion_repo.marcar_fallido(db, generacion_id, "No se pudo generar la imagen. Probá de nuevo más tarde.")
+        _marcar_fallido(generacion_repo, db, generacion_id, "No se pudo generar la imagen. Probá de nuevo más tarde.")
     finally:
         db.close()
 
@@ -188,7 +206,9 @@ class GenerarPruebaRealistaIA:
 
         generacion = self._generaciones.crear(db, cliente.id, variante_id, hash_foto)
 
-        background_tasks.add_task(_ejecutar_generacion, generacion.id, imagen_prenda_url, contenido_foto, proveedor)
+        background_tasks.add_task(
+            _ejecutar_generacion, generacion.id, imagen_prenda_url, contenido_foto, proveedor, exigir_empresa(db)
+        )
 
         return generacion, False
 

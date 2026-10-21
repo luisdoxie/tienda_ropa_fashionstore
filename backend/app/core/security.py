@@ -19,13 +19,14 @@ import hmac
 
 import bcrypt
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import PermisoDenegadoError
+from app.core.tenant import empresa_de, fijar_empresa_de_usuario
 
 settings = get_settings()
 
@@ -125,7 +126,33 @@ def get_current_user(
     usuario = plataforma_politicas.obtener_usuario_para_auth(db, usuario_id)
     if usuario is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inválido")
+
+    # La empresa de la petición sale del usuario firmado (hasta que E03 la
+    # ponga también en el token). Si la sesión ya trae una (la tienda de una
+    # ruta /public/{codigo}), el usuario tiene que ser de esa misma empresa:
+    # el token de otra empresa no vale ahí.
+    actual = empresa_de(db)
+    if actual is not None:
+        if usuario.empresa_id != actual:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inválido")
+    else:
+        fijar_empresa_de_usuario(db, usuario)
     return usuario
+
+
+def fijar_empresa_del_token(request: Request, db: Session) -> None:
+    """Fija la empresa de la sesión a partir del token de la petición, si lo
+    trae y es válido, aunque la ruta no exija autenticación. Sin esto, las
+    rutas de catálogo que no piden usuario (las que el back office también
+    llama, con su token) nunca sabrían la empresa. Un token ausente o inválido
+    se ignora: lo que cada ruta exija lo decide su propia dependencia."""
+    esquema, _, token = request.headers.get("authorization", "").partition(" ")
+    if esquema.lower() != "bearer" or not token:
+        return
+    try:
+        get_current_user(HTTPAuthorizationCredentials(scheme=esquema, credentials=token), db)
+    except HTTPException:
+        return
 
 
 def get_current_user_opcional(

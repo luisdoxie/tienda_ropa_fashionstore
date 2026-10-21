@@ -1,5 +1,7 @@
 import datetime as dt
 import os
+from dataclasses import dataclass
+from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET_KEY", "clave-de-pruebas")
@@ -23,7 +25,8 @@ from app.catalogo import models as _catalogo_models  # noqa: F401  (registra las
 from app.catalogo.repository import VW_INVENTARIO_CONSOLIDADO_V2_SQL
 from app.comercial import models as _comercial_models  # noqa: F401  (registra las tablas)
 from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
-from app.core.tenant import CLAVE_EMPRESA, fijar_empresa
+from app.core.security import crear_access_token, permisos_de_usuario
+from app.core.tenant import CLAVE_EMPRESA, empresa_de, fijar_empresa
 from app.plataforma.models import Empresa, Plan, Suscripcion
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
@@ -152,6 +155,76 @@ def client(db_session):
             yield db_session
         finally:
             db_session.rollback()
+
+    app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+def token_de(db, usuario) -> dict:
+    """Cabeceras con el access token de `usuario` (firmado como lo hace el
+    login). El token no lleva empresa: el servidor la toma de la fila del
+    usuario. El login con empresa llega en E03."""
+    roles = [r.nombre for r in usuario.roles]
+    token = crear_access_token(usuario.id, roles, permisos_de_usuario(db, usuario.id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+@dataclass
+class EmpresaDePrueba:
+    id: int
+    codigo: str
+    admin_id: int
+    headers: dict
+
+
+@pytest.fixture()
+def dos_empresas(db_session):
+    """Dos empresas independientes, cada una con su administrador: A
+    ('tienda-a', plan profesional) y B ('tienda-b', plan básico). Vacías de
+    datos de negocio: cada prueba crea lo que necesite. Para usarlas por HTTP,
+    junto con `client_por_peticion`. Deja la sesión como estaba."""
+    original = empresa_de(db_session)
+    repo = UsuarioRepository()
+    creadas = {}
+    for clave, codigo, plan in (("a", "tienda-a", "profesional"), ("b", "tienda-b", "basico")):
+        empresa = crear_empresa(db_session, codigo, plan=plan)
+        fijar_empresa(db_session, empresa.id)
+        admin = repo.crear(
+            db_session,
+            UsuarioCrear(
+                nombre="Admin", apellido=clave.upper(), email=f"admin@{codigo}.example.com", password="claveSegura123"
+            ),
+        )
+        repo.asignar_roles(db_session, admin, ["administrador"])
+        creadas[clave] = EmpresaDePrueba(
+            id=empresa.id, codigo=codigo, admin_id=admin.id, headers=token_de(db_session, admin)
+        )
+    fijar_empresa(db_session, original)
+    return SimpleNamespace(**creadas)
+
+
+@pytest.fixture()
+def client_por_peticion(db_session):
+    """Como `client`, pero cada petición recibe una sesión NUEVA y sin empresa,
+    igual que en producción: la empresa la fija la propia petición (el usuario
+    del token o el código de /public/{codigo}). `client` (sesión compartida y
+    con la empresa de las semillas) se conserva para las pruebas anteriores.
+
+    Lo que la prueba haya dejado sin confirmar en `db_session` se confirma
+    antes de cada petición (comparten conexión), y `db_session` se refresca
+    después para ver lo que la petición escribió."""
+    fabrica = sessionmaker(bind=db_session.get_bind(), autoflush=False, autocommit=False)
+
+    def _override_get_db():
+        db_session.commit()
+        sesion = fabrica()
+        try:
+            yield sesion
+        finally:
+            sesion.close()
+            db_session.expire_all()
 
     app.dependency_overrides[get_db] = _override_get_db
     with TestClient(app) as test_client:

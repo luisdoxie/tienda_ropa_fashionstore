@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.catalogo import politicas as catalogo_politicas
 from app.inteligencia.repository import HistorialNavegacionRepository
 from app.inteligencia.schemas import (
     DashboardRespuesta,
@@ -33,6 +34,13 @@ historial_repo = HistorialNavegacionRepository()
 def registrar_evento(db: Session, datos: EventoCrear, usuario) -> None:
     """POST /api/v1/ia/eventos. `usuario` es `None` en navegación anónima."""
     cliente_id = obtener_perfil_cliente(db, usuario.id).id if usuario else None
+    # producto_id y variante_id llegan del cliente y se guardan como FK: se
+    # resuelven con una búsqueda filtrada por empresa (404 si no existen o son
+    # de otra empresa). Sin esto un evento anónimo apuntaría a otra empresa.
+    if datos.producto_id is not None:
+        catalogo_politicas.obtener_producto(db, datos.producto_id)
+    if datos.variante_id is not None:
+        catalogo_politicas.obtener_variante(db, datos.variante_id)
     historial_repo.crear(db, cliente_id, None, datos.producto_id, datos.variante_id, datos.tipo_evento)
 
 
