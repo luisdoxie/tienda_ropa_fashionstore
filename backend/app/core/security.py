@@ -15,6 +15,7 @@ circular.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import hmac
 
 import bcrypt
@@ -41,33 +42,60 @@ def verificar_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
-def _crear_token(usuario_id: int, tipo: str, expira: dt.timedelta, extra: dict | None = None) -> str:
+def _crear_token(
+    usuario_id: int, tipo: str, expira: dt.timedelta, empresa_id: int | None, extra: dict | None = None
+) -> str:
+    # `empresa_id` va SIEMPRE en el token (None solo para el
+    # superadministrador): por eso los tres crear_* lo piden como argumento
+    # obligatorio y sin valor por defecto, para que un None accidental no cree
+    # un token de plataforma.
     ahora = dt.datetime.now(dt.timezone.utc)
-    payload: dict = {"sub": str(usuario_id), "tipo": tipo, "iat": ahora, "exp": ahora + expira}
+    payload: dict = {
+        "sub": str(usuario_id),
+        "tipo": tipo,
+        "empresa_id": empresa_id,
+        "iat": ahora,
+        "exp": ahora + expira,
+    }
     payload.update(extra or {})
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def crear_access_token(usuario_id: int, roles: list[str], permisos: list[str]) -> str:
-    """El payload lleva usuario_id, roles y permisos, nunca la contraseña."""
+def crear_access_token(usuario_id: int, roles: list[str], permisos: list[str], *, empresa_id: int | None) -> str:
+    """El payload lleva usuario_id, empresa_id, roles y permisos, nunca la contraseña."""
     return _crear_token(
         usuario_id,
         tipo="access",
         expira=dt.timedelta(minutes=settings.jwt_access_token_expire_minutes),
+        empresa_id=empresa_id,
         extra={"roles": roles, "permisos": permisos},
     )
 
 
-def crear_refresh_token(usuario_id: int) -> str:
+def crear_refresh_token(usuario_id: int, *, empresa_id: int | None) -> str:
     return _crear_token(
         usuario_id,
         tipo="refresh",
         expira=dt.timedelta(days=settings.jwt_refresh_token_expire_days),
+        empresa_id=empresa_id,
     )
 
 
-def crear_reset_token(usuario_id: int) -> str:
-    return _crear_token(usuario_id, tipo="reset", expira=dt.timedelta(minutes=30))
+def huella_de_password(password_hash: str) -> str:
+    """Primeros 16 hex del SHA-256 del hash vigente. Va en el token de
+    recuperacion (claim `ph`): al cambiar la contrasena el hash cambia y el
+    mismo token deja de servir (un solo uso, sin tabla nueva)."""
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def crear_reset_token(usuario_id: int, *, empresa_id: int | None, password_hash: str) -> str:
+    return _crear_token(
+        usuario_id,
+        tipo="reset",
+        expira=dt.timedelta(minutes=30),
+        empresa_id=empresa_id,
+        extra={"ph": huella_de_password(password_hash)},
+    )
 
 
 def decodificar_token(token: str, tipo: str | None = None) -> dict:
@@ -87,7 +115,15 @@ def decodificar_token(token: str, tipo: str | None = None) -> dict:
         ) from exc
     if tipo is not None and payload.get("tipo") != tipo:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+    # El claim tiene que EXISTIR (puede ser null: superadministrador). Asi los
+    # tokens anteriores a esta exigencia dejan de valer de golpe.
+    if "empresa_id" not in payload or not _empresa_id_valido(payload["empresa_id"]):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
     return payload
+
+
+def _empresa_id_valido(valor: object) -> bool:
+    return valor is None or (isinstance(valor, int) and not isinstance(valor, bool))
 
 
 def usuario_id_de_payload(payload: dict) -> int | None:
@@ -127,10 +163,14 @@ def get_current_user(
     if usuario is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inválido")
 
-    # La empresa de la petición sale del usuario firmado (hasta que E03 la
-    # ponga también en el token). Si la sesión ya trae una (la tienda de una
-    # ruta /public/{codigo}), el usuario tiene que ser de esa misma empresa:
-    # el token de otra empresa no vale ahí.
+    # El tenant sale del claim del token y se cruza con la fila del usuario, y
+    # la empresa tiene que seguir activa.
+    if not plataforma_politicas.identidad_del_token_valida(db, payload, usuario):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+
+    # Si la sesión ya trae empresa (la tienda de una ruta /public/{codigo}), el
+    # usuario tiene que ser de esa misma empresa: el token de otra empresa no
+    # vale ahí.
     actual = empresa_de(db)
     if actual is not None:
         if usuario.empresa_id != actual:

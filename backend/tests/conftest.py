@@ -19,15 +19,15 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, limitador_intentos
 from app.main import app
 from app.catalogo import models as _catalogo_models  # noqa: F401  (registra las tablas)
 from app.catalogo.repository import VW_INVENTARIO_CONSOLIDADO_V2_SQL
 from app.comercial import models as _comercial_models  # noqa: F401  (registra las tablas)
 from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
-from app.core.security import crear_access_token, permisos_de_usuario
-from app.core.tenant import CLAVE_EMPRESA, empresa_de, fijar_empresa
-from app.plataforma.models import Empresa, Plan, Suscripcion
+from app.core.security import crear_access_token, hash_password, permisos_de_usuario
+from app.core.tenant import CLAVE_EMPRESA, empresa_de, fijar_empresa, fijar_plataforma
+from app.plataforma.models import Empresa, Plan, Rol, Suscripcion, Usuario
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from scripts.seed_entregas import seed as seed_entregas
@@ -48,8 +48,10 @@ def _limpiar_limite_de_trafico():
     vacío, sin desactivar el limiter (queda activo y se comporta como en
     producción dentro de cada prueba)."""
     limiter.reset()
+    limitador_intentos.reiniciar()
     yield
     limiter.reset()
+    limitador_intentos.reiniciar()
 
 
 def crear_empresa(db, codigo: str, plan: str = "profesional", nombre: str | None = None) -> Empresa:
@@ -162,12 +164,31 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
+def crear_superadmin_de_prueba(db, email: str = "super@plataforma.example.com", password: str = "claveSegura123") -> int:
+    """Un superadministrador (usuario sin empresa y con el rol global
+    superadministrador), creado como lo haria el script: en modo plataforma.
+    Deja la sesion como estaba y devuelve el id del usuario."""
+    original = empresa_de(db)
+    fijar_plataforma(db)
+    try:
+        usuario = Usuario(nombre="Super", apellido="Admin", email=email, password_hash=hash_password(password))
+        db.add(usuario)
+        db.flush()
+        usuario.roles = [db.scalar(select(Rol).where(Rol.nombre == "superadministrador"))]
+        usuario_id = usuario.id
+        db.commit()
+    finally:
+        fijar_empresa(db, original)
+    return usuario_id
+
+
 def token_de(db, usuario) -> dict:
     """Cabeceras con el access token de `usuario` (firmado como lo hace el
-    login). El token no lleva empresa: el servidor la toma de la fila del
-    usuario. El login con empresa llega en E03."""
+    login, con la empresa de su fila)."""
     roles = [r.nombre for r in usuario.roles]
-    token = crear_access_token(usuario.id, roles, permisos_de_usuario(db, usuario.id))
+    token = crear_access_token(
+        usuario.id, roles, permisos_de_usuario(db, usuario.id), empresa_id=usuario.empresa_id
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -232,8 +253,12 @@ def client_por_peticion(db_session):
     app.dependency_overrides.clear()
 
 
-def _login(client, email, password):
-    respuesta = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+# Empresa de las semillas de las pruebas (la que fija `db_session`).
+EMPRESA_DEFECTO = "fashionstore"
+
+
+def _login(client, email, password, empresa=EMPRESA_DEFECTO):
+    respuesta = client.post("/api/v1/auth/login", json={"empresa": empresa, "email": email, "password": password})
     return respuesta.json()["access_token"]
 
 
@@ -252,11 +277,11 @@ def admin_headers(client, db_session):
 
 @pytest.fixture()
 def cliente_headers(client):
-    # Vía /auth/registro (no usuario_repo.crear a mano): así el usuario
+    # Vía el registro de la tienda (no usuario_repo.crear a mano): así el usuario
     # también tiene su fila en `cliente`, igual que en producción. Varios
     # endpoints (favoritos, perfil) la necesitan.
     client.post(
-        "/api/v1/auth/registro",
+        f"/api/v1/public/{EMPRESA_DEFECTO}/registro",
         json={
             "nombre": "Cli",
             "apellido": "Ente",

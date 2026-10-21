@@ -170,10 +170,10 @@ Las tablas las crea Alembic a partir de los modelos.
 
 ## Multitenant
 Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
-NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01) y
-filtrado automático por empresa (E02) hechos; el login con empresa y el claim
-`empresa_id` del token son de la etapa E03, así que hasta entonces el backend
-no se despliega solo.
+NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01),
+filtrado automático por empresa (E02) y login con empresa y claim `empresa_id`
+en el token (E03) hechos. El backend NO se despliega solo: tras la E03 el login
+de la web y del móvil actuales no funciona hasta que se adapten (E15, E16, E18).
 - Clasificación de las 62 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
@@ -221,9 +221,41 @@ no se despliega solo.
 - Las tareas sin usuario (expirar reservas y ventas pendientes) corren por
   empresa con `por_cada_empresa`; el segundo plano del probador recibe la
   empresa explícita.
-- Las rutas `/api/v1/public/{codigo}/...` (25) reutilizan los mismos handlers del
-  catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador. Sin
-  token, las rutas viejas equivalentes responden 401.
+- Las rutas `/api/v1/public/{codigo}/...` (26) reutilizan los mismos handlers del
+  catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador (la 26.ª es
+  el registro de clientes de la tienda). Sin token, las rutas viejas equivalentes
+  responden 401.
+
+### Login y token (E03)
+- `POST /auth/login` recibe `{empresa, email, password}`. `empresa` es el nombre
+  o el código de la empresa: se normaliza (`normalizar_nombre_empresa`: sin
+  tildes, minúsculas, guiones) y se busca en `empresa.codigo`, que NO cambia
+  aunque cambie el nombre comercial. Sin `empresa` solo entra un
+  superadministrador; un usuario de empresa nunca entra por esa vía.
+- Credenciales inválidas, empresa inexistente o inactiva, correo ajeno, usuario
+  inactivo: siempre el mismo 401 `Credenciales inválidas` y el mismo costo de
+  bcrypt. 5 fallos en 15 minutos por cuenta (empresa + correo) → 429 con
+  `Retry-After` (`LimitadorIntentos` en memoria, un solo worker); además el
+  límite por IP de `slowapi`. Variables: `LOGIN_MAX_INTENTOS`,
+  `LOGIN_VENTANA_SEGUNDOS`.
+- Los tres tokens (access, refresh, reset) llevan el claim `empresa_id` (null =
+  superadministrador). `decodificar_token` exige que exista, y `get_current_user`
+  lo cruza con la fila del usuario y exige la empresa activa: ni el claim ni la
+  base bastan por sí solos. Cambiar `JWT_SECRET_KEY` invalida TODAS las sesiones.
+- El token de recuperación es de un solo uso (claim `ph` = huella del hash de la
+  contraseña vigente). Sin empresa no se emite token de recuperación.
+- El correo se guarda y se busca en minúsculas (`CorreoNormalizado`).
+- Los clientes se registran por tienda: `POST /public/{codigo}/registro`
+  (`/auth/registro` ya no existe). Staff y administradores los crea un
+  administrador con `POST /usuarios`, dentro de su empresa.
+- Superadministrador: usuario con `empresa_id` NULL y el rol global
+  `superadministrador` (único rol que puede tener, y que ningún usuario de empresa
+  puede recibir). Solo se crea con `scripts/crear_superadmin.py` (variables
+  `SUPERADMIN_EMAIL` y `SUPERADMIN_PASSWORD`, mínimo 12 caracteres); ningún
+  endpoint crea usuarios sin empresa. Su token deja la sesión en modo plataforma:
+  las rutas de negocio responden 403. Crear, editar o borrar roles y asignarles
+  permisos exige `plataforma.gestionar` (solo el superadministrador); el
+  administrador de empresa lee roles y permisos y asigna roles a sus usuarios.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

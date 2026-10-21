@@ -401,11 +401,11 @@ def test_consultar_generacion_ajena_falla(
     ).json()
 
     client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Otro", "apellido": "Cliente", "email": "otro@example.com", "password": "claveSegura123"},
     )
     token_otro = client.post(
-        "/api/v1/auth/login", json={"email": "otro@example.com", "password": "claveSegura123"}
+        "/api/v1/auth/login", json={"empresa": "fashionstore", "email": "otro@example.com", "password": "claveSegura123"}
     ).json()["access_token"]
 
     respuesta = client.get(
@@ -601,11 +601,11 @@ def test_cache_no_se_comparte_entre_clientes(
 
     primera = _generar(cliente_headers)
     client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Otro", "apellido": "Cliente", "email": "otro_probador@example.com", "password": "claveSegura123"},
     )
     token = client.post(
-        "/api/v1/auth/login", json={"email": "otro_probador@example.com", "password": "claveSegura123"}
+        "/api/v1/auth/login", json={"empresa": "fashionstore", "email": "otro_probador@example.com", "password": "claveSegura123"}
     ).json()["access_token"]
     otro_headers = {"Authorization": f"Bearer {token}"}
 

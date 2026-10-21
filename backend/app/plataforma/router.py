@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import ParametrosPaginacion, parametros_paginacion
-from app.core.permisos import PERMISO_ORGANIZACION, PERMISO_ROLES, PERMISO_USUARIOS
+from app.core.permisos import PERMISO_ORGANIZACION, PERMISO_PLATAFORMA, PERMISO_ROLES, PERMISO_USUARIOS
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user, permisos_de_usuario, require_permission
 from app.plataforma.casos_uso.cu01_autenticar_registrar_usuarios import (
@@ -73,21 +73,15 @@ cu_recuperar_contrasena = RecuperarContrasena()
 auth_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-# `registro` y `login` son los dos endpoints públicos más atacables del
-# sistema (creación masiva de cuentas y fuerza bruta de contraseñas), y el
-# RNF02 pide límite de tráfico en los endpoints públicos. Agravante propio
-# de `login`: bcrypt hace cada intento caro en CPU, así que sin límite es
-# también un vector de agotamiento de recursos.
+# `registro` (ahora en /public/{codigo}/registro, al final del archivo) y
+# `login` son los dos endpoints públicos más atacables del sistema (creación
+# masiva de cuentas y fuerza bruta de contraseñas), y el RNF02 pide límite de
+# tráfico en los endpoints públicos. Agravante propio de `login`: bcrypt hace
+# cada intento caro en CPU, así que sin límite es también un vector de
+# agotamiento de recursos.
 # `request: Request` no se usa en el cuerpo pero es obligatorio: slowapi lo
 # necesita en la firma para resolver la IP del cliente (mismo motivo que en
 # `recuperar`, más abajo).
-@auth_router.post("/registro", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
-def registro(request: Request, datos: RegistroRequest, db: Session = Depends(get_db)) -> UsuarioRespuesta:
-    usuario = cu_registrar_cliente.registrar(db, datos)
-    return UsuarioRespuesta.from_modelo(usuario)
-
-
 @auth_router.post("/login", response_model=TokenRespuesta)
 @limiter.limit("10/minute")
 def login(request: Request, datos: LoginRequest, db: Session = Depends(get_db)) -> TokenRespuesta:
@@ -95,20 +89,29 @@ def login(request: Request, datos: LoginRequest, db: Session = Depends(get_db)) 
 
 
 @auth_router.post("/refresh", response_model=TokenRespuesta)
-def refresh(datos: RefreshRequest, db: Session = Depends(get_db)) -> TokenRespuesta:
+@limiter.limit("30/minute")
+def refresh(request: Request, datos: RefreshRequest, db: Session = Depends(get_db)) -> TokenRespuesta:
     return cu_iniciar_sesion.refrescar(db, datos.refresh_token)
 
 
 @auth_router.get("/yo", response_model=UsuarioYoRespuesta)
 def yo(usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> UsuarioYoRespuesta:
     base = UsuarioRespuesta.from_modelo(usuario)
-    return UsuarioYoRespuesta(**base.model_dump(), permisos=permisos_de_usuario(db, usuario.id))
+    # El superadministrador no pertenece a ninguna empresa: los tres campos van en None.
+    empresa = politicas.obtener_empresa(db, usuario.empresa_id) if usuario.empresa_id is not None else None
+    return UsuarioYoRespuesta(
+        **base.model_dump(),
+        permisos=permisos_de_usuario(db, usuario.id),
+        empresa_id=usuario.empresa_id,
+        empresa_codigo=empresa.codigo if empresa is not None else None,
+        empresa_nombre=empresa.nombre if empresa is not None else None,
+    )
 
 
 @auth_router.post("/recuperar", response_model=RecuperarRespuesta, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
 def recuperar(request: Request, datos: RecuperarRequest, db: Session = Depends(get_db)) -> RecuperarRespuesta:
-    token = cu_recuperar_contrasena.solicitar(db, datos.email)
+    token = cu_recuperar_contrasena.solicitar(db, datos.empresa, datos.email)
     token_dev = token if get_settings().environment == "local" else None
     return RecuperarRespuesta(
         detail="Si el correo está registrado, se enviarán instrucciones de recuperación.",
@@ -145,20 +148,20 @@ def obtener_rol(rol_id: int, db: Session = Depends(get_db)) -> RolRespuesta:
 
 @roles_router.post(
     "", response_model=RolRespuesta, status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_permission(PERMISO_ROLES))],
+    dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
 def crear_rol(datos: RolCrear, db: Session = Depends(get_db)) -> RolRespuesta:
     return cu_gestionar_roles.crear(db, datos)
 
 
-@roles_router.put("/{rol_id}", response_model=RolRespuesta, dependencies=[Depends(require_permission(PERMISO_ROLES))])
+@roles_router.put("/{rol_id}", response_model=RolRespuesta, dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))])
 def actualizar_rol(rol_id: int, datos: RolActualizar, db: Session = Depends(get_db)) -> RolRespuesta:
     return cu_gestionar_roles.actualizar(db, rol_id, datos)
 
 
 @roles_router.delete(
     "/{rol_id}", status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_permission(PERMISO_ROLES))],
+    dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
 def desactivar_rol(rol_id: int, db: Session = Depends(get_db)) -> None:
     cu_gestionar_roles.desactivar(db, rol_id)
@@ -166,7 +169,7 @@ def desactivar_rol(rol_id: int, db: Session = Depends(get_db)) -> None:
 
 @roles_router.put(
     "/{rol_id}/permisos", response_model=RolRespuesta,
-    dependencies=[Depends(require_permission(PERMISO_ROLES))],
+    dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
 def asignar_permisos(
     rol_id: int, datos: AsignarPermisosRequest, db: Session = Depends(get_db)
@@ -455,7 +458,8 @@ def desactivar_empleado(empleado_id: int, db: Session = Depends(get_db)) -> None
 # Los MISMOS handlers públicos de sucursales y horarios, bajo el código de la
 # tienda (D02, D10). La empresa la fija `contexto_empresa` (core/tenant.py) desde
 # el código de la ruta; `_codigo_tienda` solo documenta el parámetro en OpenAPI.
-# No se copian handlers. (El registro público por empresa lo agrega la E03.)
+# No se copian handlers. El registro del cliente (E03) es el único handler propio
+# de este router: la empresa es la de la ruta y ya viene fijada en la sesión.
 
 
 def _codigo_tienda(codigo: str) -> str:
@@ -465,6 +469,14 @@ def _codigo_tienda(codigo: str) -> str:
 publico_tienda_router = APIRouter(
     prefix="/api/v1/public/{codigo}", tags=["tienda-publica"], dependencies=[Depends(_codigo_tienda)]
 )
+
+# `request: Request` es obligatorio para que slowapi resuelva la IP del cliente.
+@publico_tienda_router.post("/registro", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+def registro(request: Request, datos: RegistroRequest, db: Session = Depends(get_db)) -> UsuarioRespuesta:
+    usuario = cu_registrar_cliente.registrar(db, datos)
+    return UsuarioRespuesta.from_modelo(usuario)
+
 
 for _ruta, _handler, _modelo in (
     ("/sucursales", listar_sucursales, list[SucursalRespuesta]),

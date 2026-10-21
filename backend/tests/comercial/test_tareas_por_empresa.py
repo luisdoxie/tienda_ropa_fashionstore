@@ -141,5 +141,8 @@ def test_una_empresa_inactiva_no_se_procesa(client_por_peticion, dos_empresas, m
 
     assert respuesta.json() == {"expiradas": 1}  # solo la empresa A
     assert stock_de(client, mundo["a"])["cantidad_reservada"] == 0
-    # B (inactiva) conserva su reserva vencida y su stock apartado.
+    # B (inactiva) conserva su reserva vencida y su stock apartado. Desde la E03
+    # sus tokens no valen mientras esté inactiva: se la reactiva para consultarlo.
+    db_session.execute(update(Empresa).where(Empresa.id == dos_empresas.b.id).values(activo=True))
+    db_session.commit()
     assert stock_de(client, mundo["b"])["cantidad_reservada"] == 3

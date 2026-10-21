@@ -5,11 +5,31 @@ permisos (/api/v1/permisos). Comportamiento actual, fijado antes del refactor
 import pytest
 
 from app.plataforma.models import Rol, Usuario
+from tests.conftest import crear_superadmin_de_prueba
 
 USUARIOS = "/api/v1/usuarios"
 ROLES = "/api/v1/roles"
 PERMISOS = "/api/v1/permisos"
 CLAVE = "claveSegura123"
+
+
+@pytest.fixture()
+def client(client_por_peticion):
+    """E03: escribir roles es de la plataforma (`plataforma.gestionar`), y el
+    token del superadministrador no entra en una sesión que ya trae empresa;
+    por eso este módulo usa el cliente con una sesión nueva por petición."""
+    return client_por_peticion
+
+
+@pytest.fixture()
+def super_headers(client, db_session):
+    """Cabeceras del superadministrador (login sin empresa)."""
+    crear_superadmin_de_prueba(db_session)
+    respuesta = client.post(
+        "/api/v1/auth/login", json={"email": "super@plataforma.example.com", "password": CLAVE}
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    return {"Authorization": f"Bearer {respuesta.json()['access_token']}"}
 
 
 def _datos_usuario(email="nuevo@example.com", **extra) -> dict:
@@ -22,16 +42,16 @@ def _crear_usuario(client, admin_headers, email="nuevo@example.com", **extra) ->
     return respuesta.json()
 
 
-def _crear_rol(client, admin_headers, nombre="auditor", descripcion="Solo lectura") -> dict:
+def _crear_rol(client, headers, nombre="auditor", descripcion="Solo lectura") -> dict:
     respuesta = client.post(
-        ROLES, json={"nombre": nombre, "descripcion": descripcion}, headers=admin_headers
+        ROLES, json={"nombre": nombre, "descripcion": descripcion}, headers=headers
     )
     assert respuesta.status_code == 201, respuesta.text
     return respuesta.json()
 
 
 def _login(client, email, password=CLAVE):
-    return client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    return client.post("/api/v1/auth/login", json={"empresa": "fashionstore", "email": email, "password": password})
 
 
 # ---- Usuarios: crear / obtener / listar -----------------------------------------------------
@@ -326,9 +346,9 @@ def test_asignar_roles_a_usuario_inexistente_devuelve_404(client, admin_headers)
     assert respuesta.status_code == 404
 
 
-def test_asignar_un_rol_desactivado_devuelve_400(client, admin_headers):
-    rol = _crear_rol(client, admin_headers, "temporal")
-    client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers)
+def test_asignar_un_rol_desactivado_devuelve_400(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers, "temporal")
+    client.delete(f"{ROLES}/{rol['id']}", headers=super_headers)
     creado = _crear_usuario(client, admin_headers)
 
     respuesta = client.put(
@@ -363,9 +383,9 @@ def test_listar_roles_trae_los_del_seed_con_sus_permisos(client, admin_headers):
     assert all(r["activo"] for r in por_nombre.values())
 
 
-def test_crear_rol_devuelve_201_activo_y_sin_permisos(client, admin_headers):
+def test_crear_rol_devuelve_201_activo_y_sin_permisos(client, admin_headers, super_headers):
     respuesta = client.post(
-        ROLES, json={"nombre": "auditor", "descripcion": "Solo lectura"}, headers=admin_headers
+        ROLES, json={"nombre": "auditor", "descripcion": "Solo lectura"}, headers=super_headers
     )
 
     assert respuesta.status_code == 201
@@ -376,78 +396,78 @@ def test_crear_rol_devuelve_201_activo_y_sin_permisos(client, admin_headers):
     assert cuerpo["permisos"] == []
 
 
-def test_crear_rol_con_nombre_duplicado_devuelve_409(client, admin_headers):
+def test_crear_rol_con_nombre_duplicado_devuelve_409(client, admin_headers, super_headers):
     # RolRepository no sobrescribe crear() y rol.nombre es UNIQUE: el
     # IntegrityError de CRUDBase.crear se convierte en ConflictoError.
-    _crear_rol(client, admin_headers, "auditor")
+    _crear_rol(client, super_headers, "auditor")
 
-    respuesta = client.post(ROLES, json={"nombre": "auditor"}, headers=admin_headers)
+    respuesta = client.post(ROLES, json={"nombre": "auditor"}, headers=super_headers)
 
     assert respuesta.status_code == 409
 
 
-def test_crear_rol_con_nombre_largo_o_ausente_devuelve_422(client, admin_headers):
-    assert client.post(ROLES, json={"nombre": "x" * 41}, headers=admin_headers).status_code == 422
-    assert client.post(ROLES, json={"descripcion": "sin nombre"}, headers=admin_headers).status_code == 422
+def test_crear_rol_con_nombre_largo_o_ausente_devuelve_422(client, admin_headers, super_headers):
+    assert client.post(ROLES, json={"nombre": "x" * 41}, headers=super_headers).status_code == 422
+    assert client.post(ROLES, json={"descripcion": "sin nombre"}, headers=super_headers).status_code == 422
 
 
-def test_obtener_rol_existente_e_inexistente(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
+def test_obtener_rol_existente_e_inexistente(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
 
     assert client.get(f"{ROLES}/{rol['id']}", headers=admin_headers).json() == rol
     assert client.get(f"{ROLES}/999999", headers=admin_headers).status_code == 404
 
 
-def test_actualizar_rol_parcial_conserva_lo_no_enviado(client, admin_headers):
-    rol = _crear_rol(client, admin_headers, "auditor", "Solo lectura")
+def test_actualizar_rol_parcial_conserva_lo_no_enviado(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers, "auditor", "Solo lectura")
 
-    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"descripcion": "Nueva descripcion"}, headers=admin_headers)
+    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"descripcion": "Nueva descripcion"}, headers=super_headers)
 
     assert respuesta.status_code == 200
     assert respuesta.json()["nombre"] == "auditor"
     assert respuesta.json()["descripcion"] == "Nueva descripcion"
 
 
-def test_actualizar_rol_inexistente_devuelve_404(client, admin_headers):
-    assert client.put(f"{ROLES}/999999", json={"nombre": "x"}, headers=admin_headers).status_code == 404
+def test_actualizar_rol_inexistente_devuelve_404(client, admin_headers, super_headers):
+    assert client.put(f"{ROLES}/999999", json={"nombre": "x"}, headers=super_headers).status_code == 404
 
 
-def test_actualizar_rol_a_nombre_duplicado_devuelve_409(client, admin_headers):
-    _crear_rol(client, admin_headers, "auditor")
-    otro = _crear_rol(client, admin_headers, "supervisor")
+def test_actualizar_rol_a_nombre_duplicado_devuelve_409(client, admin_headers, super_headers):
+    _crear_rol(client, super_headers, "auditor")
+    otro = _crear_rol(client, super_headers, "supervisor")
 
-    respuesta = client.put(f"{ROLES}/{otro['id']}", json={"nombre": "auditor"}, headers=admin_headers)
+    respuesta = client.put(f"{ROLES}/{otro['id']}", json={"nombre": "auditor"}, headers=super_headers)
 
     assert respuesta.status_code == 409
     assert client.get(f"{ROLES}/{otro['id']}", headers=admin_headers).json()["nombre"] == "supervisor"
 
 
-def test_actualizar_rol_con_nombre_null_devuelve_409(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
+def test_actualizar_rol_con_nombre_null_devuelve_409(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
 
-    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"nombre": None}, headers=admin_headers)
+    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"nombre": None}, headers=super_headers)
 
     assert respuesta.status_code == 409
     assert client.get(f"{ROLES}/{rol['id']}", headers=admin_headers).json()["nombre"] == rol["nombre"]
 
 
-def test_actualizar_rol_no_permite_reactivarlo_por_la_api(client, admin_headers, db_session):
+def test_actualizar_rol_no_permite_reactivarlo_por_la_api(client, admin_headers, super_headers, db_session):
     # RolActualizar no declara `activo` (2.1 punto 15): el campo se ignora y el
     # rol desactivado sigue inactivo.
-    rol = _crear_rol(client, admin_headers)
-    client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers)
+    rol = _crear_rol(client, super_headers)
+    client.delete(f"{ROLES}/{rol['id']}", headers=super_headers)
 
-    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"activo": True}, headers=admin_headers)
+    respuesta = client.put(f"{ROLES}/{rol['id']}", json={"activo": True}, headers=super_headers)
 
     assert respuesta.status_code == 200
     assert respuesta.json()["activo"] is False
     assert db_session.get(Rol, rol["id"]).activo is False
 
 
-def test_desactivar_rol_es_borrado_logico(client, admin_headers, db_session):
-    rol = _crear_rol(client, admin_headers)
+def test_desactivar_rol_es_borrado_logico(client, admin_headers, super_headers, db_session):
+    rol = _crear_rol(client, super_headers)
 
-    respuesta = client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers)
+    respuesta = client.delete(f"{ROLES}/{rol['id']}", headers=super_headers)
 
     assert respuesta.status_code == 204
     assert db_session.get(Rol, rol["id"]).activo is False
@@ -455,31 +475,31 @@ def test_desactivar_rol_es_borrado_logico(client, admin_headers, db_session):
     assert rol["id"] not in [r["id"] for r in client.get(ROLES, headers=admin_headers).json()]
 
 
-def test_desactivar_rol_inexistente_o_ya_desactivado_devuelve_404(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
-    client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers)
+def test_desactivar_rol_inexistente_o_ya_desactivado_devuelve_404(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
+    client.delete(f"{ROLES}/{rol['id']}", headers=super_headers)
 
-    assert client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers).status_code == 404
-    assert client.delete(f"{ROLES}/999999", headers=admin_headers).status_code == 404
+    assert client.delete(f"{ROLES}/{rol['id']}", headers=super_headers).status_code == 404
+    assert client.delete(f"{ROLES}/999999", headers=super_headers).status_code == 404
 
 
-def test_desactivar_un_rol_quita_los_permisos_a_sus_usuarios(client, admin_headers):
-    rol = _crear_rol(client, admin_headers, "auditor")
-    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=admin_headers)
+def test_desactivar_un_rol_quita_los_permisos_a_sus_usuarios(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers, "auditor")
+    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=super_headers)
     usuario = _crear_usuario(client, admin_headers)
     client.put(f"{USUARIOS}/{usuario['id']}/roles", json={"nombres_rol": ["auditor"]}, headers=admin_headers)
     token = _login(client, "nuevo@example.com").json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     assert "reportes.ver" in client.get("/api/v1/auth/yo", headers=headers).json()["permisos"]
 
-    client.delete(f"{ROLES}/{rol['id']}", headers=admin_headers)
+    client.delete(f"{ROLES}/{rol['id']}", headers=super_headers)
 
     assert client.get("/api/v1/auth/yo", headers=headers).json()["permisos"] == []
 
 
-def test_listar_roles_pagina_sin_solapar_ni_saltar(client, admin_headers):
+def test_listar_roles_pagina_sin_solapar_ni_saltar(client, admin_headers, super_headers):
     for i in range(4):
-        _crear_rol(client, admin_headers, f"rol{i}")
+        _crear_rol(client, super_headers, f"rol{i}")
     todos = [r["id"] for r in client.get(f"{ROLES}?tamanio=100", headers=admin_headers).json()]
 
     recorrido: list[int] = []
@@ -493,13 +513,13 @@ def test_listar_roles_pagina_sin_solapar_ni_saltar(client, admin_headers):
 # ---- Roles: asignar permisos y catálogo de permisos -----------------------------------------
 
 
-def test_asignar_permisos_a_rol(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
+def test_asignar_permisos_a_rol(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
 
     respuesta = client.put(
         f"{ROLES}/{rol['id']}/permisos",
         json={"codigos_permiso": ["reportes.ver", "catalogo.ver"]},
-        headers=admin_headers,
+        headers=super_headers,
     )
 
     assert respuesta.status_code == 200
@@ -507,30 +527,30 @@ def test_asignar_permisos_a_rol(client, admin_headers):
     assert client.get(f"{ROLES}/{rol['id']}", headers=admin_headers).json() == respuesta.json()
 
 
-def test_asignar_permisos_reemplaza_el_conjunto_y_acepta_duplicados_y_vacio(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
-    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=admin_headers)
+def test_asignar_permisos_reemplaza_el_conjunto_y_acepta_duplicados_y_vacio(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
+    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=super_headers)
 
     reemplazo = client.put(
         f"{ROLES}/{rol['id']}/permisos",
         json={"codigos_permiso": ["catalogo.ver", "catalogo.ver"]},
-        headers=admin_headers,
+        headers=super_headers,
     )
-    vacio = client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": []}, headers=admin_headers)
+    vacio = client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": []}, headers=super_headers)
 
     assert [p["codigo"] for p in reemplazo.json()["permisos"]] == ["catalogo.ver"]
     assert vacio.status_code == 200
     assert vacio.json()["permisos"] == []
 
 
-def test_asignar_permisos_con_codigo_inexistente_devuelve_400_y_no_cambia_nada(client, admin_headers):
-    rol = _crear_rol(client, admin_headers)
-    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=admin_headers)
+def test_asignar_permisos_con_codigo_inexistente_devuelve_400_y_no_cambia_nada(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers)
+    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["reportes.ver"]}, headers=super_headers)
 
     respuesta = client.put(
         f"{ROLES}/{rol['id']}/permisos",
         json={"codigos_permiso": ["reportes.ver", "no.existe"]},
-        headers=admin_headers,
+        headers=super_headers,
     )
 
     assert respuesta.status_code == 400
@@ -540,21 +560,21 @@ def test_asignar_permisos_con_codigo_inexistente_devuelve_400_y_no_cambia_nada(c
     ]
 
 
-def test_asignar_permisos_a_rol_inexistente_devuelve_404(client, admin_headers):
-    respuesta = client.put(f"{ROLES}/999999/permisos", json={"codigos_permiso": []}, headers=admin_headers)
+def test_asignar_permisos_a_rol_inexistente_devuelve_404(client, admin_headers, super_headers):
+    respuesta = client.put(f"{ROLES}/999999/permisos", json={"codigos_permiso": []}, headers=super_headers)
 
     assert respuesta.status_code == 404
 
 
-def test_los_permisos_del_rol_se_reflejan_de_inmediato_en_sus_usuarios(client, admin_headers):
-    rol = _crear_rol(client, admin_headers, "auditor")
+def test_los_permisos_del_rol_se_reflejan_de_inmediato_en_sus_usuarios(client, admin_headers, super_headers):
+    rol = _crear_rol(client, super_headers, "auditor")
     usuario = _crear_usuario(client, admin_headers)
     client.put(f"{USUARIOS}/{usuario['id']}/roles", json={"nombres_rol": ["auditor"]}, headers=admin_headers)
     token = _login(client, "nuevo@example.com").json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get(PERMISOS, headers=headers).status_code == 403
 
-    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["roles.gestionar"]}, headers=admin_headers)
+    client.put(f"{ROLES}/{rol['id']}/permisos", json={"codigos_permiso": ["roles.gestionar"]}, headers=super_headers)
 
     assert "roles.gestionar" in client.get("/api/v1/auth/yo", headers=headers).json()["permisos"]
     assert client.get(PERMISOS, headers=headers).status_code == 200
@@ -596,7 +616,11 @@ def test_cliente_sin_permiso_recibe_403(client, cliente_headers, metodo, ruta, c
     respuesta = getattr(client, metodo)(ruta, headers=cliente_headers, **({"json": cuerpo} if cuerpo else {}))
 
     assert respuesta.status_code == 403
-    assert respuesta.json()["detail"] in ("Falta el permiso 'usuarios.gestionar'", "Falta el permiso 'roles.gestionar'")
+    assert respuesta.json()["detail"] in (
+        "Falta el permiso 'usuarios.gestionar'",
+        "Falta el permiso 'roles.gestionar'",
+        "Falta el permiso 'plataforma.gestionar'",  # E03: escribir roles es de la plataforma
+    )
 
 
 @pytest.mark.parametrize("metodo,ruta,cuerpo", RUTAS_PROTEGIDAS)
@@ -606,12 +630,12 @@ def test_sin_token_recibe_401(client, metodo, ruta, cuerpo):
     assert respuesta.status_code == 401
 
 
-def test_usuarios_gestionar_no_da_acceso_a_roles_y_viceversa(client, admin_headers):
-    rol_solo_usuarios = _crear_rol(client, admin_headers, "solo_usuarios")
+def test_usuarios_gestionar_no_da_acceso_a_roles_y_viceversa(client, admin_headers, super_headers):
+    rol_solo_usuarios = _crear_rol(client, super_headers, "solo_usuarios")
     client.put(
         f"{ROLES}/{rol_solo_usuarios['id']}/permisos",
         json={"codigos_permiso": ["usuarios.gestionar"]},
-        headers=admin_headers,
+        headers=super_headers,
     )
     usuario = _crear_usuario(client, admin_headers)
     client.put(f"{USUARIOS}/{usuario['id']}/roles", json={"nombres_rol": ["solo_usuarios"]}, headers=admin_headers)

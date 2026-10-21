@@ -1,6 +1,6 @@
 """Crea el primer usuario administrador de un despliegue nuevo.
 
-El registro público (/auth/registro) solo crea clientes y asignar roles
+El registro público (/public/{codigo}/registro) solo crea clientes y asignar roles
 exige ya ser administrador, así que en una base recién migrada no hay forma
 de entrar al back office sin esto. Idempotente: si el email ya existe, solo
 se asegura de que tenga el rol administrador.

@@ -40,8 +40,8 @@ def _encabezado(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _vencido(tipo: str = "access", usuario_id: int = 1) -> str:
-    return _crear_token(usuario_id, tipo=tipo, expira=dt.timedelta(seconds=-60))
+def _vencido(tipo: str = "access", usuario_id: int = 1, empresa_id: int = 1) -> str:
+    return _crear_token(usuario_id, tipo=tipo, expira=dt.timedelta(seconds=-60), empresa_id=empresa_id)
 
 
 def _crear_usuario(db, email: str = "seg@example.com") -> Usuario:
@@ -74,7 +74,7 @@ def _cliente_sin_reraise() -> TestClient:
 
 
 def test_access_token_lleva_sub_tipo_roles_y_permisos():
-    token = crear_access_token(7, ["administrador"], ["roles.gestionar"])
+    token = crear_access_token(7, ["administrador"], ["roles.gestionar"], empresa_id=1)
 
     payload = decodificar_token(token)
 
@@ -82,29 +82,54 @@ def test_access_token_lleva_sub_tipo_roles_y_permisos():
     assert payload["tipo"] == "access"
     assert payload["roles"] == ["administrador"]
     assert payload["permisos"] == ["roles.gestionar"]
+    assert payload["empresa_id"] == 1
     assert payload["exp"] > payload["iat"]
     assert "password" not in payload
 
 
 def test_refresh_token_lleva_tipo_refresh_y_no_lleva_roles_ni_permisos():
-    payload = decodificar_token(crear_refresh_token(7))
+    payload = decodificar_token(crear_refresh_token(7, empresa_id=1))
 
     assert payload["sub"] == "7"
     assert payload["tipo"] == "refresh"
+    assert payload["empresa_id"] == 1
     assert "roles" not in payload
     assert "permisos" not in payload
 
 
 def test_reset_token_tiene_tipo_reset_y_vence_en_treinta_minutos():
-    payload = decodificar_token(crear_reset_token(7))
+    payload = decodificar_token(crear_reset_token(7, empresa_id=1, password_hash="hash-de-prueba"))
 
     assert payload["tipo"] == "reset"
+    assert payload["empresa_id"] == 1
     assert payload["exp"] - payload["iat"] == 30 * 60
 
 
+def test_empresa_id_none_se_conserva_como_null_en_los_tres_tokens():
+    # None solo para el superadministrador: el claim existe y vale null.
+    access = decodificar_token(crear_access_token(7, [], [], empresa_id=None))
+    refresh = decodificar_token(crear_refresh_token(7, empresa_id=None))
+    reset = decodificar_token(crear_reset_token(7, empresa_id=None, password_hash="hash-de-prueba"))
+
+    for payload in (access, refresh, reset):
+        assert "empresa_id" in payload
+        assert payload["empresa_id"] is None
+
+
+def test_decodificar_token_sin_claim_empresa_id_lanza_401():
+    vence = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=5)
+    sin_claim = _firmar({"sub": "7", "tipo": "access", "exp": vence})
+
+    with pytest.raises(HTTPException) as error:
+        decodificar_token(sin_claim)
+
+    assert error.value.status_code == 401
+    assert error.value.detail == "Token inválido"
+
+
 def test_vigencias_de_access_y_refresh_salen_de_la_configuracion():
-    access = decodificar_token(crear_access_token(1, [], []))
-    refresh = decodificar_token(crear_refresh_token(1))
+    access = decodificar_token(crear_access_token(1, [], [], empresa_id=1))
+    refresh = decodificar_token(crear_refresh_token(1, empresa_id=1))
 
     assert access["exp"] - access["iat"] == settings.jwt_access_token_expire_minutes * 60
     assert refresh["exp"] - refresh["iat"] == settings.jwt_refresh_token_expire_days * 86400
@@ -119,7 +144,7 @@ def test_decodificar_token_vencido_lanza_401():
 
 
 def test_decodificar_token_con_firma_invalida_lanza_401():
-    ajeno = _firmar({"sub": "1", "tipo": "access"}, secreto="otra-clave-distinta-de-32-bytes-minimo!!")
+    ajeno = _firmar({"sub": "1", "tipo": "access", "empresa_id": 1}, secreto="otra-clave-distinta-de-32-bytes-minimo!!")
 
     with pytest.raises(HTTPException) as error:
         decodificar_token(ajeno)
@@ -135,7 +160,7 @@ def test_decodificar_token_basura_lanza_401():
 
 
 def test_decodificar_token_con_algoritmo_none_se_rechaza():
-    sin_firma = jwt.encode({"sub": "1", "tipo": "access"}, key="", algorithm="none")
+    sin_firma = jwt.encode({"sub": "1", "tipo": "access", "empresa_id": 1}, key="", algorithm="none")
 
     with pytest.raises(HTTPException) as error:
         decodificar_token(sin_firma)
@@ -146,7 +171,7 @@ def test_decodificar_token_con_algoritmo_none_se_rechaza():
 def test_decodificar_token_sin_exp_se_rechaza():
     # Un token firmado sin vencimiento serviría para siempre: la claim `exp`
     # es obligatoria (antes se aceptaba).
-    sin_exp = _firmar({"sub": "1", "tipo": "access"})
+    sin_exp = _firmar({"sub": "1", "tipo": "access", "empresa_id": 1})
 
     with pytest.raises(HTTPException) as error:
         decodificar_token(sin_exp)
@@ -156,7 +181,7 @@ def test_decodificar_token_sin_exp_se_rechaza():
 
 
 def test_decodificar_token_con_tipo_acepta_el_tipo_pedido_y_rechaza_otro():
-    refresh = crear_refresh_token(7)
+    refresh = crear_refresh_token(7, empresa_id=1)
 
     assert decodificar_token(refresh, tipo="refresh")["sub"] == "7"
     with pytest.raises(HTTPException) as error:
@@ -167,7 +192,7 @@ def test_decodificar_token_con_tipo_acepta_el_tipo_pedido_y_rechaza_otro():
 
 
 def test_decodificar_token_sin_tipo_no_comprueba_el_tipo():
-    assert decodificar_token(crear_reset_token(7))["tipo"] == "reset"
+    assert decodificar_token(crear_reset_token(7, empresa_id=1, password_hash="hash-de-prueba"))["tipo"] == "reset"
 
 
 def test_usuario_id_de_payload_devuelve_el_entero_o_none():
@@ -190,7 +215,7 @@ def test_get_current_user_sin_credenciales_lanza_401(db_session):
 
 def test_get_current_user_con_token_valido_devuelve_el_usuario(db_session):
     usuario = _crear_usuario(db_session)
-    token = crear_access_token(usuario.id, [], [])
+    token = crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)
 
     resultado = get_current_user(_credenciales(token), db_session)
 
@@ -201,7 +226,7 @@ def test_get_current_user_rechaza_refresh_como_access(db_session):
     usuario = _crear_usuario(db_session)
 
     with pytest.raises(HTTPException) as error:
-        get_current_user(_credenciales(crear_refresh_token(usuario.id)), db_session)
+        get_current_user(_credenciales(crear_refresh_token(usuario.id, empresa_id=usuario.empresa_id)), db_session)
 
     assert error.value.status_code == 401
     assert error.value.detail == "Token inválido"
@@ -211,7 +236,7 @@ def test_get_current_user_rechaza_reset_como_access(db_session):
     usuario = _crear_usuario(db_session)
 
     with pytest.raises(HTTPException) as error:
-        get_current_user(_credenciales(crear_reset_token(usuario.id)), db_session)
+        get_current_user(_credenciales(crear_reset_token(usuario.id, empresa_id=usuario.empresa_id, password_hash=usuario.password_hash)), db_session)
 
     assert error.value.status_code == 401
 
@@ -220,14 +245,14 @@ def test_get_current_user_rechaza_token_vencido(db_session):
     usuario = _crear_usuario(db_session)
 
     with pytest.raises(HTTPException) as error:
-        get_current_user(_credenciales(_vencido("access", usuario.id)), db_session)
+        get_current_user(_credenciales(_vencido("access", usuario.id, usuario.empresa_id)), db_session)
 
     assert error.value.status_code == 401
 
 
 def test_get_current_user_usuario_inexistente_lanza_401(db_session):
     with pytest.raises(HTTPException) as error:
-        get_current_user(_credenciales(crear_access_token(999_999, [], [])), db_session)
+        get_current_user(_credenciales(crear_access_token(999_999, [], [], empresa_id=1)), db_session)
 
     assert error.value.status_code == 401
     assert error.value.detail == "Usuario inválido"
@@ -235,7 +260,7 @@ def test_get_current_user_usuario_inexistente_lanza_401(db_session):
 
 def test_get_current_user_usuario_inactivo_lanza_401(db_session):
     usuario = _crear_usuario(db_session)
-    token = crear_access_token(usuario.id, [], [])
+    token = crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)
     usuario.activo = False
     db_session.commit()
 
@@ -248,7 +273,7 @@ def test_get_current_user_usuario_inactivo_lanza_401(db_session):
 
 def test_get_current_user_sub_no_numerico_lanza_401(db_session):
     # Antes `int(payload["sub"])` reventaba con ValueError (500).
-    token = _firmar_vigente({"sub": "abc", "tipo": "access"})
+    token = _firmar_vigente({"sub": "abc", "tipo": "access", "empresa_id": 1})
 
     with pytest.raises(HTTPException) as error:
         get_current_user(_credenciales(token), db_session)
@@ -259,7 +284,7 @@ def test_get_current_user_sub_no_numerico_lanza_401(db_session):
 
 def test_get_current_user_sin_claim_sub_lanza_401(db_session):
     # Antes revientaba con KeyError (500).
-    token = _firmar_vigente({"tipo": "access"})
+    token = _firmar_vigente({"tipo": "access", "empresa_id": 1})
 
     with pytest.raises(HTTPException) as error:
         get_current_user(_credenciales(token), db_session)
@@ -270,7 +295,7 @@ def test_get_current_user_sin_claim_sub_lanza_401(db_session):
 
 def test_get_current_user_rechaza_token_sin_exp(db_session):
     usuario = _crear_usuario(db_session)
-    token = _firmar({"sub": str(usuario.id), "tipo": "access"})
+    token = _firmar({"sub": str(usuario.id), "tipo": "access", "empresa_id": usuario.empresa_id})
 
     with pytest.raises(HTTPException) as error:
         get_current_user(_credenciales(token), db_session)
@@ -291,7 +316,7 @@ def test_http_sin_token_devuelve_401(client):
 def test_http_token_valido_devuelve_200(client, db_session):
     usuario = _crear_usuario(db_session)
 
-    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(crear_access_token(usuario.id, [], [])))
+    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)))
 
     assert respuesta.status_code == 200
     assert respuesta.json()["email"] == "seg@example.com"
@@ -300,7 +325,7 @@ def test_http_token_valido_devuelve_200(client, db_session):
 def test_http_refresh_token_como_access_devuelve_401(client, db_session):
     usuario = _crear_usuario(db_session)
 
-    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(crear_refresh_token(usuario.id)))
+    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(crear_refresh_token(usuario.id, empresa_id=usuario.empresa_id)))
 
     assert respuesta.status_code == 401
 
@@ -308,7 +333,7 @@ def test_http_refresh_token_como_access_devuelve_401(client, db_session):
 def test_http_token_vencido_devuelve_401(client, db_session):
     usuario = _crear_usuario(db_session)
 
-    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(_vencido("access", usuario.id)))
+    respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(_vencido("access", usuario.id, usuario.empresa_id)))
 
     assert respuesta.status_code == 401
 
@@ -316,7 +341,7 @@ def test_http_token_vencido_devuelve_401(client, db_session):
 def test_http_firma_invalida_devuelve_401(client, db_session):
     usuario = _crear_usuario(db_session)
     ajeno = _firmar(
-        {"sub": str(usuario.id), "tipo": "access"}, secreto="otra-clave-distinta-de-32-bytes-minimo!!"
+        {"sub": str(usuario.id), "tipo": "access", "empresa_id": usuario.empresa_id}, secreto="otra-clave-distinta-de-32-bytes-minimo!!"
     )
 
     respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(ajeno))
@@ -326,7 +351,7 @@ def test_http_firma_invalida_devuelve_401(client, db_session):
 
 def test_http_usuario_desactivado_con_token_vigente_devuelve_401(client, db_session):
     usuario = _crear_usuario(db_session)
-    token = crear_access_token(usuario.id, [], [])
+    token = crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)
     usuario.activo = False
     db_session.commit()
 
@@ -337,7 +362,7 @@ def test_http_usuario_desactivado_con_token_vigente_devuelve_401(client, db_sess
 
 def test_http_sub_no_numerico_devuelve_401(client):
     # Antes era un 500 ("Error interno del servidor").
-    token = _firmar_vigente({"sub": "abc", "tipo": "access"})
+    token = _firmar_vigente({"sub": "abc", "tipo": "access", "empresa_id": 1})
 
     respuesta = _cliente_sin_reraise().get(RUTA_PROTEGIDA, headers=_encabezado(token))
 
@@ -346,7 +371,7 @@ def test_http_sub_no_numerico_devuelve_401(client):
 
 
 def test_http_sin_claim_sub_devuelve_401(client):
-    token = _firmar_vigente({"tipo": "access"})
+    token = _firmar_vigente({"tipo": "access", "empresa_id": 1})
 
     respuesta = _cliente_sin_reraise().get(RUTA_PROTEGIDA, headers=_encabezado(token))
 
@@ -355,7 +380,7 @@ def test_http_sin_claim_sub_devuelve_401(client):
 
 def test_http_token_firmado_sin_exp_devuelve_401(client, db_session):
     usuario = _crear_usuario(db_session)
-    token = _firmar({"sub": str(usuario.id), "tipo": "access"})
+    token = _firmar({"sub": str(usuario.id), "tipo": "access", "empresa_id": usuario.empresa_id})
 
     respuesta = client.get(RUTA_PROTEGIDA, headers=_encabezado(token))
 
@@ -372,7 +397,7 @@ def test_opcional_sin_token_devuelve_none(db_session):
 def test_opcional_con_token_valido_devuelve_el_usuario(db_session):
     usuario = _crear_usuario(db_session)
 
-    resultado = get_current_user_opcional(_credenciales(crear_access_token(usuario.id, [], [])), db_session)
+    resultado = get_current_user_opcional(_credenciales(crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)), db_session)
 
     assert resultado.id == usuario.id
 
@@ -381,25 +406,25 @@ def test_opcional_con_token_invalido_vencido_o_de_otro_tipo_devuelve_none(db_ses
     usuario = _crear_usuario(db_session)
 
     assert get_current_user_opcional(_credenciales("basura"), db_session) is None
-    assert get_current_user_opcional(_credenciales(_vencido("access", usuario.id)), db_session) is None
-    assert get_current_user_opcional(_credenciales(crear_refresh_token(usuario.id)), db_session) is None
+    assert get_current_user_opcional(_credenciales(_vencido("access", usuario.id, usuario.empresa_id)), db_session) is None
+    assert get_current_user_opcional(_credenciales(crear_refresh_token(usuario.id, empresa_id=usuario.empresa_id)), db_session) is None
 
 
 def test_opcional_con_usuario_inexistente_o_inactivo_devuelve_none(db_session):
     usuario = _crear_usuario(db_session)
-    token = crear_access_token(usuario.id, [], [])
+    token = crear_access_token(usuario.id, [], [], empresa_id=usuario.empresa_id)
     usuario.activo = False
     db_session.commit()
 
     assert get_current_user_opcional(_credenciales(token), db_session) is None
-    assert get_current_user_opcional(_credenciales(crear_access_token(999_999, [], [])), db_session) is None
+    assert get_current_user_opcional(_credenciales(crear_access_token(999_999, [], [], empresa_id=1)), db_session) is None
 
 
 def test_opcional_con_sub_no_numerico_o_ausente_devuelve_none(db_session):
     # Antes el sub no numérico lanzaba ValueError (500), a diferencia del
     # resto de fallos.
-    no_numerico = _firmar_vigente({"sub": "abc", "tipo": "access"})
-    sin_sub = _firmar_vigente({"tipo": "access"})
+    no_numerico = _firmar_vigente({"sub": "abc", "tipo": "access", "empresa_id": 1})
+    sin_sub = _firmar_vigente({"tipo": "access", "empresa_id": 1})
 
     assert get_current_user_opcional(_credenciales(no_numerico), db_session) is None
     assert get_current_user_opcional(_credenciales(sin_sub), db_session) is None
@@ -407,7 +432,7 @@ def test_opcional_con_sub_no_numerico_o_ausente_devuelve_none(db_session):
 
 def test_opcional_con_token_sin_exp_devuelve_none(db_session):
     usuario = _crear_usuario(db_session)
-    token = _firmar({"sub": str(usuario.id), "tipo": "access"})
+    token = _firmar({"sub": str(usuario.id), "tipo": "access", "empresa_id": usuario.empresa_id})
 
     assert get_current_user_opcional(_credenciales(token), db_session) is None
 
@@ -453,7 +478,7 @@ def test_require_permission_http_sin_token_es_401_no_403(client):
 def test_require_permission_ignora_los_permisos_del_jwt(client, db_session):
     # El token afirma tener el permiso, pero la fuente de verdad es la base.
     usuario = _crear_usuario(db_session, email="mentiroso@example.com")
-    token = crear_access_token(usuario.id, ["administrador"], ["roles.gestionar"])
+    token = crear_access_token(usuario.id, ["administrador"], ["roles.gestionar"], empresa_id=usuario.empresa_id)
 
     respuesta = client.get("/api/v1/roles", headers=_encabezado(token))
 

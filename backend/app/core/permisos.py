@@ -3,6 +3,9 @@ constantes: no importa de ningún paquete. Los seeds (scripts/seed_seguridad.py)
 siguen siendo la fuente de qué códigos existen en la base."""
 
 # ---- plataforma ----
+# Rol global del administrador de la plataforma: solo lo tienen usuarios sin
+# empresa (`usuario.empresa_id` NULL), y ellos no pueden tener otro.
+ROL_SUPERADMINISTRADOR = "superadministrador"
 PERMISO_USUARIOS = "usuarios.gestionar"
 PERMISO_ROLES = "roles.gestionar"
 # Acceso a los endpoints de organización (ciudades, sucursales, empleados).

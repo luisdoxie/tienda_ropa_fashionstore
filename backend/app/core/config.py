@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_days: int = 7
 
+    # Bloqueo por cuenta del inicio de sesion (core/rate_limit.LimitadorIntentos):
+    # tras `login_max_intentos` fallos dentro de `login_ventana_segundos` la
+    # cuenta queda bloqueada hasta que el fallo mas viejo salga de la ventana.
+    # No son secretos.
+    login_max_intentos: int = 5
+    login_ventana_segundos: int = 900
+
     # Orígenes del front Angular autorizados a llamar esta API desde el
     # navegador (CORS es una restricción que solo aplica a peticiones desde
     # un browser). La app Flutter (mobile/lib/core/network/dio_client.dart)

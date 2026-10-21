@@ -3,11 +3,14 @@ Organización), a los demás paquetes y a core.security, sin ser casos de uso
 del catálogo: consultas y validaciones sobre las tablas de este paquete, para
 que nadie más tenga que tocarlas directamente."""
 
+import re
+import unicodedata
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DomainError, NoEncontradoError, PermisoDenegadoError
-from app.core.permisos import PERMISO_ALCANCE_GLOBAL
+from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_SUPERADMINISTRADOR
 from app.core.tenant import sin_filtro
 from app.plataforma.models import (
     Ciudad,
@@ -58,6 +61,16 @@ def permisos_de_usuario(db: Session, usuario_id: int) -> list[str]:
     return list(filas)
 
 
+def identidad_del_token_valida(db: Session, payload: dict, usuario: Usuario) -> bool:
+    """El tenant sale del claim `empresa_id` del token y se cruza con la fila
+    del usuario: ni el claim basta solo, ni la base sin claim. Con empresa,
+    ademas tiene que seguir activa (desactivarla deja sin acceso a todos sus
+    tokens ya emitidos). Para get_current_user y el refresco del token."""
+    if payload.get("empresa_id") != usuario.empresa_id:
+        return False
+    return usuario.empresa_id is None or empresa_esta_activa(db, usuario.empresa_id)
+
+
 def obtener_usuario_para_auth(db: Session, usuario_id: int) -> Usuario | None:
     """Para core.security (get_current_user/get_current_user_opcional):
     resuelve el usuario del JWT sin que core tenga que hacer `db.get(Usuario,
@@ -71,7 +84,38 @@ def obtener_usuario_para_auth(db: Session, usuario_id: int) -> Usuario | None:
     return usuario
 
 
+def validar_roles_asignables(empresa_id: int | None, nombres_rol: list[str] | set[str]) -> None:
+    """El rol superadministrador solo se asigna a usuarios sin empresa
+    (`empresa_id` NULL), y un usuario sin empresa solo puede tener ese rol.
+    Quien lo intente (p. ej. un administrador de empresa) recibe 403."""
+    nombres = set(nombres_rol)
+    if empresa_id is not None and ROL_SUPERADMINISTRADOR in nombres:
+        raise PermisoDenegadoError("Rol no asignable")
+    if empresa_id is None and nombres - {ROL_SUPERADMINISTRADOR}:
+        raise PermisoDenegadoError("Rol no asignable")
+
+
 # ---- Empresa ----
+
+_LONGITUD_CODIGO_EMPRESA = 60
+
+
+def normalizar_nombre_empresa(nombre: str) -> str:
+    """El nombre de una empresa tal como se compara con `empresa.codigo`: sin
+    tildes ni la tilde de la n (NFKD), en minusculas, con toda secuencia de
+    caracteres que no sean a-z0-9 convertida en un solo guion y sin guiones en
+    los extremos. 'Boutique Andina' -> 'boutique-andina'. Vacio si no queda
+    nada (se trata como credenciales invalidas). Maximo 60 caracteres, la
+    longitud de `empresa.codigo`; E04 la reutiliza para generar el codigo."""
+    sin_marcas = "".join(c for c in unicodedata.normalize("NFKD", nombre) if not unicodedata.combining(c))
+    guionado = re.sub(r"[^a-z0-9]+", "-", sin_marcas.lower()).strip("-")
+    return guionado[:_LONGITUD_CODIGO_EMPRESA].strip("-")
+
+
+def empresa_esta_activa(db: Session, empresa_id: int) -> bool:
+    """Si la empresa existe y esta activa. `empresa` no es una tabla de empresa
+    (es la raiz), asi que se consulta por clave primaria sin filtro."""
+    return bool(db.scalar(select(Empresa.activo).where(Empresa.id == empresa_id)))
 
 
 def obtener_empresa_por_codigo(db: Session, codigo: str) -> Empresa | None:
@@ -79,6 +123,13 @@ def obtener_empresa_por_codigo(db: Session, codigo: str) -> Empresa | None:
     dependencia `core.tenant.empresa_publica` (rutas /public/{codigo}); decidir
     si una empresa inactiva cuenta como inexistente le toca a quien llama."""
     return db.scalar(select(Empresa).where(Empresa.codigo == codigo.strip().lower()))
+
+
+def obtener_empresa(db: Session, empresa_id: int) -> Empresa | None:
+    """La empresa con esa clave primaria, o None. `empresa` es la raiz y no una
+    tabla de empresa: no lleva filtro. Para /auth/yo (codigo y nombre de la
+    empresa del usuario)."""
+    return db.get(Empresa, empresa_id)
 
 
 def listar_empresas_activas(db: Session) -> list[int]:

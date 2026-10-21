@@ -166,7 +166,7 @@ def test_crear_reserva_genera_notificaciones_a_empleados(client, admin_headers, 
     assert respuesta.status_code == 201
 
     token_empleado = client.post(
-        "/api/v1/auth/login", json={"email": "encargado_notif@example.com", "password": "claveSegura123"}
+        "/api/v1/auth/login", json={"empresa": "fashionstore", "email": "encargado_notif@example.com", "password": "claveSegura123"}
     ).json()["access_token"]
     notificaciones = client.get(
         "/api/v1/notificaciones", headers={"Authorization": f"Bearer {token_empleado}"}
@@ -249,11 +249,11 @@ def test_cliente_no_puede_cancelar_reserva_ajena(client, admin_headers, cliente_
     reserva = client.post("/api/v1/reservas", json=_payload_reserva(contexto), headers=cliente_headers).json()
 
     client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Otro", "apellido": "Cliente", "email": "otro_cliente@example.com", "password": "claveSegura123"},
     )
     token_otro = client.post(
-        "/api/v1/auth/login", json={"email": "otro_cliente@example.com", "password": "claveSegura123"}
+        "/api/v1/auth/login", json={"empresa": "fashionstore", "email": "otro_cliente@example.com", "password": "claveSegura123"}
     ).json()["access_token"]
 
     respuesta = client.delete(

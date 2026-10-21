@@ -55,7 +55,7 @@ def test_registro_http_sin_rol_cliente_da_400_y_no_deja_usuario(client, db_sessi
     _desactivar_rol_cliente(db_session)
 
     respuesta = client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Nuevo", "apellido": "Cliente", "email": EMAIL, "password": "claveSegura123"},
     )
 
@@ -67,7 +67,7 @@ def test_registro_http_sin_rol_cliente_da_400_y_no_deja_usuario(client, db_sessi
 
 def test_registro_de_usuario_dado_de_baja_sin_rol_no_lo_reactiva(client, db_session):
     cuerpo = {"nombre": "Nuevo", "apellido": "Cliente", "email": EMAIL, "password": "claveSegura123"}
-    assert client.post("/api/v1/auth/registro", json=cuerpo).status_code == 201
+    assert client.post("/api/v1/public/fashionstore/registro", json=cuerpo).status_code == 201
     usuario = UsuarioRepository().obtener_por_email(db_session, EMAIL)
     usuario.activo = False
     db_session.commit()
@@ -104,7 +104,7 @@ def test_registro_exitoso_hace_un_solo_commit(db_session, monkeypatch):
 
 def test_registro_http_exitoso_sigue_igual(client, db_session):
     respuesta = client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={
             "nombre": "Nuevo",
             "apellido": "Cliente",
@@ -129,13 +129,13 @@ def test_reregistro_de_usuario_dado_de_baja_reutiliza_el_perfil_de_cliente(clien
         "password": "claveSegura123",
         "ci_nit": "111",
     }
-    primero = client.post("/api/v1/auth/registro", json=cuerpo).json()
+    primero = client.post("/api/v1/public/fashionstore/registro", json=cuerpo).json()
     usuario = UsuarioRepository().obtener_por_email(db_session, EMAIL)
     usuario.activo = False
     db_session.commit()
     clientes_antes = _contar_clientes(db_session)
 
-    respuesta = client.post("/api/v1/auth/registro", json={**cuerpo, "ci_nit": "222"})
+    respuesta = client.post("/api/v1/public/fashionstore/registro", json={**cuerpo, "ci_nit": "222"})
 
     assert respuesta.status_code == 201
     assert respuesta.json()["id"] == primero["id"]

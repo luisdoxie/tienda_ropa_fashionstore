@@ -6,7 +6,7 @@ from app.plataforma.casos_uso import cu01_autenticar_registrar_usuarios as cu01
 
 def registrar(client, email="cliente1@example.com", password="unaClaveSegura123"):
     return client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={
             "nombre": "Ana",
             "apellido": "Pérez",
@@ -43,7 +43,7 @@ def test_login_correcto_devuelve_tokens(client):
 
     respuesta = client.post(
         "/api/v1/auth/login",
-        json={"email": "cliente3@example.com", "password": "unaClaveSegura123"},
+        json={"empresa": "fashionstore", "email": "cliente3@example.com", "password": "unaClaveSegura123"},
     )
 
     assert respuesta.status_code == 200
@@ -58,7 +58,7 @@ def test_login_con_contrasena_incorrecta_falla(client):
 
     respuesta = client.post(
         "/api/v1/auth/login",
-        json={"email": "cliente4@example.com", "password": "otra-clave"},
+        json={"empresa": "fashionstore", "email": "cliente4@example.com", "password": "otra-clave"},
     )
 
     assert respuesta.status_code == 401
@@ -74,7 +74,7 @@ def test_endpoint_protegido_con_rol_insuficiente_es_rechazado(client):
     registrar(client, email="cliente5@example.com", password="unaClaveSegura123")
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "cliente5@example.com", "password": "unaClaveSegura123"},
+        json={"empresa": "fashionstore", "email": "cliente5@example.com", "password": "unaClaveSegura123"},
     )
     access_token = login.json()["access_token"]
 
@@ -101,7 +101,7 @@ def test_require_permission_revisa_la_tabla_en_vivo_no_el_token(client, db_sessi
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin1@example.com", "password": "unaClaveSegura123"},
+        json={"empresa": "fashionstore", "email": "admin1@example.com", "password": "unaClaveSegura123"},
     )
     access_token = login.json()["access_token"]
 
@@ -151,7 +151,7 @@ def test_usuario_dado_de_baja_se_puede_recrear_con_el_mismo_email(client, admin_
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "reingreso@example.com", "password": "otraClaveSegura456"},
+        json={"empresa": "fashionstore", "email": "reingreso@example.com", "password": "otraClaveSegura456"},
     )
     assert login.status_code == 200
 
@@ -176,7 +176,7 @@ def test_cliente_dado_de_baja_se_puede_reregistrar_con_el_mismo_email(client, ad
 
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "baja-cliente@example.com", "password": "otraClaveSegura456"},
+        json={"empresa": "fashionstore", "email": "baja-cliente@example.com", "password": "otraClaveSegura456"},
     )
     assert login.status_code == 200
 
@@ -185,7 +185,7 @@ def test_yo_devuelve_roles_y_permisos_del_usuario(client):
     registrar(client, email="cliente6@example.com", password="unaClaveSegura123")
     login = client.post(
         "/api/v1/auth/login",
-        json={"email": "cliente6@example.com", "password": "unaClaveSegura123"},
+        json={"empresa": "fashionstore", "email": "cliente6@example.com", "password": "unaClaveSegura123"},
     )
     access_token = login.json()["access_token"]
 
@@ -204,7 +204,7 @@ def _token_en_logs(client, caplog, monkeypatch, entorno):
     monkeypatch.setattr(cu01, "get_settings", lambda: SimpleNamespace(environment=entorno))
     registrar(client, email="recupera@example.com")
     with caplog.at_level(logging.INFO, logger=cu01.__name__):
-        respuesta = client.post("/api/v1/auth/recuperar", json={"email": "recupera@example.com"})
+        respuesta = client.post("/api/v1/auth/recuperar", json={"empresa": "fashionstore", "email": "recupera@example.com"})
     assert respuesta.status_code == 202
     return [r.getMessage() for r in caplog.records if r.name == cu01.__name__]
 

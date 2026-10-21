@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+# El correo se guarda y se busca en minusculas (el correo de un usuario es unico
+# por empresa sin distinguir mayusculas).
+CorreoNormalizado = Annotated[EmailStr, AfterValidator(lambda correo: correo.lower())]
 
 
 # ---- Seguridad ----
@@ -52,7 +56,7 @@ class AsignarPermisosRequest(BaseModel):
 class UsuarioCrear(BaseModel):
     nombre: str = Field(max_length=60)
     apellido: str = Field(max_length=60)
-    email: EmailStr
+    email: CorreoNormalizado
     telefono: str | None = Field(default=None, max_length=20)
     password: str = Field(min_length=8, max_length=72)
 
@@ -94,6 +98,10 @@ class UsuarioRespuesta(BaseModel):
 
 class UsuarioYoRespuesta(UsuarioRespuesta):
     permisos: list[str] = []
+    # None para el superadministrador (no pertenece a ninguna empresa).
+    empresa_id: int | None = None
+    empresa_codigo: str | None = None
+    empresa_nombre: str | None = None
 
 
 # ---- Autenticación ----------------------------------------------------------
@@ -102,14 +110,16 @@ class UsuarioYoRespuesta(UsuarioRespuesta):
 class RegistroRequest(BaseModel):
     nombre: str = Field(max_length=60)
     apellido: str = Field(max_length=60)
-    email: EmailStr
+    email: CorreoNormalizado
     telefono: str | None = Field(default=None, max_length=20)
     password: str = Field(min_length=8, max_length=72)
     ci_nit: str | None = Field(default=None, max_length=20)
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Nombre (o codigo) de la empresa; omitido = intento de superadministrador.
+    empresa: str | None = Field(default=None, max_length=120)
+    email: CorreoNormalizado
     password: str
 
 
@@ -118,7 +128,8 @@ class RefreshRequest(BaseModel):
 
 
 class RecuperarRequest(BaseModel):
-    email: EmailStr
+    empresa: str | None = Field(default=None, max_length=120)
+    email: CorreoNormalizado
 
 
 class RecuperarConfirmarRequest(BaseModel):

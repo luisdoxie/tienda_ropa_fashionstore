@@ -110,10 +110,14 @@ Hecho:
 - Aislamiento automático por empresa (etapa E02): filtro en un único punto
   (`core/tenant.py`) que falla cerrado, ids del cliente validados, tareas por
   empresa y 25 rutas públicas de la tienda `/api/v1/public/{codigo}/...`.
+- Login con empresa y token con empresa (etapa E03): `POST /auth/login` con
+  `{empresa, email, password}`, claim `empresa_id` en los tokens, bloqueo de
+  cuenta tras 5 fallos, correo en minúsculas, token de recuperación de un solo
+  uso, registro de clientes por tienda (`/public/{codigo}/registro`) y
+  superadministrador de la plataforma creado solo con script.
 
 Por construir, en este orden:
-1. Multitenant y planes (CU-04): login con empresa y empresa en el token de
-   sesión, gestión de empresas, planes y suscripciones.
+1. Multitenant y planes (CU-04): gestión de empresas, planes y suscripciones.
 2. Sincronización offline (CU-25): idempotencia, fecha de la operación y lotes
    atómicos. PWA con IndexedDB y app Flutter con SQLite, incluido el modo
    vendedor/cajero.
@@ -121,12 +125,31 @@ Por construir, en este orden:
    probador.
 4. Pruebas, rendimiento y documentación ICONIX.
 
-Pruebas: 699 en el backend y 132 en el móvil (`flutter test`). Las del backend
-corren con `pytest`: 680 en SQLite en memoria y 19 en PostgreSQL real
+Pruebas: 1085 en el backend y 132 en el móvil (`flutter test`). Las del backend
+corren con `pytest`: 1061 en SQLite en memoria y 24 en PostgreSQL real
 (`backend/tests/postgres/`: esquema, bloqueos de stock, cancelar contra
 expirar reservas, deadlocks y migración multitenant con datos). Estas últimas se activan con la variable
 `TEST_DATABASE_URL` apuntando a una base cuyo nombre termine en `_test`; si
 falta, se omiten.
+
+## Autenticación y variables de entorno
+
+El inicio de sesión pide la empresa: `POST /api/v1/auth/login` con
+`{"empresa": "Boutique Andina", "email": "...", "password": "..."}`. El nombre se
+normaliza (minúsculas, sin tildes, guiones) y se busca en el código de la empresa;
+sin `empresa` solo entra un superadministrador. Los tokens llevan el `empresa_id`.
+Cambiar `JWT_SECRET_KEY` cierra TODAS las sesiones (revocación de emergencia).
+
+| Variable | Para qué |
+|----------|----------|
+| `JWT_SECRET_KEY` | firma de los tokens; rotarla invalida todas las sesiones |
+| `LOGIN_MAX_INTENTOS` (5), `LOGIN_VENTANA_SEGUNDOS` (900) | bloqueo por cuenta tras varios fallos (en memoria; vale con un solo worker) |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_EMPRESA` | `python -m scripts.crear_admin`: administrador de una empresa |
+| `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | `python -m scripts.crear_superadmin` (contraseña de 12+ caracteres) |
+
+El superadministrador (sin empresa) solo se crea con ese script, una vez y como
+comando único del servicio; después se quitan las dos variables. Con
+`--restablecer` se cambia su contraseña. Ninguna ruta HTTP crea usuarios sin empresa.
 
 ## Desarrolladores
 

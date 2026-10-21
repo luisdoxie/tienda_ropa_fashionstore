@@ -176,7 +176,10 @@ def client_pg(fabrica_pg):
 
 
 def _login(client, email: str) -> dict:
-    token = client.post("/api/v1/auth/login", json={"email": email, "password": CLAVE}).json()["access_token"]
+    respuesta = client.post(
+        "/api/v1/auth/login", json={"empresa": "fashionstore", "email": email, "password": CLAVE}
+    )
+    token = respuesta.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -192,10 +195,10 @@ def admin_pg(client_pg, fabrica_pg) -> dict:
 
 
 def registrar_cliente(client, fabrica, email: str) -> int:
-    """Alta de cliente por /auth/registro (crea también su fila en `cliente`).
+    """Alta de cliente por el registro de la tienda (crea también su fila en `cliente`).
     Devuelve el id del usuario."""
     respuesta = client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Cli", "apellido": "Ente", "email": email, "password": CLAVE},
     )
     assert respuesta.status_code == 201, respuesta.text

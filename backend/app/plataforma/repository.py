@@ -1,11 +1,12 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.crud_base import CRUDBase
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
 from app.core.repository import confirmar, obtener_por_clave
+from app.core.permisos import ROL_SUPERADMINISTRADOR
 from app.core.security import hash_password
-from app.core.tenant import sin_filtro
+from app.core.tenant import empresa_de, sin_filtro
 from app.plataforma.models import (
     Ciudad,
     Cliente,
@@ -39,6 +40,20 @@ class RolRepository(CRUDBase[Rol, RolCrear, RolActualizar]):
     def __init__(self) -> None:
         super().__init__(Rol)
 
+    # Los roles son globales, pero el superadministrador es de la plataforma:
+    # una sesion de empresa no lo ve (ni en listados ni por id).
+    def buscar(self, db: Session, id_) -> Rol | None:
+        rol = super().buscar(db, id_)
+        if rol is not None and rol.nombre == ROL_SUPERADMINISTRADOR and empresa_de(db) is not None:
+            return None
+        return rol
+
+    def listar(self, db: Session, paginacion, filtros=None) -> list[Rol]:
+        roles = super().listar(db, paginacion, filtros)
+        if empresa_de(db) is None:
+            return roles
+        return [r for r in roles if r.nombre != ROL_SUPERADMINISTRADOR]
+
     def asignar_permisos(self, db: Session, rol: Rol, codigos: list[str], commit: bool = True) -> Rol:
         codigos_unicos = set(codigos)
         permisos = list(db.scalars(select(Permiso).where(Permiso.codigo.in_(codigos_unicos))))
@@ -63,14 +78,32 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
         super().__init__(Usuario)
 
     def obtener_por_email(self, db: Session, email: str) -> Usuario | None:
-        """El usuario con ese correo DENTRO de la empresa de la sesión."""
-        return db.scalar(select(Usuario).where(Usuario.email == email))
+        """El usuario con ese correo DENTRO de la empresa de la sesión. El
+        correo no distingue mayúsculas (los datos anteriores a que se
+        guardara en minúsculas siguen encontrándose)."""
+        return db.scalar(select(Usuario).where(func.lower(Usuario.email) == email.lower()))
 
-    def obtener_por_email_sin_empresa(self, db: Session, email: str) -> Usuario | None:
-        """Para el inicio de sesión y la recuperación de contraseña, donde la
-        empresa todavía no se conoce: la primera coincidencia por id. Es
-        transitorio: la E03 hace el login con empresa y lo reemplaza."""
-        return db.scalar(sin_filtro(select(Usuario).where(Usuario.email == email).order_by(Usuario.id)))
+    def obtener_de_plataforma_por_email(self, db: Session, email: str) -> Usuario | None:
+        """El usuario SIN empresa (superadministrador) con ese correo, si de
+        verdad tiene el rol superadministrador. Único uso, junto con
+        get_current_user, de una consulta de usuarios sin filtro de empresa."""
+        usuario = db.scalar(
+            sin_filtro(
+                select(Usuario).where(Usuario.empresa_id.is_(None), func.lower(Usuario.email) == email.lower())
+            )
+        )
+        if usuario is None or ROL_SUPERADMINISTRADOR not in {r.nombre for r in usuario.roles}:
+            return None
+        return usuario
+
+    def obtener_sin_empresa_por_correo(self, db: Session, email: str) -> Usuario | None:
+        """El usuario sin empresa con ese correo, tenga el rol que tenga: para
+        que scripts/crear_superadmin.py no duplique ni pise a un usuario ajeno."""
+        return db.scalar(
+            sin_filtro(
+                select(Usuario).where(Usuario.empresa_id.is_(None), func.lower(Usuario.email) == email.lower())
+            )
+        )
 
     def listar_por_ids(self, db: Session, ids: list[int]) -> list[Usuario]:
         if not ids:
@@ -109,7 +142,10 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
     def asignar_roles(
         self, db: Session, usuario: Usuario, nombres_rol: list[str], commit: bool = True
     ) -> Usuario:
+        from app.plataforma.politicas import validar_roles_asignables  # import diferido: politicas importa este módulo
+
         nombres_unicos = set(nombres_rol)
+        validar_roles_asignables(usuario.empresa_id, nombres_unicos)
         roles = list(
             db.scalars(select(Rol).where(Rol.nombre.in_(nombres_unicos), Rol.activo.is_(True)))
         )

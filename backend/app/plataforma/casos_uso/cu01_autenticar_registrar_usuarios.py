@@ -7,33 +7,45 @@ Actor: Cliente, Administrador, Encargado de sucursal, Cajero, Proveedor.
 Precondición: ninguna (accesible sin sesión) para el alta, el inicio de
 sesión y la recuperación de contraseña; sesión propia para consultar o editar
 el perfil. Para iniciar sesión, el usuario existe y está activo.
-Postcondición: existe un usuario con rol cliente y su perfil (Cliente); se
-emiten access_token y refresh_token con los roles y permisos vigentes; si el
-email está registrado se emite un token de recuperación y, al confirmarlo con
-una contraseña nueva, el hash se actualiza.
+Postcondición: existe un usuario con rol cliente y su perfil (Cliente) en la
+empresa de la tienda; se emiten access_token y refresh_token con los roles y
+permisos vigentes y la empresa del usuario (claim `empresa_id`, null para el
+superadministrador); si el email está registrado en esa empresa se emite un
+token de recuperación de un solo uso y, al confirmarlo con una contraseña
+nueva, el hash se actualiza.
 
 Caso de uso COMPUESTO: agrupa el alta del cliente (y la gestión de su propio
 perfil), el inicio de sesión (con el refresco del token) y la recuperación de
 contraseña. Cada clase es un controlador del caso de uso."""
 
 import datetime as dt
+import hmac
 import logging
 
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.exceptions import NoAutenticadoError
-from app.core.tenant import fijar_empresa_de_usuario
+from app.core.exceptions import DemasiadosIntentosError, NoAutenticadoError
+from app.core.rate_limit import limitador_intentos
+from app.core.tenant import fijar_empresa, fijar_empresa_de_usuario
 from app.core.security import (
     crear_access_token,
     crear_refresh_token,
     crear_reset_token,
     decodificar_token,
+    huella_de_password,
     usuario_id_de_payload,
     verificar_password,
 )
 from app.plataforma.models import Cliente, Usuario
-from app.plataforma.politicas import obtener_perfil_cliente, obtener_usuario_para_auth, permisos_de_usuario
+from app.plataforma.politicas import (
+    identidad_del_token_valida,
+    normalizar_nombre_empresa,
+    obtener_empresa_por_codigo,
+    obtener_perfil_cliente,
+    obtener_usuario_para_auth,
+    permisos_de_usuario,
+)
 from app.plataforma.repository import ClienteRepository, UsuarioRepository
 from app.plataforma.schemas import (
     ClientePerfilActualizar,
@@ -99,6 +111,24 @@ class RegistrarCliente:
 
 # ---- Iniciar sesión (antiguo CU-02: Iniciar sesión) ----
 
+# Clave del bloqueo de las credenciales de plataforma (sin empresa). Lleva un
+# asterisco, que un nombre normalizado nunca contiene.
+_CLAVE_PLATAFORMA = "*plataforma*"
+
+
+def _usuario_de_empresa_por_correo(db: Session, usuarios: UsuarioRepository, empresa: str, email: str) -> Usuario | None:
+    """El usuario de esa empresa (por nombre o código) con ese correo, o None
+    si la empresa no existe, está inactiva o el correo no es suyo. Deja la
+    sesión trabajando en esa empresa solo si existe y está activa."""
+    codigo = normalizar_nombre_empresa(empresa)
+    if not codigo:
+        return None
+    registro = obtener_empresa_por_codigo(db, codigo)
+    if registro is None or not registro.activo:
+        return None
+    fijar_empresa(db, registro.id)
+    return usuarios.obtener_por_email(db, email)
+
 
 class IniciarSesion:
     """Incluye también refrescar el token (mismo flujo de autenticación, no un
@@ -111,24 +141,43 @@ class IniciarSesion:
         roles = [r.nombre for r in usuario.roles]
         permisos = permisos_de_usuario(db, usuario.id)
         return TokenRespuesta(
-            access_token=crear_access_token(usuario.id, roles, permisos),
-            refresh_token=crear_refresh_token(usuario.id),
+            access_token=crear_access_token(usuario.id, roles, permisos, empresa_id=usuario.empresa_id),
+            refresh_token=crear_refresh_token(usuario.id, empresa_id=usuario.empresa_id),
         )
 
     def ejecutar(self, db: Session, datos: LoginRequest) -> TokenRespuesta:
-        usuario = self._usuarios.obtener_por_email_sin_empresa(db, datos.email)
+        # La clave del bloqueo no depende de que la cuenta exista: bloquear no
+        # revela nada. Una empresa que normaliza a vacío cuenta como cualquier
+        # otro intento fallido.
+        codigo = None if datos.empresa is None else normalizar_nombre_empresa(datos.empresa)
+        clave = f"{_CLAVE_PLATAFORMA if codigo is None else codigo}|{datos.email}"
+        reintentar_en = limitador_intentos.bloqueado(clave)
+        if reintentar_en is not None:
+            raise DemasiadosIntentosError(reintentar_en)
+
+        if datos.empresa is None:
+            # Sin empresa: solo un superadministrador entra por aquí; un
+            # usuario de empresa NUNCA, aunque su clave sea correcta.
+            usuario = self._usuarios.obtener_de_plataforma_por_email(db, datos.email)
+        else:
+            usuario = _usuario_de_empresa_por_correo(db, self._usuarios, datos.empresa, datos.email)
+
+        # bcrypt SIEMPRE, con el mismo costo exista o no el usuario: sin esto el
+        # tiempo de respuesta delataría qué empresas y correos existen.
         hash_a_verificar = usuario.password_hash if usuario is not None else _HASH_DUMMY
         password_valida = verificar_password(datos.password, hash_a_verificar)
-        credenciales_invalidas = usuario is None or not usuario.activo or not password_valida
-        if credenciales_invalidas:
+        if usuario is None or not usuario.activo or not password_valida:
+            limitador_intentos.registrar_fallo(clave)
             raise NoAutenticadoError("Credenciales inválidas")
 
-        # Desde acá la sesión trabaja en la empresa del usuario.
+        limitador_intentos.limpiar(clave)
+        # Desde acá la sesión trabaja en la empresa del usuario (o en modo
+        # plataforma, si es superadministrador).
         fijar_empresa_de_usuario(db, usuario)
+        tokens = self._emitir_tokens(db, usuario)
         usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
         db.commit()
-
-        return self._emitir_tokens(db, usuario)
+        return tokens
 
     def refrescar(self, db: Session, refresh_token: str) -> TokenRespuesta:
         payload = decodificar_token(refresh_token, tipo="refresh")
@@ -139,6 +188,8 @@ class IniciarSesion:
         usuario = obtener_usuario_para_auth(db, usuario_id)
         if usuario is None:
             raise NoAutenticadoError("Usuario inválido")
+        if not identidad_del_token_valida(db, payload, usuario):
+            raise NoAutenticadoError("Token inválido")
 
         fijar_empresa_de_usuario(db, usuario)
         return self._emitir_tokens(db, usuario)
@@ -151,21 +202,24 @@ class RecuperarContrasena:
     def __init__(self) -> None:
         self._usuarios = UsuarioRepository()
 
-    def solicitar(self, db: Session, email: str) -> str | None:
-        """Genera un token de recuperación si el email existe.
+    def solicitar(self, db: Session, empresa: str | None, email: str) -> str | None:
+        """Genera un token de recuperación si el email existe en esa empresa.
 
         Todavía no hay un servicio de correo en el proyecto, así que el token
         se deja en el log para pruebas manuales, y se devuelve acá para que
         el router lo incluya en la respuesta solo en entorno local (ver
         `RecuperarRespuesta.token_dev`). La respuesta al cliente es siempre
-        genérica en cuanto al mensaje (ver router) para no revelar si el
-        email está registrado.
+        genérica (ver router) para no revelar si la empresa o el email
+        existen. Sin empresa (superadministrador) no se emite token: su
+        contraseña solo se cambia con scripts/crear_superadmin.py --restablecer.
         """
-        usuario = self._usuarios.obtener_por_email_sin_empresa(db, email)
+        if empresa is None:
+            return None
+        usuario = _usuario_de_empresa_por_correo(db, self._usuarios, empresa, email)
         if usuario is None or not usuario.activo:
             return None
 
-        token = crear_reset_token(usuario.id)
+        token = crear_reset_token(usuario.id, empresa_id=usuario.empresa_id, password_hash=usuario.password_hash)
         if get_settings().environment == "local":  # mismo criterio que token_dev en el router
             logger.info("Token de recuperación para %s: %s", email, token)
         return token
@@ -174,7 +228,13 @@ class RecuperarContrasena:
         payload = decodificar_token(token, tipo="reset")
         usuario_id = usuario_id_de_payload(payload)
         usuario = obtener_usuario_para_auth(db, usuario_id) if usuario_id is not None else None
-        if usuario is None:
+        # El superadministrador (sin empresa) no recupera su clave por aquí.
+        if usuario is None or usuario.empresa_id is None or not identidad_del_token_valida(db, payload, usuario):
+            raise NoAutenticadoError("Token inválido")
+        # Un solo uso: el token lleva la huella del hash vigente, y al cambiar
+        # la contraseña el hash cambia.
+        huella = payload.get("ph")
+        if not isinstance(huella, str) or not hmac.compare_digest(huella, huella_de_password(usuario.password_hash)):
             raise NoAutenticadoError("Token inválido")
 
         fijar_empresa_de_usuario(db, usuario)

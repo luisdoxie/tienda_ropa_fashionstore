@@ -326,7 +326,7 @@ def test_el_evento_con_token_de_otra_empresa_queda_anonimo_en_la_tienda(
     original = empresa_de(db_session)
     fijar_empresa(db_session, dos_empresas.b.id)
     cliente_b = db_session.scalar(select(Usuario).where(Usuario.email == "cliente-b@example.com"))
-    token = crear_access_token(cliente_b.id, [], permisos_de_usuario(db_session, cliente_b.id))
+    token = crear_access_token(cliente_b.id, [], permisos_de_usuario(db_session, cliente_b.id), empresa_id=dos_empresas.b.id)
     fijar_empresa(db_session, original)
     cabeceras_cliente_b = {"Authorization": f"Bearer {token}"}
 

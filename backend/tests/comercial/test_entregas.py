@@ -365,10 +365,10 @@ def test_consultar_un_envio_por_id_y_por_venta(client, admin_headers, cliente_he
         assert por_id.json()["estado"] == "programado"
 
     client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Otro", "apellido": "Cliente", "email": "otro@example.com", "password": "claveSegura123"},
     )
-    token = client.post("/api/v1/auth/login", json={"email": "otro@example.com", "password": "claveSegura123"})
+    token = client.post("/api/v1/auth/login", json={"empresa": "fashionstore", "email": "otro@example.com", "password": "claveSegura123"})
     otro = {"Authorization": f"Bearer {token.json()['access_token']}"}
     assert client.get(f"/api/v1/envios/{envio['id']}", headers=otro).status_code == 403
     assert client.get(f"/api/v1/envios/venta/{envio['venta_id']}", headers=otro).status_code == 403
@@ -427,10 +427,10 @@ def test_el_aviso_del_envio_es_solo_del_dueno_de_la_compra(
     envio = _crear_envio(client, admin_headers, cliente_headers, contexto, zona_1er_anillo)
     _pagar_venta(db_session, envio["venta_id"])
     client.post(
-        "/api/v1/auth/registro",
+        "/api/v1/public/fashionstore/registro",
         json={"nombre": "Otro", "apellido": "Cliente", "email": "otro.aviso@example.com", "password": "claveSegura123"},
     )
-    token = client.post("/api/v1/auth/login", json={"email": "otro.aviso@example.com", "password": "claveSegura123"})
+    token = client.post("/api/v1/auth/login", json={"empresa": "fashionstore", "email": "otro.aviso@example.com", "password": "claveSegura123"})
     otro = {"Authorization": f"Bearer {token.json()['access_token']}"}
 
     _cambiar_estado(client, admin_headers, envio["id"], "en_ruta")

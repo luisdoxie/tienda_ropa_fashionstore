@@ -3,9 +3,8 @@
 empresa la pone `before_flush`), así que coinciden por construcción; estas
 pruebas lo fijan.
 
-Un registro público (`/auth/registro`) sin empresa en la sesión responde 401
-hasta la E03 (`/public/{codigo}/registro`): por eso el alta se hace con
-`RegistrarCliente` desde una sesión con la empresa fijada."""
+El alta se hace con `RegistrarCliente` desde una sesión con la empresa fijada
+(por HTTP la fija la ruta `/public/{codigo}/registro`)."""
 
 import pytest
 from sqlalchemy import select, text

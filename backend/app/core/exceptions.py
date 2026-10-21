@@ -35,10 +35,21 @@ class NoAutenticadoError(DomainError):
         super().__init__(mensaje, status_code=status.HTTP_401_UNAUTHORIZED)
 
 
+class DemasiadosIntentosError(DomainError):
+    """429 con la cabecera `Retry-After` (segundos) que el handler agrega."""
+
+    def __init__(self, reintentar_en: int, mensaje: str = "Demasiados intentos. Intente nuevamente mas tarde.") -> None:
+        super().__init__(mensaje, status_code=status.HTTP_429_TOO_MANY_REQUESTS)
+        self.reintentar_en = reintentar_en
+
+
 def registrar_handlers(app: FastAPI) -> None:
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.mensaje})
+        cabeceras = None
+        if isinstance(exc, DemasiadosIntentosError):
+            cabeceras = {"Retry-After": str(exc.reintentar_en)}
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.mensaje}, headers=cabeceras)
 
     @app.exception_handler(Exception)
     async def excepcion_no_controlada_handler(request: Request, exc: Exception) -> JSONResponse:
