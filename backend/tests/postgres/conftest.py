@@ -1,0 +1,223 @@
+"""Perfil de pruebas en PostgreSQL real.
+
+La suite normal corre en SQLite en memoria, que no aplica `SELECT ... FOR
+UPDATE`, no detecta deadlocks y no tiene columnas generadas ni vistas como las
+de producción. Lo que depende de eso se prueba acá, contra una base PostgreSQL
+de pruebas.
+
+Se activa con la variable de entorno TEST_DATABASE_URL; si falta, todo este
+directorio se salta (la suite en SQLite sigue completa). Ejemplo:
+
+    postgresql+psycopg://usuario:clave@localhost:5432/fashionstore_test
+
+Seguridad: la base se VACÍA y se recrea desde las migraciones al empezar, así
+que el nombre de la base debe terminar en `_test`; de lo contrario, las pruebas
+se niegan a correr. Nunca apuntar a `fashionstore_dev` ni a producción.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
+from app.core.database import get_db
+from app.main import app
+from app.plataforma.repository import UsuarioRepository
+from app.plataforma.schemas import UsuarioCrear
+from scripts.seed_entregas import seed as seed_entregas
+from scripts.seed_inventario import seed as seed_inventario
+from scripts.seed_pagos import seed as seed_pagos
+from scripts.seed_reservas import seed as seed_reservas
+from scripts.seed_seguridad import seed as seed_seguridad
+from scripts.seed_ventas import seed as seed_ventas
+
+DIRECTORIO_BACKEND = Path(__file__).resolve().parents[2]
+CLAVE = "claveSegura123"
+
+
+@pytest.fixture(scope="session")
+def url_pg() -> str:
+    url = os.environ.get("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("TEST_DATABASE_URL no está definida: se omite el perfil de PostgreSQL")
+    base = make_url(url).database or ""
+    if not base.endswith("_test"):
+        pytest.fail(
+            f"TEST_DATABASE_URL apunta a la base '{base}': el perfil de PostgreSQL vacía la base, "
+            "así que su nombre debe terminar en '_test'"
+        )
+    return url
+
+
+@pytest.fixture(scope="session")
+def engine_pg(url_pg):
+    """Recrea el esquema desde cero con `alembic upgrade head`: así cada
+    ejecución también prueba que la cadena completa de migraciones se aplica."""
+    engine = create_engine(url_pg, pool_pre_ping=True)
+    with engine.begin() as conexion:
+        conexion.execute(text("DROP SCHEMA public CASCADE"))
+        conexion.execute(text("CREATE SCHEMA public"))
+
+    entorno = {**os.environ, "DATABASE_URL": url_pg, "PYTHONPATH": str(DIRECTORIO_BACKEND)}
+    entorno.setdefault("JWT_SECRET_KEY", "clave-de-pruebas")
+    resultado = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=DIRECTORIO_BACKEND,
+        env=entorno,
+        capture_output=True,
+        text=True,
+    )
+    assert resultado.returncode == 0, f"alembic upgrade head falló:\n{resultado.stdout}\n{resultado.stderr}"
+
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def fabrica_pg(engine_pg):
+    return sessionmaker(bind=engine_pg, autoflush=False, autocommit=False)
+
+
+@pytest.fixture(autouse=True)
+def base_limpia(engine_pg, fabrica_pg):
+    """Cada prueba parte de tablas vacías con los catálogos sembrados. No se
+    usa el rollback por prueba de la suite en SQLite: acá las pruebas de
+    concurrencia necesitan transacciones que de verdad se confirmen."""
+    with engine_pg.begin() as conexion:
+        tablas = conexion.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")
+        ).scalars().all()
+        conexion.execute(text("TRUNCATE TABLE " + ", ".join(f'"{t}"' for t in tablas) + " RESTART IDENTITY CASCADE"))
+
+    with fabrica_pg() as db:
+        seed_seguridad(db)
+        seed_inventario(db)
+        seed_reservas(db)
+        seed_ventas(db)
+        seed_pagos(db)
+        seed_entregas(db)
+
+
+@pytest.fixture()
+def client_pg(fabrica_pg):
+    """Cliente HTTP contra PostgreSQL. Cada petición abre su propia sesión,
+    como el `get_db` real."""
+
+    def _get_db():
+        db = fabrica_pg()
+        try:
+            yield db
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = _get_db
+    with TestClient(app) as cliente:
+        yield cliente
+    app.dependency_overrides.clear()
+
+
+def _login(client, email: str) -> dict:
+    token = client.post("/api/v1/auth/login", json={"email": email, "password": CLAVE}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def admin_pg(client_pg, fabrica_pg) -> dict:
+    with fabrica_pg() as db:
+        repo = UsuarioRepository()
+        usuario = repo.crear(
+            db, UsuarioCrear(nombre="Admin", apellido="Root", email="admin@example.com", password=CLAVE)
+        )
+        repo.asignar_roles(db, usuario, ["administrador"])
+    return _login(client_pg, "admin@example.com")
+
+
+def registrar_cliente(client, fabrica, email: str) -> int:
+    """Alta de cliente por /auth/registro (crea también su fila en `cliente`).
+    Devuelve el id del usuario."""
+    respuesta = client.post(
+        "/api/v1/auth/registro",
+        json={"nombre": "Cli", "apellido": "Ente", "email": email, "password": CLAVE},
+    )
+    assert respuesta.status_code == 201, respuesta.text
+    from app.plataforma.models import Usuario
+
+    with fabrica() as db:
+        return db.query(Usuario).filter(Usuario.email == email).one().id
+
+
+def _proxima_fecha_con_dia_semana(dia_semana: int):
+    import datetime as dt
+
+    base = dt.date.today() + dt.timedelta(days=7)
+    return base + dt.timedelta(days=(dia_semana - base.isoweekday()) % 7)
+
+
+@pytest.fixture()
+def escenario(client_pg, admin_pg) -> dict:
+    """Catálogo con dos variantes, una sucursal abierta los miércoles y 10
+    unidades de cada variante recibidas en esa sucursal."""
+    cat = client_pg.post("/api/v1/categorias", json={"nombre": "Camisas PG"}, headers=admin_pg).json()
+    tallas = [
+        client_pg.post("/api/v1/tallas", json={"codigo": codigo, "orden": i}, headers=admin_pg).json()
+        for i, codigo in enumerate(("S", "M"), start=1)
+    ]
+    color = client_pg.post("/api/v1/colores", json={"nombre": "Gris PG"}, headers=admin_pg).json()
+    producto = client_pg.post(
+        "/api/v1/productos",
+        json={
+            "codigo": "PG-1",
+            "nombre": "Camisa PostgreSQL",
+            "categoria_id": cat["id"],
+            "precio_base": "100.00",
+            "tallas_ids": [t["id"] for t in tallas],
+            "colores_ids": [color["id"]],
+        },
+        headers=admin_pg,
+    ).json()
+    variantes = sorted(
+        v["id"] for v in client_pg.get(f"/api/v1/productos/{producto['id']}/variantes", headers=admin_pg).json()
+    )
+
+    ciudad = client_pg.post(
+        "/api/v1/ciudades", json={"nombre": "Tarija PG", "departamento": "Tarija"}, headers=admin_pg
+    ).json()
+    sucursal_id = client_pg.post(
+        "/api/v1/sucursales",
+        json={"ciudad_id": ciudad["id"], "codigo": "SUC-PG", "nombre": "Sucursal PG", "direccion": "Av. 1"},
+        headers=admin_pg,
+    ).json()["id"]
+    client_pg.post(
+        f"/api/v1/sucursales/{sucursal_id}/horarios",
+        json={"dia_semana": 3, "hora_apertura": "08:00:00", "hora_cierre": "20:00:00"},
+        headers=admin_pg,
+    )
+
+    for variante_id in variantes:
+        respuesta = client_pg.post(
+            "/api/v1/inventario/movimientos",
+            json={
+                "variante_id": variante_id,
+                "sucursal_id": sucursal_id,
+                "tipo_movimiento_codigo": "recepcion",
+                "cantidad": 10,
+                "costo_unitario": "10.00",
+            },
+            headers=admin_pg,
+        )
+        assert respuesta.status_code == 201, respuesta.text
+
+    return {
+        "variantes": variantes,  # ascendentes
+        "sucursal_id": sucursal_id,
+        "fecha_visita": _proxima_fecha_con_dia_semana(3),  # miércoles
+    }

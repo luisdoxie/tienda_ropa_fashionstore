@@ -35,7 +35,13 @@ Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
 - `comercial`: reservas, ventas, pagos y entregas.
 - `inteligencia`: recomendador, búsqueda por voz, reportes e indicadores
   (luego reportes con IA y analítica ML).
-- `core`: infraestructura.
+- `core`: infraestructura técnica transversal. NO es un paquete de negocio: no
+  tiene casos de uso, tablas ni router. En la documentación ICONIX solo aparece
+  como paquete `«infraestructura»` en el diagrama de paquetes (y en los de
+  arquitectura y despliegue). No se le hacen casos de uso, diagramas de
+  robustez, de secuencia propios ni de dominio; si una operación de `core`
+  interviene en un flujo, se muestra como parte del caso de uso del paquete
+  de negocio que la invoca.
 
 Cada paquete tiene esta estructura (un archivo por tipo; dentro de cada
 archivo los bloques de cada dominio absorbido van marcados con

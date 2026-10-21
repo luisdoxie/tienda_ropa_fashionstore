@@ -114,8 +114,12 @@ Por construir, en este orden:
    probador.
 4. Pruebas, rendimiento y documentación ICONIX.
 
-Pruebas: 624 en el backend (`pytest`, SQLite en memoria) y 132 en el móvil
-(`flutter test`).
+Pruebas: 633 en el backend y 132 en el móvil (`flutter test`). Las del backend
+corren con `pytest`: 624 en SQLite en memoria y 9 en PostgreSQL real
+(`backend/tests/postgres/`: esquema, bloqueos de stock, cancelar contra
+expirar reservas, deadlocks). Estas últimas se activan con la variable
+`TEST_DATABASE_URL` apuntando a una base cuyo nombre termine en `_test`; si
+falta, se omiten.
 
 ## Desarrolladores
 
