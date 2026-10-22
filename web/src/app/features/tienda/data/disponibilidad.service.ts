@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, forkJoin, map, of } from 'rxjs';
-import { environment } from '../../../../environments/environment';
 import { Disponibilidad } from '../../../core/models/inventario.models';
 import { Sucursal } from '../../../core/models/organizacion.models';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 /**
  * No hay un endpoint de backend para "sucursales con stock de varias
@@ -15,15 +15,16 @@ import { Sucursal } from '../../../core/models/organizacion.models';
 @Injectable({ providedIn: 'root' })
 export class DisponibilidadService {
   private readonly http = inject(HttpClient);
+  private readonly tienda = inject(TiendaActualService);
 
   porVariante(varianteId: number): Observable<Disponibilidad[]> {
-    return this.http.get<Disponibilidad[]>(`${environment.apiUrl}/inventario/disponibilidad`, {
+    return this.http.get<Disponibilidad[]>(this.tienda.urlPublica('inventario/disponibilidad'), {
       params: { variante_id: varianteId },
     });
   }
 
   sucursales(): Observable<Sucursal[]> {
-    return this.http.get<Sucursal[]>(`${environment.apiUrl}/sucursales`, { params: { tamanio: 100 } });
+    return this.http.get<Sucursal[]>(this.tienda.urlPublica('sucursales'), { params: { tamanio: 100 } });
   }
 
   /** Sucursales donde hay stock >= cantidad para TODAS las líneas dadas. */

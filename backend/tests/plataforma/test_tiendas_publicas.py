@@ -98,13 +98,21 @@ def test_los_datos_publicos_de_una_tienda(client_por_peticion, db_session, dos_e
     respuesta = client_por_peticion.get("/api/v1/public/tienda-a/tienda")
 
     assert respuesta.status_code == 200
-    assert respuesta.json() == {"codigo": "tienda-a", "nombre": "tienda-a", "logo_url": None, "color_acento": None}
+    assert respuesta.json() == {
+        "codigo": "tienda-a", "nombre": "tienda-a", "logo_url": None, "color_acento": None, "disponible": True,
+    }
     assert client_por_peticion.get("/api/v1/public/no-existe/tienda").status_code == 404
     # Con la suscripción suspendida los datos de la tienda siguen públicos (la
     # pantalla muestra "Tienda no disponible"), pero el resto de la tienda se bloquea.
     sub_a = suscripciones_de(db_session, dos_empresas.a.id)[0].id
     client_por_peticion.put(f"{PLATAFORMA}/suscripciones/{sub_a}/estado", json={"estado": "suspendida"}, headers=superadmin_headers)
-    assert client_por_peticion.get("/api/v1/public/tienda-a/tienda").status_code == 200
+    suspendida = client_por_peticion.get("/api/v1/public/tienda-a/tienda")
+    assert suspendida.status_code == 200
+    assert suspendida.json()["disponible"] is False  # la web muestra "no disponible" con esta señal
+    # Reactivada, vuelve a estar disponible.
+    client_por_peticion.put(f"{PLATAFORMA}/suscripciones/{sub_a}/estado", json={"estado": "activa"}, headers=superadmin_headers)
+    assert client_por_peticion.get("/api/v1/public/tienda-a/tienda").json()["disponible"] is True
+    client_por_peticion.put(f"{PLATAFORMA}/suscripciones/{sub_a}/estado", json={"estado": "suspendida"}, headers=superadmin_headers)
     assert client_por_peticion.get("/api/v1/public/tienda-a/sucursales").status_code == 403
     # Una empresa dada de baja responde 404, igual que una inexistente.
     client_por_peticion.delete(f"{PLATAFORMA}/empresas/{dos_empresas.b.id}", headers=superadmin_headers)

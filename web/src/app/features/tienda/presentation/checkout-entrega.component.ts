@@ -11,6 +11,7 @@ import { CarritoService } from '../data/carrito.service';
 import { DireccionesService } from '../data/direcciones.service';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { CheckoutService, TipoEntrega } from '../state/checkout.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 @Component({
   selector: 'app-checkout-entrega',
@@ -26,6 +27,7 @@ export class CheckoutEntregaComponent implements OnInit {
   private readonly direccionesService = inject(DireccionesService);
   private readonly fb = inject(FormBuilder);
   private readonly router = inject(Router);
+  protected readonly tienda = inject(TiendaActualService);
 
   private readonly todasConStock = signal<Sucursal[]>([]);
   /** Para retirar no sirve un depósito (no recibe clientes); un envío sí lo puede despachar. */
@@ -50,7 +52,7 @@ export class CheckoutEntregaComponent implements OnInit {
 
   ngOnInit(): void {
     if (this.carritoService.lineas().length === 0) {
-      this.router.navigate(['/carrito']);
+      this.router.navigate(this.tienda.ruta('carrito'));
       return;
     }
     this.cargarSucursales();
@@ -112,7 +114,7 @@ export class CheckoutEntregaComponent implements OnInit {
 
   continuar(): void {
     if (this.checkoutService.listoParaPagar()) {
-      this.router.navigate(['/checkout/pago']);
+      this.router.navigate(this.tienda.ruta('checkout', 'pago'));
     }
   }
 

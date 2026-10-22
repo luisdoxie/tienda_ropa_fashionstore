@@ -482,6 +482,18 @@ class EmpresaRepository(CRUDBase[Empresa, EmpresaRegistrar, EmpresaActualizar]):
         consulta = consulta.order_by(Empresa.id).offset(paginacion.offset).limit(paginacion.tamanio)
         return list(db.scalars(consulta))
 
+    def tiene_suscripcion_activa(self, db: Session, empresa_id: int) -> bool:
+        """Si la empresa opera hoy: suscripción `activa` y vigente por fecha (el
+        mismo criterio de `listar_publicas`)."""
+        from app.core.tiempo import hoy_utc
+
+        consulta = select(Suscripcion.id).where(
+            Suscripcion.empresa_id == empresa_id,
+            Suscripcion.estado == "activa",
+            Suscripcion.fecha_vencimiento >= hoy_utc(),
+        )
+        return db.scalar(sin_filtro(consulta.limit(1))) is not None
+
     def listar_publicas(self, db: Session, paginacion, q: str | None = None) -> list[Empresa]:
         """Las tiendas que se muestran al público: empresas activas con una
         suscripción activa y vigente por fecha. Ordenadas por nombre."""

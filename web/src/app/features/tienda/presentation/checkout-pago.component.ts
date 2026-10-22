@@ -9,6 +9,7 @@ import { DireccionesService } from '../data/direcciones.service';
 import { PagosService } from '../data/pagos.service';
 import { PedidosService } from '../data/pedidos.service';
 import { CheckoutService } from '../state/checkout.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 // QR primero y por defecto: Libélula es un simulador que nunca confirma el pago (ver backend/app/comercial/pasarela.py).
 const METODOS: { codigo: MetodoPagoPasarela; etiqueta: string }[] = [
@@ -31,6 +32,7 @@ export class CheckoutPagoComponent {
   private readonly direccionesService = inject(DireccionesService);
   private readonly pagosService = inject(PagosService);
   private readonly router = inject(Router);
+  private readonly tienda = inject(TiendaActualService);
 
   protected readonly metodos = METODOS;
   protected readonly metodo = signal<MetodoPagoPasarela>('qr_online');
@@ -104,7 +106,7 @@ export class CheckoutPagoComponent {
             ventana.location.href = pagoIniciado.url_redireccion;
           }
           this.procesando.set(false);
-          this.router.navigate(['/checkout/estado', pagoIniciado.pago.id]);
+          this.router.navigate(this.tienda.ruta('checkout', 'estado', String(pagoIniciado.pago.id)));
         },
         error: () => {
           ventana?.close();

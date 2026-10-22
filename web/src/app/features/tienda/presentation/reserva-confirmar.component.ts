@@ -5,6 +5,7 @@ import { ReservaCrear } from '../../../core/models/reservas.models';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { ReservasClienteService } from '../data/reservas.service';
 import { ReservaCarritoService } from '../state/reserva-carrito.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 function aIso(fecha: Date): string {
   const y = fecha.getFullYear();
@@ -25,6 +26,7 @@ export class ReservaConfirmarComponent implements OnInit {
   private readonly disponibilidadService = inject(DisponibilidadService);
   private readonly reservasService = inject(ReservasClienteService);
   private readonly router = inject(Router);
+  private readonly tienda = inject(TiendaActualService);
 
   protected readonly sucursales = signal<Sucursal[]>([]);
   protected readonly cargandoSucursales = signal(true);
@@ -79,7 +81,7 @@ export class ReservaConfirmarComponent implements OnInit {
 
   ngOnInit(): void {
     if (this.reservaCarritoService.cantidad() === 0) {
-      this.router.navigate(['/catalogo']);
+      this.router.navigate(this.tienda.ruta());
       return;
     }
     const lineas = this.reservaCarritoService.lista().map((item) => ({ varianteId: item.varianteId, cantidad: 1 }));
@@ -135,7 +137,7 @@ export class ReservaConfirmarComponent implements OnInit {
       next: () => {
         this.reservaCarritoService.vaciar();
         this.enviando.set(false);
-        this.router.navigate(['/mis-reservas']);
+        this.router.navigate(this.tienda.ruta('mis-reservas'));
       },
       error: () => {
         this.enviando.set(false);

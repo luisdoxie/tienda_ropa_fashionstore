@@ -1,112 +1,158 @@
 import { Routes } from '@angular/router';
-import { authGuard, permisoGuard, staffGuard } from './core/guards';
+import { authGuard, permisoGuard, staffGuard, tiendaSesionGuard } from './core/guards';
+import { tiendaResolver } from './features/tienda/tienda.resolver';
+import { RUTAS_LEGACY } from './features/tienda/rutas-legacy';
+
+// Guards de las pantallas privadas de una tienda (carrito, checkout, mis-*).
+const GUARDS_PRIVADOS_DE_TIENDA = [authGuard, tiendaSesionGuard];
 
 export const routes: Routes = [
   {
+    // Página de la plataforma: tarjetas de las tiendas activas y acceso del personal.
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./features/plataforma-home/plataforma-home.component').then((m) => m.PlataformaHomeComponent),
+  },
+  {
+    // Login del personal (provisional hasta E16, que lo reemplaza por /admin/login).
     path: 'login',
     loadComponent: () => import('./features/login/login.component').then((m) => m.LoginComponent),
   },
   {
-    path: 'registro',
-    loadComponent: () => import('./features/registro/registro.component').then((m) => m.RegistroComponent),
-  },
-  {
-    path: 'recuperar',
-    loadComponent: () =>
-      import('./features/recuperar-password/solicitar-recuperacion.component').then(
-        (m) => m.SolicitarRecuperacionComponent,
-      ),
-  },
-  {
+    // Compatibilidad: el enlace del correo de recuperación trae el token, que
+    // ya identifica a la empresa y al usuario. También existe /t/:codigo/restablecer.
     path: 'restablecer',
     loadComponent: () =>
       import('./features/recuperar-password/restablecer-password.component').then(
         (m) => m.RestablecerPasswordComponent,
       ),
   },
+  // Direcciones de antes de las tiendas por empresa: llevan a la última tienda (o a "/").
+  ...RUTAS_LEGACY,
   {
-    // Tienda pública: catálogo, detalle, carrito y checkout -- ver
-    // auth.interceptor.ts (RUTAS_SIN_TOKEN) para por qué también hay que
-    // tocar el interceptor cuando se agrega una ruta pública nueva acá
-    // (catalogo/producto lo son; carrito/checkout/mis-compras exigen
-    // login vía authGuard, así que sí llevan token).
-    path: '',
-    loadComponent: () => import('./features/tienda/tienda-shell.component').then((m) => m.TiendaShellComponent),
+    // Tienda pública de una empresa: /t/<codigo>. El resolver busca la empresa
+    // por su código; TiendaRaizComponent muestra "no encontrada" / "no disponible"
+    // o la tienda. Las llamadas públicas (/public/{codigo}/...) no llevan token
+    // -- ver auth.interceptor.ts (RUTAS_SIN_TOKEN); las privadas (carrito,
+    // checkout, mis-*) exigen login vía authGuard y la empresa sale del JWT.
+    path: 't/:codigo',
+    loadComponent: () => import('./features/tienda/tienda-raiz.component').then((m) => m.TiendaRaizComponent),
+    resolve: { tienda: tiendaResolver },
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'catalogo' },
       {
-        path: 'catalogo',
-        loadComponent: () =>
-          import('./features/catalogo-publico/catalogo-publico.component').then((m) => m.CatalogoPublicoComponent),
+        path: 'login',
+        data: { modo: 'cliente' },
+        loadComponent: () => import('./features/login/login.component').then((m) => m.LoginComponent),
       },
       {
-        path: 'producto/:id',
+        path: 'registro',
+        loadComponent: () => import('./features/registro/registro.component').then((m) => m.RegistroComponent),
+      },
+      {
+        path: 'recuperar',
         loadComponent: () =>
-          import('./features/tienda/presentation/producto-detalle.component').then(
-            (m) => m.ProductoDetalleComponent,
+          import('./features/recuperar-password/solicitar-recuperacion.component').then(
+            (m) => m.SolicitarRecuperacionComponent,
           ),
       },
       {
-        path: 'carrito',
-        canActivate: [authGuard],
+        path: 'restablecer',
         loadComponent: () =>
-          import('./features/tienda/presentation/carrito.component').then((m) => m.CarritoComponent),
-      },
-      {
-        path: 'reserva/confirmar',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/reserva-confirmar.component').then(
-            (m) => m.ReservaConfirmarComponent,
+          import('./features/recuperar-password/restablecer-password.component').then(
+            (m) => m.RestablecerPasswordComponent,
           ),
       },
       {
-        path: 'mis-reservas',
-        canActivate: [authGuard],
+        path: '',
         loadComponent: () =>
-          import('./features/tienda/presentation/mis-reservas.component').then((m) => m.MisReservasComponent),
-      },
-      {
-        path: 'mis-reservas/:id',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/reserva-detalle.component').then(
-            (m) => m.ReservaDetalleComponent,
-          ),
-      },
-      {
-        path: 'checkout/entrega',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/checkout-entrega.component').then(
-            (m) => m.CheckoutEntregaComponent,
-          ),
-      },
-      {
-        path: 'checkout/pago',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/checkout-pago.component').then((m) => m.CheckoutPagoComponent),
-      },
-      {
-        path: 'checkout/estado/:pagoId',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/checkout-estado.component').then(
-            (m) => m.CheckoutEstadoComponent,
-          ),
-      },
-      {
-        path: 'mis-compras',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/mis-compras.component').then((m) => m.MisComprasComponent),
-      },
-      {
-        path: 'mis-compras/:id',
-        canActivate: [authGuard],
-        loadComponent: () =>
-          import('./features/tienda/presentation/compra-detalle.component').then((m) => m.CompraDetalleComponent),
+          import('./features/tienda/tienda-shell.component').then((m) => m.TiendaShellComponent),
+        children: [
+          {
+            // La portada de la tienda es su catálogo (sin redirect a 'catalogo').
+            path: '',
+            pathMatch: 'full',
+            loadComponent: () =>
+              import('./features/catalogo-publico/catalogo-publico.component').then(
+                (m) => m.CatalogoPublicoComponent,
+              ),
+          },
+          // Enlaces viejos a /t/<codigo>/catalogo.
+          { path: 'catalogo', pathMatch: 'full', redirectTo: '' },
+          {
+            path: 'producto/:id',
+            loadComponent: () =>
+              import('./features/tienda/presentation/producto-detalle.component').then(
+                (m) => m.ProductoDetalleComponent,
+              ),
+          },
+          {
+            path: 'carrito',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/carrito.component').then((m) => m.CarritoComponent),
+          },
+          {
+            path: 'reserva/confirmar',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/reserva-confirmar.component').then(
+                (m) => m.ReservaConfirmarComponent,
+              ),
+          },
+          {
+            path: 'mis-reservas',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/mis-reservas.component').then((m) => m.MisReservasComponent),
+          },
+          {
+            path: 'mis-reservas/:id',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/reserva-detalle.component').then(
+                (m) => m.ReservaDetalleComponent,
+              ),
+          },
+          {
+            path: 'checkout/entrega',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/checkout-entrega.component').then(
+                (m) => m.CheckoutEntregaComponent,
+              ),
+          },
+          {
+            path: 'checkout/pago',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/checkout-pago.component').then(
+                (m) => m.CheckoutPagoComponent,
+              ),
+          },
+          {
+            path: 'checkout/estado/:pagoId',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/checkout-estado.component').then(
+                (m) => m.CheckoutEstadoComponent,
+              ),
+          },
+          {
+            path: 'mis-compras',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/mis-compras.component').then((m) => m.MisComprasComponent),
+          },
+          {
+            path: 'mis-compras/:id',
+            canActivate: GUARDS_PRIVADOS_DE_TIENDA,
+            loadComponent: () =>
+              import('./features/tienda/presentation/compra-detalle.component').then(
+                (m) => m.CompraDetalleComponent,
+              ),
+          },
+        ],
       },
     ],
   },

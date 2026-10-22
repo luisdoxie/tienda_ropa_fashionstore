@@ -1,0 +1,26 @@
+@switch (tienda.estado()) {
+  @case ('lista') {
+    <router-outlet />
+  }
+  @case ('no_encontrada') {
+    <app-tienda-no-disponible motivo="no_encontrada" />
+  }
+  @case ('no_disponible') {
+    <app-tienda-no-disponible motivo="no_disponible" />
+  }
+  @case ('error') {
+    <section class="raiz-estado" role="alert">
+      <p class="raiz-estado__marca">FashionStore</p>
+      <h1>No pudimos cargar la tienda</h1>
+      <p class="raiz-estado__texto">Revisá tu conexión e intentá de nuevo.</p>
+      <button type="button" class="raiz-estado__boton" (click)="reintentar()">Reintentar</button>
+    </section>
+  }
+  @default {
+    <section class="raiz-estado" aria-busy="true" aria-label="Cargando la tienda">
+      <div class="raiz-esqueleto raiz-esqueleto--titulo"></div>
+      <div class="raiz-esqueleto raiz-esqueleto--linea"></div>
+      <div class="raiz-esqueleto raiz-esqueleto--linea"></div>
+    </section>
+  }
+}

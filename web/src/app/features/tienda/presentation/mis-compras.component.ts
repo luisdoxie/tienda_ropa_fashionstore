@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { EstadoVenta, Venta } from '../../../core/models/ventas.models';
 import { PedidosService } from '../data/pedidos.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 const ETIQUETAS_ESTADO: Record<EstadoVenta, string> = {
   pendiente_pago: 'Pendiente de pago',
@@ -20,6 +21,7 @@ const ETIQUETAS_ESTADO: Record<EstadoVenta, string> = {
 })
 export class MisComprasComponent implements OnInit {
   private readonly pedidosService = inject(PedidosService);
+  protected readonly tienda = inject(TiendaActualService);
 
   protected readonly compras = signal<Venta[]>([]);
   protected readonly cargando = signal(true);

@@ -121,6 +121,11 @@ Hecho:
   suscripción (activa, suspendida, vencida, cancelada), bloqueo de las empresas
   sin suscripción activa, límite de sucursales por plan y semilla de dos empresas
   de prueba (`python -m scripts.seed_empresas_prueba`).
+- Tienda pública por empresa en la web (etapa E15): página de la plataforma en
+  `/` con las tiendas activas, cada tienda en `/t/<codigo>` con su nombre, logo y
+  color de acento, sesión, carrito y checkout atados a una sola tienda, y
+  redirecciones de las rutas viejas. `GET /public/{codigo}/tienda` trae
+  `disponible`. El login del personal queda pendiente hasta la E16.
 
 Por construir, en este orden:
 1. Aislamiento verificado (E05) y bitácora de auditoría (E06).
@@ -131,7 +136,7 @@ Por construir, en este orden:
    probador.
 4. Pruebas, rendimiento y documentación ICONIX.
 
-Pruebas: 1251 en el backend y 132 en el móvil (`flutter test`). Las del backend
+Pruebas: 1251 en el backend, 132 en el web (`npm test`) y 132 en el móvil (`flutter test`). Las del backend
 corren con `pytest`: 1223 en SQLite en memoria y 28 en PostgreSQL real
 (`backend/tests/postgres/`: esquema, bloqueos de stock, cancelar contra
 expirar reservas, deadlocks y migración multitenant con datos). Estas últimas se activan con la variable

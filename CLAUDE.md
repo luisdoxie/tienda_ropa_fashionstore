@@ -224,7 +224,9 @@ funciona hasta que se adapten (E15, E16, E18).
 - Las rutas `/api/v1/public/{codigo}/...` (27) reutilizan los mismos handlers del
   catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador (más el
   registro de clientes y los datos públicos de la tienda). Sin token, las rutas viejas equivalentes
-  responden 401.
+  responden 401. `GET /public/{codigo}/tienda` (exenta de la suscripción) trae
+  `disponible`: falso si la suscripción de la empresa no está activa; la web
+  decide con eso entre mostrar la tienda y "Tienda no disponible".
 
 ### Login y token (E03)
 - `POST /auth/login` recibe `{empresa, email, password}`. `empresa` es el nombre

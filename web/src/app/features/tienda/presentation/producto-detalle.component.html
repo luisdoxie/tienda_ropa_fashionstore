@@ -75,7 +75,7 @@
               }
             </button>
           } @else {
-            <a class="boton-agregar" routerLink="/login" [queryParams]="{ returnTo }">Iniciá sesión para comprar</a>
+            <a class="boton-agregar" [routerLink]="tienda.ruta('login')" [queryParams]="{ returnTo }">Iniciá sesión para comprar</a>
           }
         }
 

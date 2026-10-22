@@ -9,6 +9,7 @@ import { Envio, EstadoEnvio } from '../../../core/models/entregas.models';
 import { Venta, VentaDetalle } from '../../../core/models/ventas.models';
 import { DireccionesService } from '../data/direcciones.service';
 import { PedidosService } from '../data/pedidos.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 const ETIQUETAS_ENVIO: Record<EstadoEnvio, string> = {
   programado: 'Programado',
@@ -34,6 +35,7 @@ interface LineaComprobante extends VentaDetalle {
 export class CompraDetalleComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
+  protected readonly tienda = inject(TiendaActualService);
   private readonly pedidosService = inject(PedidosService);
   private readonly direccionesService = inject(DireccionesService);
 

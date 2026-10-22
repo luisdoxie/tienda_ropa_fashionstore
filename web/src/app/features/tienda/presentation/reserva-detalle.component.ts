@@ -7,6 +7,7 @@ import { environment } from '../../../../environments/environment';
 import { ProductoImagenLookupItem } from '../../../core/models/catalogo.models';
 import { EstadoReserva, Reserva, ReservaDetalle } from '../../../core/models/reservas.models';
 import { ReservasClienteService } from '../data/reservas.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
   pendiente: 'Pendiente',
@@ -35,6 +36,7 @@ export class ReservaDetalleComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  protected readonly tienda = inject(TiendaActualService);
   private readonly reservasService = inject(ReservasClienteService);
 
   protected readonly reserva = signal<Reserva | null>(null);
@@ -95,7 +97,7 @@ export class ReservaDetalleComponent implements OnInit {
 
     this.cancelando.set(true);
     this.reservasService.cancelar(reserva.id).subscribe({
-      next: () => this.router.navigate(['/mis-reservas']),
+      next: () => this.router.navigate(this.tienda.ruta('mis-reservas')),
       error: () => this.cancelando.set(false),
     });
   }

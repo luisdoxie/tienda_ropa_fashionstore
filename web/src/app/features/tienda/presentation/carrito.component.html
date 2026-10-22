@@ -6,7 +6,7 @@
   } @else if (carritoService.lineas().length === 0) {
     <div class="vacio">
       <p class="fs-caption">Todavía no agregaste ninguna prenda.</p>
-      <a class="auth-enlace" routerLink="/catalogo">Ver catálogo</a>
+      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
     <div class="lineas">

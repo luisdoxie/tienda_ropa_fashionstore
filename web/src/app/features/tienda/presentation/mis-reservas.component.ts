@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { EstadoReserva, Reserva } from '../../../core/models/reservas.models';
 import { ReservasClienteService } from '../data/reservas.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
   pendiente: 'Pendiente',
@@ -21,6 +22,7 @@ const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
 })
 export class MisReservasComponent implements OnInit {
   private readonly reservasService = inject(ReservasClienteService);
+  protected readonly tienda = inject(TiendaActualService);
 
   protected readonly reservas = signal<Reserva[]>([]);
   protected readonly cargando = signal(true);

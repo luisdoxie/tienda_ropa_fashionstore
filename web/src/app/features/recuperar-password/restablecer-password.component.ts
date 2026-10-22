@@ -4,6 +4,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { PasswordModule } from 'primeng/password';
 import { AuthService } from '../../core/auth.service';
+import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 
 function passwordsIgualesValidator(grupo: AbstractControl): ValidationErrors | null {
   const password = grupo.get('password')?.value;
@@ -27,6 +28,11 @@ export class RestablecerPasswordComponent {
   private readonly router = inject(Router);
   private readonly token = inject(ActivatedRoute).snapshot.queryParamMap.get('token');
   protected readonly sinToken = computed(() => !this.token);
+  private readonly tienda = inject(TiendaActualService);
+
+  /** Con tienda (/t/:codigo/restablecer) los enlaces quedan dentro de ella; suelto (/restablecer) se queda como antes. */
+  protected readonly rutaLogin = computed(() => (this.tienda.codigo() ? this.tienda.ruta('login') : ['/login']));
+  protected readonly rutaRecuperar = computed(() => (this.tienda.codigo() ? this.tienda.ruta('recuperar') : ['/recuperar']));
 
   protected readonly formulario = this.fb.nonNullable.group(
     {
@@ -50,7 +56,7 @@ export class RestablecerPasswordComponent {
       next: () => {
         this.cargando.set(false);
         this.completado.set(true);
-        setTimeout(() => this.router.navigate(['/login']), 2500);
+        setTimeout(() => this.router.navigate(this.rutaLogin()), 2500);
       },
       error: () => {
         this.cargando.set(false);

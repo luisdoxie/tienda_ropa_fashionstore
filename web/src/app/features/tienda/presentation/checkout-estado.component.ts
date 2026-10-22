@@ -3,6 +3,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MetodoPagoPasarela, Pago } from '../../../core/models/pagos.models';
 import { PagosService } from '../data/pagos.service';
 import { CheckoutService } from '../state/checkout.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 const INTERVALO_MS = 3000;
 const MAX_INTENTOS = 20;
@@ -22,6 +23,7 @@ const MAX_INTENTOS_ERROR = 5;
 export class CheckoutEstadoComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  protected readonly tienda = inject(TiendaActualService);
   private readonly pagosService = inject(PagosService);
   protected readonly checkoutService = inject(CheckoutService);
 
@@ -134,7 +136,7 @@ export class CheckoutEstadoComponent implements OnInit, OnDestroy {
   irAMiCompra(): void {
     const ventaId = this.pago()?.venta_id;
     if (ventaId) {
-      this.router.navigate(['/mis-compras', ventaId]);
+      this.router.navigate(this.tienda.ruta('mis-compras', String(ventaId)));
     }
   }
 }

@@ -529,3 +529,11 @@ class TiendaPublicaRespuesta(BaseModel):
     nombre: str
     logo_url: str | None = None
     color_acento: str | None = None
+
+
+class TiendaPublicaDetalle(TiendaPublicaRespuesta):
+    """Los datos de UNA tienda (`GET /public/{codigo}/tienda`): suma `disponible`,
+    que es falso cuando la suscripción de la empresa no está activa. La lista
+    de tiendas no lleva el campo (solo muestra las disponibles)."""
+
+    disponible: bool = True

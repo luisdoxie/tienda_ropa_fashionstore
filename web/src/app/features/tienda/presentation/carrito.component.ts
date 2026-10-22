@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { CarritoResumen } from '../../../core/models/ventas.models';
 import { CarritoService } from '../data/carrito.service';
 import { CheckoutService } from '../state/checkout.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 @Component({
   selector: 'app-carrito',
@@ -16,6 +17,7 @@ export class CarritoComponent implements OnInit {
   protected readonly carritoService = inject(CarritoService);
   private readonly checkoutService = inject(CheckoutService);
   private readonly router = inject(Router);
+  protected readonly tienda = inject(TiendaActualService);
 
   protected readonly cargando = signal(true);
   protected readonly resumen = signal<CarritoResumen | null>(null);
@@ -67,6 +69,6 @@ export class CarritoComponent implements OnInit {
   continuar(): void {
     if (this.hayNoDisponibles()) return;
     this.checkoutService.reiniciar();
-    this.router.navigate(['/checkout/entrega']);
+    this.router.navigate(this.tienda.ruta('checkout', 'entrega'));
   }
 }

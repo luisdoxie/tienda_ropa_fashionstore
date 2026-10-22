@@ -1,0 +1,11 @@
+<section class="no-disponible" role="alert">
+  <p class="no-disponible__marca">FashionStore</p>
+  @if (motivo() === 'no_disponible') {
+    <h1 class="no-disponible__titulo">Tienda no disponible</h1>
+    <p class="no-disponible__texto">Esta tienda no está disponible por el momento.</p>
+  } @else {
+    <h1 class="no-disponible__titulo">Tienda no encontrada</h1>
+    <p class="no-disponible__texto">No encontramos esta tienda. Revisá el enlace o buscá otra.</p>
+  }
+  <a class="no-disponible__boton" routerLink="/">Ver otras tiendas</a>
+</section>

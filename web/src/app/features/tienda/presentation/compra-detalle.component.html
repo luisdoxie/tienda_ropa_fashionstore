@@ -4,7 +4,7 @@
   } @else if (error() || !venta()) {
     <p class="fs-caption">No se pudo cargar esta compra.</p>
   } @else {
-    <a class="auth-enlace" routerLink="/mis-compras">← Mis compras</a>
+    <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">← Mis compras</a>
     <h1>{{ venta()!.codigo }}</h1>
     <p class="fs-caption">
       {{ venta()!.costo_envio > 0 ? 'Envío a domicilio' : 'Retiro en sucursal' }}

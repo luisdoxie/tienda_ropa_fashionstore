@@ -4,7 +4,7 @@
   } @else if (error() || !reserva()) {
     <p class="fs-caption">No se pudo cargar esta reserva.</p>
   } @else {
-    <a class="auth-enlace" routerLink="/mis-reservas">← Mis reservas</a>
+    <a class="auth-enlace" [routerLink]="tienda.ruta('mis-reservas')">← Mis reservas</a>
     <div class="encabezado">
       <h1>{{ reserva()!.codigo }}</h1>
       <span class="chip" [class]="'chip--' + reserva()!.estado">{{ etiquetaEstado(reserva()!.estado) }}</span>

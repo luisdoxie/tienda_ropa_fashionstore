@@ -195,7 +195,7 @@
   } @else {
     <div class="grid">
       @for (producto of productos(); track producto.id) {
-        <a class="fs-card producto-tarjeta" [routerLink]="['/producto', producto.id]">
+        <a class="fs-card producto-tarjeta" [routerLink]="tienda.ruta('producto', '' + producto.id)">
           <div class="producto-foto">
             @if (producto.imagen_principal) {
               <img [src]="producto.imagen_principal" [alt]="producto.nombre" />

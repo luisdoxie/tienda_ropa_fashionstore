@@ -1,7 +1,13 @@
 <div class="auth-pantalla">
   @if (!enviado()) {
     <form class="auth-tarjeta" [formGroup]="formulario" (ngSubmit)="enviar()">
-      <span class="auth-marca">FashionStore</span>
+      <span class="auth-marca">
+        @if (tienda.empresa(); as empresa) {
+          Ingresás a {{ empresa.nombre }}
+        } @else {
+          FashionStore
+        }
+      </span>
       <h1 class="auth-titulo">Recuperar contraseña</h1>
       <p class="auth-subtitulo">Ingresá tu email y te mandamos instrucciones para restablecerla.</p>
 
@@ -9,11 +15,17 @@
       <input id="email" type="email" pInputText formControlName="email" autocomplete="username" />
 
       <p-button type="submit" label="Enviar instrucciones" [loading]="cargando()" styleClass="w-full" />
-      <a class="auth-enlace" routerLink="/login">Volver a ingresar</a>
+      <a class="auth-enlace" [routerLink]="rutaLogin()">Volver a ingresar</a>
     </form>
   } @else {
     <div class="auth-tarjeta">
-      <span class="auth-marca">FashionStore</span>
+      <span class="auth-marca">
+        @if (tienda.empresa(); as empresa) {
+          Ingresás a {{ empresa.nombre }}
+        } @else {
+          FashionStore
+        }
+      </span>
       <h1 class="auth-titulo">Revisá tu correo</h1>
       <p class="auth-exito">
         Si el correo está registrado, se enviarán instrucciones de recuperación.
@@ -28,7 +40,7 @@
         </a>
       }
 
-      <a class="auth-enlace" routerLink="/login">Volver a ingresar</a>
+      <a class="auth-enlace" [routerLink]="rutaLogin()">Volver a ingresar</a>
     </div>
   }
 </div>

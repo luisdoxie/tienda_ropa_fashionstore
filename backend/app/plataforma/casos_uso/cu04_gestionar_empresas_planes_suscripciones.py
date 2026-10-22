@@ -66,6 +66,7 @@ from app.plataforma.schemas import (
     SuscripcionEstadoActualizar,
     SuscripcionRenovar,
     SuscripcionRespuesta,
+    TiendaPublicaDetalle,
     TiendaPublicaRespuesta,
     UsuarioCrear,
     UsuarioRespuesta,
@@ -307,11 +308,13 @@ class GestionarEmpresas:
         color de acento."""
         return [TiendaPublicaRespuesta.model_validate(e) for e in self._repo.listar_publicas(db, paginacion, q)]
 
-    def obtener_tienda(self, db: Session, codigo: str) -> TiendaPublicaRespuesta:
+    def obtener_tienda(self, db: Session, codigo: str) -> TiendaPublicaDetalle:
         empresa = self._repo.obtener_por_codigo(db, codigo.strip().lower())
         if empresa is None or not empresa.activo:
             raise NoEncontradoError("Tienda no encontrada")
-        return TiendaPublicaRespuesta.model_validate(empresa)
+        tienda = TiendaPublicaDetalle.model_validate(empresa)
+        tienda.disponible = self._repo.tiene_suscripcion_activa(db, empresa.id)
+        return tienda
 
 
 # ---- Planes -------------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { AuthService } from '../../core/auth.service';
+import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 
 @Component({
   selector: 'app-solicitar-recuperacion',
@@ -18,6 +19,9 @@ export class SolicitarRecuperacionComponent {
 
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  protected readonly tienda = inject(TiendaActualService);
+
+  protected readonly rutaLogin = computed(() => (this.tienda.codigo() ? this.tienda.ruta('login') : ['/login']));
 
   protected readonly formulario = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -34,13 +38,16 @@ export class SolicitarRecuperacionComponent {
     this.cargando.set(true);
     const { email } = this.formulario.getRawValue();
 
-    this.authService.solicitarRecuperacion(email).subscribe({
+    const codigoTienda = this.tienda.codigo();
+
+    this.authService.solicitarRecuperacion(email, codigoTienda).subscribe({
       next: (respuesta) => {
         this.cargando.set(false);
         this.enviado.set(true);
+        const rutaRestablecer = codigoTienda ? `/t/${encodeURIComponent(codigoTienda)}/restablecer` : '/restablecer';
         this.enlaceDev.set(
           respuesta.token_dev
-            ? `${window.location.origin}/restablecer?token=${encodeURIComponent(respuesta.token_dev)}`
+            ? `${window.location.origin}${rutaRestablecer}?token=${encodeURIComponent(respuesta.token_dev)}`
             : null,
         );
       },

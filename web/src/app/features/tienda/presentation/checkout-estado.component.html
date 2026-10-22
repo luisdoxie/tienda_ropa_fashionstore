@@ -27,7 +27,7 @@
         procesado igual: revisalo en "Mis compras" antes de volver a pagar.
       </p>
       <button type="button" class="boton-continuar" (click)="volverAConsultar()">Volver a consultar</button>
-      <a class="auth-enlace" routerLink="/mis-compras">Ver mis compras</a>
+      <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
     </div>
   } @else if (agotado()) {
     <div class="panel">
@@ -40,7 +40,7 @@
       <button type="button" class="boton-continuar" [disabled]="reintentando()" (click)="reintentar()">
         {{ reintentando() ? 'Reintentando...' : 'Reintentar' }}
       </button>
-      <a class="auth-enlace" routerLink="/mis-compras">Ver mis compras</a>
+      <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
     </div>
   } @else {
     <div class="panel">

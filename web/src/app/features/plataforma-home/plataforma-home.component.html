@@ -1,0 +1,86 @@
+<ng-template #tarjetaTienda let-tienda let-volver="volver">
+  <a
+    class="fs-card tarjeta"
+    [class.tarjeta--volver]="volver"
+    [routerLink]="['/t', tienda.codigo]"
+    [style.--tarjeta-acento]="tienda.acento"
+    [style.--tarjeta-texto]="tienda.textoSobreAcento"
+  >
+    <span class="tarjeta__logo" aria-hidden="true">
+      @if (mostrarLogo(tienda)) {
+        <img [src]="tienda.logo" alt="" loading="lazy" (error)="logoFallo(tienda.codigo)" />
+      } @else {
+        <span class="tarjeta__inicial">{{ tienda.inicial }}</span>
+      }
+    </span>
+    <span class="tarjeta__texto">
+      @if (volver) {
+        <span class="tarjeta__eyebrow">Volver a</span>
+      }
+      <span class="tarjeta__nombre">{{ tienda.nombre }}</span>
+    </span>
+  </a>
+</ng-template>
+
+<header class="home-cabecera">
+  <span class="home-marca">FashionStore</span>
+  <a class="home-acceso" [routerLink]="rutaAccesoPersonal">Acceso del personal</a>
+</header>
+
+<main class="home">
+  <h1 class="home-titulo">Elegí tu tienda</h1>
+
+  <p-iconfield class="home-buscador">
+    <p-inputicon class="pi pi-search" />
+    <input
+      pInputText
+      type="search"
+      class="home-buscador__input"
+      placeholder="Buscá una tienda por nombre"
+      aria-label="Buscar tienda por nombre"
+      autocomplete="off"
+      (input)="onBuscar($any($event.target).value)"
+    />
+  </p-iconfield>
+
+  @if (ultima(); as ultimaTienda) {
+    <section class="home-volver" aria-label="Tu última tienda">
+      <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: ultimaTienda, volver: true }" />
+    </section>
+  }
+
+  @if (cargando()) {
+    <div class="home-grilla" aria-busy="true" aria-label="Cargando tiendas">
+      @for (n of esqueletos; track n) {
+        <div class="fs-card tarjeta tarjeta--esqueleto">
+          <span class="tarjeta__logo tarjeta__logo--esqueleto"></span>
+          <span class="tarjeta__linea"></span>
+        </div>
+      }
+    </div>
+  } @else if (error()) {
+    <div class="home-estado" role="alert">
+      <p class="home-estado__titulo">No pudimos cargar las tiendas</p>
+      <p class="fs-caption">Revisá tu conexión e intentá de nuevo.</p>
+      <button type="button" class="home-boton" (click)="cargar()">Reintentar</button>
+    </div>
+  } @else if (!tiendas().length) {
+    <p class="fs-caption home-estado" role="status">No encontramos tiendas con ese nombre.</p>
+  } @else {
+    <div class="home-grilla">
+      @for (tienda of tiendas(); track tienda.codigo) {
+        <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: tienda, volver: false }" />
+      }
+    </div>
+
+    @if (hayMas()) {
+      <div class="home-mas">
+        <button type="button" class="home-boton" [disabled]="cargandoMas()" (click)="verMas()">
+          {{ cargandoMas() ? 'Cargando…' : 'Ver más' }}
+        </button>
+      </div>
+    }
+  }
+</main>
+
+<footer class="home-pie">Con la tecnología de FashionStore</footer>

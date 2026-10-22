@@ -1,6 +1,12 @@
 <div class="auth-pantalla">
   <form class="auth-tarjeta" [formGroup]="formulario" (ngSubmit)="enviar()">
-    <span class="auth-marca">FashionStore</span>
+    <span class="auth-marca">
+      @if (tienda.empresa(); as empresa) {
+        Ingresás a {{ empresa.nombre }}
+      } @else {
+        FashionStore
+      }
+    </span>
     <h1 class="auth-titulo">Bienvenido de vuelta</h1>
     <p class="auth-subtitulo">Ingresá con tu cuenta de FashionStore</p>
 
@@ -16,8 +22,8 @@
       autocomplete="current-password"
     />
 
-    <a class="auth-enlace" routerLink="/recuperar">¿Olvidaste tu contraseña?</a>
-    <a class="auth-enlace" routerLink="/registro" [queryParams]="queryParamsRegistro">¿No tenés cuenta? Registrate</a>
+    <a class="auth-enlace" [routerLink]="rutaRecuperar()">¿Olvidaste tu contraseña?</a>
+    <a class="auth-enlace" [routerLink]="rutaRegistro()" [queryParams]="queryParamsRegistro">¿No tenés cuenta? Registrate</a>
 
     @if (errorLogin()) {
       <p class="auth-error">{{ errorLogin() }}</p>

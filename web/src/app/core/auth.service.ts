@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, finalize, shareReplay, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
+import { TiendaActualService } from '../features/tienda/state/tienda-actual.service';
 import { RecuperarRespuesta, RegistroRequest, TokenRespuesta, Usuario, UsuarioYo } from './models/seguridad.models';
 
 const CLAVE_ACCESS_TOKEN = 'fs_access_token';
@@ -17,6 +18,12 @@ export class AuthService {
   readonly estaAutenticado = computed(() => this.usuarioActual() !== null);
   readonly permisos = computed(() => this.usuarioActual()?.permisos ?? []);
   readonly roles = computed(() => this.usuarioActual()?.roles ?? []);
+  /** Empresa de la sesión (null = sin sesión o superadministrador de la plataforma). */
+  readonly empresaId = computed(() => this.usuarioActual()?.empresa_id ?? null);
+  /** Código de la empresa de la sesión: lo que se compara con la tienda actual (/t/:codigo). */
+  readonly empresaCodigo = computed(() => this.usuarioActual()?.empresa_codigo ?? null);
+
+  private readonly tienda = inject(TiendaActualService);
 
   constructor(
     private readonly http: HttpClient,
@@ -27,9 +34,11 @@ export class AuthService {
     return this.permisos().includes(codigo);
   }
 
-  login(email: string, password: string): Observable<TokenRespuesta> {
+  /** `empresa` (código de la tienda) solo se envía cuando viene; sin ella solo entra un superadministrador. */
+  login(email: string, password: string, empresa?: string | null): Observable<TokenRespuesta> {
+    const cuerpo = empresa ? { empresa, email, password } : { email, password };
     return this.http
-      .post<TokenRespuesta>(`${environment.apiUrl}/auth/login`, { email, password })
+      .post<TokenRespuesta>(`${environment.apiUrl}/auth/login`, cuerpo)
       .pipe(
         tap((tokens) => {
           this.guardarTokens(tokens);
@@ -52,12 +61,17 @@ export class AuthService {
     return this.cargarUsuarioActual();
   }
 
-  registrar(datos: RegistroRequest): Observable<Usuario> {
-    return this.http.post<Usuario>(`${environment.apiUrl}/auth/registro`, datos);
+  /** Los clientes se registran por tienda: POST /public/{codigo}/registro. */
+  registrar(datos: RegistroRequest, codigoTienda: string): Observable<Usuario> {
+    return this.http.post<Usuario>(
+      `${environment.apiUrl}/public/${encodeURIComponent(codigoTienda)}/registro`,
+      datos,
+    );
   }
 
-  solicitarRecuperacion(email: string): Observable<RecuperarRespuesta> {
-    return this.http.post<RecuperarRespuesta>(`${environment.apiUrl}/auth/recuperar`, { email });
+  solicitarRecuperacion(email: string, empresa?: string | null): Observable<RecuperarRespuesta> {
+    const cuerpo = empresa ? { email, empresa } : { email };
+    return this.http.post<RecuperarRespuesta>(`${environment.apiUrl}/auth/recuperar`, cuerpo);
   }
 
   confirmarRecuperacion(token: string, password: string): Observable<{ detail: string }> {
@@ -67,11 +81,21 @@ export class AuthService {
     });
   }
 
-  logout(): void {
+  /** Borra tokens y usuario, sin navegar a ningún lado. */
+  limpiarSesion(): void {
     localStorage.removeItem(CLAVE_ACCESS_TOKEN);
     localStorage.removeItem(CLAVE_REFRESH_TOKEN);
     this.usuarioActual.set(null);
-    this.router.navigate(['/login']);
+  }
+
+  logout(): void {
+    this.limpiarSesion();
+    // Dentro de una tienda se vuelve a su login; fuera, al login del personal (E16 lo cambia).
+    if (this.tienda.codigo()) {
+      this.router.navigate(this.tienda.ruta('login'));
+    } else {
+      this.router.navigate(['/login']);
+    }
   }
 
   private refrescarTokens(): Observable<TokenRespuesta> {

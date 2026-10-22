@@ -11,7 +11,10 @@ import { AuthService } from './auth.service';
 // OJO: no agregar '/categorias' acá -- ese prefijo SÍ lo comparte el GET
 // público con el POST/PUT/DELETE de administración de categorías, y
 // meterlo rompería el refresh de sesión de esas pantallas.
-const RUTAS_SIN_TOKEN = ['/auth/login', '/auth/registro', '/auth/refresh', '/auth/recuperar', '/catalogo'];
+// '/public/' son las rutas de cada tienda (/public/{codigo}/...): la empresa
+// sale del código de la ruta, nunca del token, y no deben llevar Authorization
+// (importa para el caché del Service Worker).
+const RUTAS_SIN_TOKEN = ['/auth/login', '/auth/registro', '/auth/refresh', '/auth/recuperar', '/catalogo', '/public/'];
 
 // Dos excepciones dentro de '/catalogo' que SÍ requieren JWT (catalogo/
 // router.py: buscar_variantes_para_venta exige catalogo.ver, y

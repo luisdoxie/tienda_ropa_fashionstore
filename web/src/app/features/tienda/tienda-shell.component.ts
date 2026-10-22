@@ -1,8 +1,9 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { NavigationStart, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { CarritoService } from './data/carrito.service';
 import { ReservaCarritoService } from './state/reserva-carrito.service';
+import { TiendaActualService } from './state/tienda-actual.service';
 
 @Component({
   selector: 'app-tienda-shell',
@@ -15,6 +16,19 @@ export class TiendaShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly carritoService = inject(CarritoService);
   protected readonly reservaCarritoService = inject(ReservaCarritoService);
+  protected readonly tienda = inject(TiendaActualService);
+
+  // La sesión vale para UNA empresa: un usuario de otra tienda ve esta como visitante.
+  protected readonly sesionDeEstaTienda = computed(
+    () => this.authService.estaAutenticado() && this.authService.empresaCodigo() === this.tienda.codigo(),
+  );
+
+  // Si el logo de la empresa no carga, se muestra su nombre.
+  protected readonly logoFallido = signal<string | null>(null);
+  protected readonly logoUrl = computed(() => {
+    const url = this.tienda.empresa()?.logo_url;
+    return url && /^https?:\/\//i.test(url) && url !== this.logoFallido() ? url : null;
+  });
 
   // Menú de "Iniciar sesión" / "Mis compras" etc. colapsado en celular: ver
   // tienda-shell.component.scss, se muestra en fila completa desde 760px y
@@ -23,7 +37,7 @@ export class TiendaShellComponent {
 
   constructor() {
     effect(() => {
-      if (this.authService.estaAutenticado()) {
+      if (this.sesionDeEstaTienda()) {
         this.carritoService.cargar().subscribe({ error: () => undefined });
       } else {
         this.carritoService.limpiar();
@@ -36,6 +50,10 @@ export class TiendaShellComponent {
     router.events.subscribe((evento) => {
       if (evento instanceof NavigationStart) this.menuAbierto.set(false);
     });
+  }
+
+  logoNoCargo(): void {
+    this.logoFallido.set(this.tienda.empresa()?.logo_url ?? null);
   }
 
   alternarMenu(): void {

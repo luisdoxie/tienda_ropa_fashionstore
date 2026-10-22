@@ -80,6 +80,7 @@ from app.plataforma.schemas import (
     SuscripcionEstadoActualizar,
     SuscripcionRenovar,
     SuscripcionRespuesta,
+    TiendaPublicaDetalle,
     TiendaPublicaRespuesta,
     TokenRespuesta,
     UsuarioActualizar,
@@ -511,9 +512,9 @@ def registro(request: Request, datos: RegistroRequest, db: Session = Depends(get
 # Los datos públicos de la tienda (4 campos). Exenta de la suscripción (ver
 # RUTAS_SIN_SUSCRIPCION): la pantalla puede mostrar "Tienda no disponible" con
 # el nombre de la tienda aunque la suscripción no esté activa.
-@publico_tienda_router.get("/tienda", response_model=TiendaPublicaRespuesta, tags=["publico"])
+@publico_tienda_router.get("/tienda", response_model=TiendaPublicaDetalle, tags=["publico"])
 @limiter.limit("60/minute")
-def tienda_publica(request: Request, codigo: str, db: Session = Depends(get_db)) -> TiendaPublicaRespuesta:
+def tienda_publica(request: Request, codigo: str, db: Session = Depends(get_db)) -> TiendaPublicaDetalle:
     return cu_gestionar_empresas.obtener_tienda(db, codigo)
 
 

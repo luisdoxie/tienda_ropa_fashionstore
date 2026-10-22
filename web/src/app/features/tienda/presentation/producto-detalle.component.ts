@@ -3,7 +3,6 @@ import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
-import { environment } from '../../../../environments/environment';
 import { AuthService } from '../../../core/auth.service';
 import { CatalogoDetalle, Color, Talla } from '../../../core/models/catalogo.models';
 import { Disponibilidad } from '../../../core/models/inventario.models';
@@ -11,6 +10,7 @@ import { Sucursal } from '../../../core/models/organizacion.models';
 import { CarritoService } from '../data/carrito.service';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { ReservaCarritoService } from '../state/reserva-carrito.service';
+import { TiendaActualService } from '../state/tienda-actual.service';
 
 @Component({
   selector: 'app-producto-detalle',
@@ -22,6 +22,7 @@ import { ReservaCarritoService } from '../state/reserva-carrito.service';
 export class ProductoDetalleComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
+  protected readonly tienda = inject(TiendaActualService);
   private readonly disponibilidadService = inject(DisponibilidadService);
   private readonly carritoService = inject(CarritoService);
   protected readonly reservaCarritoService = inject(ReservaCarritoService);
@@ -78,9 +79,9 @@ export class ProductoDetalleComponent implements OnInit {
 
   ngOnInit(): void {
     forkJoin({
-      detalle: this.http.get<CatalogoDetalle>(`${environment.apiUrl}/catalogo/${this.productoId}`),
-      tallas: this.http.get<Talla[]>(`${environment.apiUrl}/tallas`, { params: { tamanio: 100 } }),
-      colores: this.http.get<Color[]>(`${environment.apiUrl}/colores`, { params: { tamanio: 100 } }),
+      detalle: this.http.get<CatalogoDetalle>(this.tienda.urlPublica(`catalogo/${this.productoId}`)),
+      tallas: this.http.get<Talla[]>(this.tienda.urlPublica('tallas'), { params: { tamanio: 100 } }),
+      colores: this.http.get<Color[]>(this.tienda.urlPublica('colores'), { params: { tamanio: 100 } }),
       sucursales: this.disponibilidadService.sucursales(),
     }).subscribe({
       next: ({ detalle, tallas, colores, sucursales }) => {

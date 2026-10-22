@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -7,6 +7,7 @@ import { PasswordModule } from 'primeng/password';
 import { switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { navegarDespuesDeLogin } from '../../core/post-login-redirect';
+import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 
 @Component({
   selector: 'app-login',
@@ -23,6 +24,11 @@ export class LoginComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly returnTo = inject(ActivatedRoute).snapshot.queryParamMap.get('returnTo');
+  protected readonly tienda = inject(TiendaActualService);
+
+  /** Con tienda, el registro y la recuperación viven bajo /t/:codigo; sin tienda (login del personal) se queda como antes. */
+  protected readonly rutaRecuperar = computed(() => (this.tienda.codigo() ? this.tienda.ruta('recuperar') : ['/recuperar']));
+  protected readonly rutaRegistro = computed(() => (this.tienda.codigo() ? this.tienda.ruta('registro') : ['/registro']));
 
   protected readonly queryParamsRegistro = this.returnTo ? { returnTo: this.returnTo } : {};
 
@@ -42,12 +48,12 @@ export class LoginComponent {
     const { email, password } = this.formulario.getRawValue();
 
     this.authService
-      .login(email, password)
+      .login(email, password, this.tienda.codigo())
       .pipe(switchMap(() => this.authService.cargarUsuarioActual()))
       .subscribe({
         next: () => {
           this.cargando.set(false);
-          navegarDespuesDeLogin(this.router, this.authService, this.returnTo);
+          navegarDespuesDeLogin(this.router, this.authService, this.returnTo, this.tienda);
         },
         error: () => {
           this.cargando.set(false);

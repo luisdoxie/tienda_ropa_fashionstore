@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -7,6 +7,7 @@ import { PasswordModule } from 'primeng/password';
 import { switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth.service';
 import { navegarDespuesDeLogin } from '../../core/post-login-redirect';
+import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 
 @Component({
   selector: 'app-registro',
@@ -22,6 +23,9 @@ export class RegistroComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly returnTo = inject(ActivatedRoute).snapshot.queryParamMap.get('returnTo');
+  protected readonly tienda = inject(TiendaActualService);
+
+  protected readonly rutaLogin = computed(() => (this.tienda.codigo() ? this.tienda.ruta('login') : ['/login']));
 
   protected readonly queryParamsLogin = this.returnTo ? { returnTo: this.returnTo } : {};
 
@@ -40,27 +44,37 @@ export class RegistroComponent {
       return;
     }
 
+    // Los clientes se registran por tienda: sin tienda no hay a dónde registrarlos.
+    const codigoTienda = this.tienda.codigo();
+    if (!codigoTienda) {
+      this.error.set('Para crear una cuenta entrá primero a una tienda.');
+      return;
+    }
+
     this.cargando.set(true);
     this.error.set(null);
     const { nombre, apellido, email, telefono, ciNit, password } = this.formulario.getRawValue();
 
     this.authService
-      .registrar({
-        nombre,
-        apellido,
-        email,
-        telefono: telefono || null,
-        ci_nit: ciNit || null,
-        password,
-      })
+      .registrar(
+        {
+          nombre,
+          apellido,
+          email,
+          telefono: telefono || null,
+          ci_nit: ciNit || null,
+          password,
+        },
+        codigoTienda,
+      )
       .pipe(
-        switchMap(() => this.authService.login(email, password)),
+        switchMap(() => this.authService.login(email, password, codigoTienda)),
         switchMap(() => this.authService.cargarUsuarioActual()),
       )
       .subscribe({
         next: () => {
           this.cargando.set(false);
-          navegarDespuesDeLogin(this.router, this.authService, this.returnTo);
+          navegarDespuesDeLogin(this.router, this.authService, this.returnTo, this.tienda);
         },
         error: (err) => {
           this.cargando.set(false);

@@ -4,7 +4,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MessageService } from 'primeng/api';
-import { environment } from '../../../environments/environment';
+import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 import {
   CatalogoItem,
   Categoria,
@@ -39,6 +39,7 @@ const GENEROS: { valor: Genero; etiqueta: string }[] = [
 export class CatalogoPublicoComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly messageService = inject(MessageService);
+  protected readonly tienda = inject(TiendaActualService);
   private temporizadorBusqueda?: ReturnType<typeof setTimeout>;
 
   protected readonly generos = GENEROS;
@@ -104,19 +105,19 @@ export class CatalogoPublicoComponent implements OnInit {
     // catálogo sigue siendo navegable y ese filtro simplemente no aparece,
     // así que no se muestra error por esto.
     this.http
-      .get<Categoria[]>(`${environment.apiUrl}/categorias${sufijo}`)
+      .get<Categoria[]>(`${this.tienda.urlPublica('categorias')}${sufijo}`)
       .subscribe({ next: (v) => this.categorias.set(v), error: () => this.categorias.set([]) });
     this.http
-      .get<Talla[]>(`${environment.apiUrl}/tallas${sufijo}`)
+      .get<Talla[]>(`${this.tienda.urlPublica('tallas')}${sufijo}`)
       .subscribe({ next: (v) => this.tallas.set(v), error: () => this.tallas.set([]) });
     this.http
-      .get<Color[]>(`${environment.apiUrl}/colores${sufijo}`)
+      .get<Color[]>(`${this.tienda.urlPublica('colores')}${sufijo}`)
       .subscribe({ next: (v) => this.colores.set(v), error: () => this.colores.set([]) });
     this.http
-      .get<Material[]>(`${environment.apiUrl}/materiales${sufijo}`)
+      .get<Material[]>(`${this.tienda.urlPublica('materiales')}${sufijo}`)
       .subscribe({ next: (v) => this.materiales.set(v), error: () => this.materiales.set([]) });
     this.http
-      .get<Temporada[]>(`${environment.apiUrl}/temporadas${sufijo}`)
+      .get<Temporada[]>(`${this.tienda.urlPublica('temporadas')}${sufijo}`)
       .subscribe({ next: (v) => this.temporadas.set(v), error: () => this.temporadas.set([]) });
   }
 
@@ -168,7 +169,7 @@ export class CatalogoPublicoComponent implements OnInit {
     const filtros = this.armarParametros();
     // Sin ningún filtro se usa /catalogo, que es el listado llano y tiene más
     // margen de rate limit (60/min) que /catalogo/buscar (30/min).
-    const base = filtros ? `${environment.apiUrl}/catalogo/buscar` : `${environment.apiUrl}/catalogo`;
+    const base = this.tienda.urlPublica(filtros ? 'catalogo/buscar' : 'catalogo');
     const paginado = `pagina=${pagina}&tamanio=${TAMANIO_PAGINA}`;
     return this.http.get<CatalogoItem[]>(`${base}?${paginado}${filtros ? `&${filtros}` : ''}`);
   }

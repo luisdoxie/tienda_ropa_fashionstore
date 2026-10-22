@@ -6,12 +6,12 @@
   } @else if (reservas().length === 0) {
     <div class="vacio">
       <p class="fs-caption">Todavía no hiciste ninguna reserva.</p>
-      <a class="auth-enlace" routerLink="/catalogo">Ver catálogo</a>
+      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
     <div class="lista">
       @for (reserva of reservas(); track reserva.id) {
-        <a class="fs-card fila" [routerLink]="['/mis-reservas', reserva.id]">
+        <a class="fs-card fila" [routerLink]="tienda.ruta('mis-reservas', '' + reserva.id)">
           <div>
             <strong>{{ reserva.codigo }}</strong>
             <div class="fs-caption">{{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde.slice(0, 5) }} - {{ reserva.hora_visita_hasta.slice(0, 5) }}</div>

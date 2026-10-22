@@ -1,6 +1,12 @@
 <div class="auth-pantalla">
   <form class="auth-tarjeta" [formGroup]="formulario" (ngSubmit)="enviar()">
-    <span class="auth-marca">FashionStore</span>
+    <span class="auth-marca">
+      @if (tienda.empresa(); as empresa) {
+        Ingresás a {{ empresa.nombre }}
+      } @else {
+        FashionStore
+      }
+    </span>
     <h1 class="auth-titulo">Creá tu cuenta</h1>
     <p class="auth-subtitulo">Para comprar, reservar y guardar favoritos.</p>
 
@@ -33,6 +39,6 @@
     }
 
     <p-button type="submit" label="Crear cuenta" [loading]="cargando()" styleClass="w-full" />
-    <a class="auth-enlace" routerLink="/login" [queryParams]="queryParamsLogin">¿Ya tenés cuenta? Iniciá sesión</a>
+    <a class="auth-enlace" [routerLink]="rutaLogin()" [queryParams]="queryParamsLogin">¿Ya tenés cuenta? Iniciá sesión</a>
   </form>
 </div>

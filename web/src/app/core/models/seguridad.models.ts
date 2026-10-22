@@ -32,6 +32,10 @@ export interface Usuario {
 
 export interface UsuarioYo extends Usuario {
   permisos: string[];
+  /** null = superadministrador de la plataforma (no pertenece a una empresa). */
+  empresa_id?: number | null;
+  empresa_codigo?: string | null;
+  empresa_nombre?: string | null;
 }
 
 export interface UsuarioCrear {

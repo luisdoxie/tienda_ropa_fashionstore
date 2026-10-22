@@ -2,6 +2,7 @@ import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { MessageService } from 'primeng/api';
 import { catchError, throwError } from 'rxjs';
+import { SIN_TOAST_ERROR } from './http-contexts';
 
 // Rutas que ya manejan sus propios errores en la UI (p. ej. dashboard y
 // caja muestran un aviso propio cuando el usuario no tiene registro de
@@ -33,7 +34,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: unknown) => {
-      const esRutaSinToast = RUTAS_SIN_TOAST_ERROR.some((ruta) => req.url.includes(ruta));
+      const esRutaSinToast =
+        req.context.get(SIN_TOAST_ERROR) || RUTAS_SIN_TOAST_ERROR.some((ruta) => req.url.includes(ruta));
       if (error instanceof HttpErrorResponse && error.status !== 401 && !esRutaSinToast) {
         messageService.add({
           severity: 'error',

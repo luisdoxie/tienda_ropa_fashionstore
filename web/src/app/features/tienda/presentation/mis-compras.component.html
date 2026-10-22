@@ -6,12 +6,12 @@
   } @else if (compras().length === 0) {
     <div class="vacio">
       <p class="fs-caption">Todavía no hiciste ninguna compra.</p>
-      <a class="auth-enlace" routerLink="/catalogo">Ver catálogo</a>
+      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
     <div class="lista">
       @for (venta of compras(); track venta.id) {
-        <a class="fs-card fila" [routerLink]="['/mis-compras', venta.id]">
+        <a class="fs-card fila" [routerLink]="tienda.ruta('mis-compras', '' + venta.id)">
           <div>
             <strong>{{ venta.codigo }}</strong>
             <div class="fs-caption">{{ venta.fecha | date: 'medium' }}</div>
