@@ -29,8 +29,7 @@ Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
 (más `sincronizacion`, pendiente de crear, para el offline del segundo parcial):
 - `plataforma`: seguridad (autenticación, usuarios, roles, permisos, clientes)
   y organización (ciudades, sucursales, empleados). Aquí viven también los
-  modelos de empresa, plan y suscripción (multitenant); su gestión (CU-04)
-  está sin implementar.
+  modelos de empresa, plan y suscripción (multitenant) y su gestión (CU-04).
 - `catalogo`: catálogo, inventario, abastecimiento y probador virtual
   (solo modo generativo).
 - `comercial`: reservas, ventas, pagos y entregas.
@@ -93,7 +92,7 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
 43; la equivalencia está en `C:\Desarrollo\examen\documento\2doParcial\`):
 - plataforma: CU-01 Autenticar y registrar usuarios · CU-02 Gestionar
   usuarios, roles y permisos · CU-03 Gestionar organización · CU-04 Gestionar
-  empresas, planes y suscripciones (NUEVO, sin implementar).
+  empresas, planes y suscripciones (`cu04_...`, 4 clases de control).
 - catalogo: CU-05 Gestionar catálogo · CU-06 Consultar y buscar catálogo ·
   CU-07 Gestionar favoritos · CU-08 Gestionar abastecimiento · CU-09 Gestionar
   inventario · CU-10 Gestionar assets del probador · CU-11 Probar prenda con IA.
@@ -171,9 +170,10 @@ Las tablas las crea Alembic a partir de los modelos.
 ## Multitenant
 Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
 NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01),
-filtrado automático por empresa (E02) y login con empresa y claim `empresa_id`
-en el token (E03) hechos. El backend NO se despliega solo: tras la E03 el login
-de la web y del móvil actuales no funciona hasta que se adapten (E15, E16, E18).
+filtrado automático por empresa (E02), login con empresa y claim `empresa_id`
+en el token (E03) y CU-04 con planes y suscripciones (E04) hechos. El backend NO
+se despliega solo: tras la E03 el login de la web y del móvil actuales no
+funciona hasta que se adapten (E15, E16, E18).
 - Clasificación de las 62 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
@@ -221,9 +221,9 @@ de la web y del móvil actuales no funciona hasta que se adapten (E15, E16, E18)
 - Las tareas sin usuario (expirar reservas y ventas pendientes) corren por
   empresa con `por_cada_empresa`; el segundo plano del probador recibe la
   empresa explícita.
-- Las rutas `/api/v1/public/{codigo}/...` (26) reutilizan los mismos handlers del
-  catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador (la 26.ª es
-  el registro de clientes de la tienda). Sin token, las rutas viejas equivalentes
+- Las rutas `/api/v1/public/{codigo}/...` (27) reutilizan los mismos handlers del
+  catálogo, sucursales, zonas de envío y búsqueda por voz/recomendador (más el
+  registro de clientes y los datos públicos de la tienda). Sin token, las rutas viejas equivalentes
   responden 401.
 
 ### Login y token (E03)
@@ -256,6 +256,36 @@ de la web y del móvil actuales no funciona hasta que se adapten (E15, E16, E18)
   las rutas de negocio responden 403. Crear, editar o borrar roles y asignarles
   permisos exige `plataforma.gestionar` (solo el superadministrador); el
   administrador de empresa lee roles y permisos y asigna roles a sus usuarios.
+
+### Planes y suscripciones (E04)
+- Dos planes sembrados (Básico: 2 sucursales activas, sin IA/ML/copias;
+  Profesional: 10, todo). Los límites y las funcionalidades se leen de la tabla
+  `plan`: editar un plan cambia el comportamiento sin tocar el código.
+- Una empresa tiene a lo sumo UNA suscripción vigente (no cancelada; índice
+  parcial). Estados: `activa`, `suspendida`, `vencida`, `cancelada` (final). El
+  estado EFECTIVO se calcula por fecha (una activa con la fecha pasada es
+  vencida aunque la tarea periódica no haya corrido); la tarea
+  (`vencer_suscripciones`) lo persiste. Cambiar de plan cancela la vigente (su
+  vencimiento se recorta a hoy) y crea otra; bajar a un plan con menos
+  sucursales de las que hay en uso se rechaza (409).
+- `core/planes.py`: `verificar_suscripcion_activa` (403 `suscripcion_no_activa`)
+  la ejecutan `get_current_user` y la tienda pública salvo en
+  `RUTAS_SIN_SUSCRIPCION` (`/health`, `/auth/*`, `/mi-empresa*`, `/plataforma/*`,
+  `/public/tiendas`, `/public/{codigo}/tienda`, webhook y QR de pagos,
+  `/tareas/*`); `exigir_funcionalidad(nombre)` (403 `plan_no_incluye_funcionalidad`)
+  es una dependencia que va ANTES de `require_permission` (orden de errores: 401,
+  suscripción, plan, permiso, reglas de negocio). `ErrorFuncional` responde
+  `{detail, codigo, mensaje, ...contexto}`.
+- Límite de sucursales activas (el depósito cuenta): 409 `limite_plan_excedido`
+  al crear o reactivar, con la fila de la suscripción bloqueada (FOR UPDATE en
+  PostgreSQL) para que dos altas simultáneas no lo superen.
+- Una empresa nueva (`POST /plataforma/empresas`) nace en una sola transacción
+  con su suscripción, su administrador y sus datos base (tallas, materiales y las
+  9 capitales de Bolivia) mediante `core.tenant.registrar_inicializador`; el
+  superadministrador trabaja sobre una empresa ajena solo con `en_empresa`.
+- Siempre queda al menos un administrador activo por empresa.
+- Semilla de demostración: `python -m scripts.seed_empresas_prueba` (dry-run por
+  defecto): FashionStore (Profesional) y Boutique Andina (Básico).
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

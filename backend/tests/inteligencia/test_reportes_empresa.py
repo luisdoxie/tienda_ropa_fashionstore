@@ -11,11 +11,12 @@ por petición (como en producción) y dos empresas:
 import datetime as dt
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
 
 from app.comercial.repository import VW_VENTAS_DETALLE_V2_SQL
 from app.core.rate_limit import limiter
 from app.inteligencia.schemas import FiltrosReporteVoz
+from app.plataforma.models import Plan
 from tests.catalogo.test_consolidado_empresa import sembrar_negocio
 from tests.inteligencia.test_reporte_voz import dictar, sumas_decimales  # noqa: F401  (fixtures)
 
@@ -100,9 +101,13 @@ def test_dashboard_cada_empresa_ve_solo_sus_indicadores(client_por_peticion, dos
 
 
 def test_reporte_por_voz_cada_empresa_oye_sus_cifras_y_no_resuelve_sucursales_ajenas(
-    client_por_peticion, dos_empresas, mundo, dictar  # noqa: F811
+    client_por_peticion, db_session, dos_empresas, mundo, dictar  # noqa: F811
 ):
     a, b = mundo
+    # E04: el reporte por voz es del plan Profesional; B (Básico) lo necesita para
+    # esta prueba de aislamiento, así que se le enciende en la tabla del plan.
+    db_session.execute(update(Plan).where(Plan.codigo == "basico").values(reportes_ia=True))
+    db_session.commit()
     # El administrador de A dicta el nombre de una sucursal de B: no se resuelve
     # (queda sin filtro de sucursal) y el reporte es el de A, nunca el de B.
     dictar(FiltrosReporteVoz(tipo_reporte="ventas", sucursal=b["sucursal"], **{"desde": HOY - dt.timedelta(days=2)}))

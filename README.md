@@ -115,9 +115,15 @@ Hecho:
   cuenta tras 5 fallos, correo en minúsculas, token de recuperación de un solo
   uso, registro de clientes por tienda (`/public/{codigo}/registro`) y
   superadministrador de la plataforma creado solo con script.
+- CU-04 Empresas, planes y suscripciones (etapa E04): registro de empresas (con
+  su suscripción, su administrador y sus datos base en una transacción), planes
+  Básico y Profesional con límites y funcionalidades configurables, estados de la
+  suscripción (activa, suspendida, vencida, cancelada), bloqueo de las empresas
+  sin suscripción activa, límite de sucursales por plan y semilla de dos empresas
+  de prueba (`python -m scripts.seed_empresas_prueba`).
 
 Por construir, en este orden:
-1. Multitenant y planes (CU-04): gestión de empresas, planes y suscripciones.
+1. Aislamiento verificado (E05) y bitácora de auditoría (E06).
 2. Sincronización offline (CU-25): idempotencia, fecha de la operación y lotes
    atómicos. PWA con IndexedDB y app Flutter con SQLite, incluido el modo
    vendedor/cajero.
@@ -125,8 +131,8 @@ Por construir, en este orden:
    probador.
 4. Pruebas, rendimiento y documentación ICONIX.
 
-Pruebas: 1085 en el backend y 132 en el móvil (`flutter test`). Las del backend
-corren con `pytest`: 1061 en SQLite en memoria y 24 en PostgreSQL real
+Pruebas: 1251 en el backend y 132 en el móvil (`flutter test`). Las del backend
+corren con `pytest`: 1223 en SQLite en memoria y 28 en PostgreSQL real
 (`backend/tests/postgres/`: esquema, bloqueos de stock, cancelar contra
 expirar reservas, deadlocks y migración multitenant con datos). Estas últimas se activan con la variable
 `TEST_DATABASE_URL` apuntando a una base cuyo nombre termine en `_test`; si
@@ -146,6 +152,8 @@ Cambiar `JWT_SECRET_KEY` cierra TODAS las sesiones (revocación de emergencia).
 | `LOGIN_MAX_INTENTOS` (5), `LOGIN_VENTANA_SEGUNDOS` (900) | bloqueo por cuenta tras varios fallos (en memoria; vale con un solo worker) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_EMPRESA` | `python -m scripts.crear_admin`: administrador de una empresa |
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD` | `python -m scripts.crear_superadmin` (contraseña de 12+ caracteres) |
+| `SEED_PASSWORD_INICIAL` | `python -m scripts.seed_empresas_prueba --ejecutar`: contraseña inicial de los usuarios de las dos empresas de prueba (8+ caracteres; sin `--ejecutar` solo lista lo que haría) |
+| `SUSCRIPCION_DIAS_POR_DEFECTO` (30) | vigencia de una suscripción nueva si no se indica fecha de vencimiento |
 
 El superadministrador (sin empresa) solo se crea con ese script, una vez y como
 comando único del servicio; después se quitan las dos variables. Con

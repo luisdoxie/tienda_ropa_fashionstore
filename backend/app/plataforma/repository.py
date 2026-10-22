@@ -1,22 +1,26 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.crud_base import CRUDBase
+from app.core.crud_base import CRUDBase, CRUDBaseSinActivo
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
 from app.core.repository import confirmar, obtener_por_clave
-from app.core.permisos import ROL_SUPERADMINISTRADOR
+from app.core.permisos import ROL_ADMINISTRADOR, ROL_SUPERADMINISTRADOR
 from app.core.security import hash_password
 from app.core.tenant import empresa_de, sin_filtro
 from app.plataforma.models import (
     Ciudad,
     Cliente,
     Empleado,
+    Empresa,
     HorarioSucursal,
     Notificacion,
     Permiso,
+    Plan,
     Rol,
     Sucursal,
+    Suscripcion,
     Usuario,
+    usuario_rol,
 )
 from app.plataforma.schemas import (
     CiudadActualizar,
@@ -24,10 +28,16 @@ from app.plataforma.schemas import (
     ClientePerfilActualizar,
     EmpleadoActualizar,
     EmpleadoCrear,
+    EmpresaActualizar,
+    EmpresaRegistrar,
+    PlanActualizar,
+    PlanCrear,
     RolActualizar,
     RolCrear,
     SucursalActualizar,
     SucursalCrear,
+    SuscripcionAsignar,
+    SuscripcionEstadoActualizar,
     UsuarioActualizar,
     UsuarioCrear,
 )
@@ -139,6 +149,44 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
         usuario.password_hash = hash_password(password)
         confirmar(db, commit)
 
+    # -- Siempre al menos un administrador activo por empresa (D36) ------------
+
+    def contar_otros_administradores_activos(self, db: Session, usuario_id: int) -> int:
+        """Usuarios activos con el rol administrador, de la empresa de la
+        sesión, sin contar a `usuario_id`."""
+        consulta = (
+            select(func.count(func.distinct(Usuario.id)))
+            .select_from(Usuario)
+            .join(usuario_rol, usuario_rol.c.usuario_id == Usuario.id)
+            .join(Rol, Rol.id == usuario_rol.c.rol_id)
+            .where(Rol.nombre == ROL_ADMINISTRADOR, Usuario.activo.is_(True), Usuario.id != usuario_id)
+        )
+        return db.scalar(consulta) or 0
+
+    def _exigir_otro_administrador(self, db: Session, usuario: Usuario, accion: str) -> None:
+        """409 si `usuario` es el último administrador activo de su empresa y se
+        le va a desactivar o quitar el rol (`accion` completa el mensaje)."""
+        if usuario.empresa_id is None or not usuario.activo:
+            return
+        if ROL_ADMINISTRADOR not in {r.nombre for r in usuario.roles}:
+            return
+        if self.contar_otros_administradores_activos(db, usuario.id) == 0:
+            raise ConflictoError(
+                f"No se puede {accion}: es el último administrador activo de la empresa. "
+                "Asigne primero el rol de administrador a otro usuario"
+            )
+
+    def actualizar(self, db: Session, id_, datos, commit: bool = True) -> Usuario:
+        if datos.activo is False:
+            usuario = self.buscar(db, id_)
+            if usuario is not None:
+                self._exigir_otro_administrador(db, usuario, "desactivar al usuario")
+        return super().actualizar(db, id_, datos, commit)
+
+    def desactivar(self, db: Session, id_, commit: bool = True) -> Usuario:
+        self._exigir_otro_administrador(db, self.obtener(db, id_), "desactivar al usuario")
+        return super().desactivar(db, id_, commit)
+
     def asignar_roles(
         self, db: Session, usuario: Usuario, nombres_rol: list[str], commit: bool = True
     ) -> Usuario:
@@ -146,6 +194,8 @@ class UsuarioRepository(CRUDBase[Usuario, UsuarioCrear, UsuarioActualizar]):
 
         nombres_unicos = set(nombres_rol)
         validar_roles_asignables(usuario.empresa_id, nombres_unicos)
+        if ROL_ADMINISTRADOR not in nombres_unicos:
+            self._exigir_otro_administrador(db, usuario, "quitar el rol de administrador")
         roles = list(
             db.scalars(select(Rol).where(Rol.nombre.in_(nombres_unicos), Rol.activo.is_(True)))
         )
@@ -285,6 +335,7 @@ class SucursalRepository(CRUDBase[Sucursal, SucursalCrear, SucursalActualizar]):
         ciudad = obtener_por_clave(db, Ciudad, datos.ciudad_id)
         if ciudad is None or not ciudad.activo:
             raise NoEncontradoError("Ciudad no encontrada")
+        self._verificar_limite_del_plan(db)
         return super().crear(db, datos, commit)
 
     def actualizar(self, db: Session, id_: int, datos: SucursalActualizar, commit: bool = True) -> Sucursal:
@@ -293,7 +344,22 @@ class SucursalRepository(CRUDBase[Sucursal, SucursalCrear, SucursalActualizar]):
         # de otra empresa), igual que en `crear`.
         if datos.ciudad_id is not None:
             CiudadRepository().obtener(db, datos.ciudad_id)
+        # Reactivar una sucursal inactiva ocupa un cupo del plan, igual que
+        # crearla. Editar una sucursal ya activa (o desactivar) no cuenta.
+        if datos.activo is True:
+            existente = self.buscar(db, id_)
+            if existente is not None and not existente.activo:
+                self._verificar_limite_del_plan(db)
         return super().actualizar(db, id_, datos, commit)
+
+    @staticmethod
+    def _verificar_limite_del_plan(db: Session) -> None:
+        # Import diferido: politicas importa este módulo. Toma el bloqueo de la
+        # suscripción (PostgreSQL) hasta el commit, así dos altas simultáneas
+        # no pasan las dos con un solo cupo.
+        from app.plataforma.politicas import verificar_limite_sucursales
+
+        verificar_limite_sucursales(db)
 
 
 class HorarioRepository:
@@ -375,3 +441,174 @@ class EmpleadoRepository(CRUDBase[Empleado, EmpleadoCrear, EmpleadoActualizar]):
                 )
             )
         )
+
+
+# ---- Empresas, planes y suscripciones ----
+
+
+class EmpresaRepository(CRUDBase[Empresa, EmpresaRegistrar, EmpresaActualizar]):
+    """`empresa` es la raíz del aislamiento: no lleva filtro de empresa, así que
+    estas consultas valen en cualquier sesión (superadministrador o empresa).
+    Quien las expone decide quién las puede pedir."""
+
+    def __init__(self) -> None:
+        super().__init__(Empresa)
+
+    def obtener_por_codigo(self, db: Session, codigo: str) -> Empresa | None:
+        return db.scalar(select(Empresa).where(Empresa.codigo == codigo))
+
+    def insertar(self, db: Session, nombre: str, codigo: str, logo_url: str | None, color_acento: str | None) -> Empresa:
+        """Inserta la empresa sin confirmar (la transacción es de quien registra).
+        El código ya viene normalizado; si choca, 409."""
+        if self.obtener_por_codigo(db, codigo) is not None:
+            raise ConflictoError("Ya existe una empresa con ese nombre")
+        empresa = Empresa(nombre=nombre, codigo=codigo, logo_url=logo_url, color_acento=color_acento)
+        db.add(empresa)
+        db.flush()
+        return empresa
+
+    def listar_filtrado(
+        self, db: Session, paginacion, q: str | None = None, activo: bool | None = None
+    ) -> list[Empresa]:
+        """Para el superadministrador: incluye las inactivas (`activo` filtra)."""
+        consulta = select(Empresa)
+        if q:
+            patron = f"%{q.strip().lower()}%"
+            consulta = consulta.where(
+                func.lower(Empresa.nombre).like(patron) | func.lower(Empresa.codigo).like(patron)
+            )
+        if activo is not None:
+            consulta = consulta.where(Empresa.activo.is_(activo))
+        consulta = consulta.order_by(Empresa.id).offset(paginacion.offset).limit(paginacion.tamanio)
+        return list(db.scalars(consulta))
+
+    def listar_publicas(self, db: Session, paginacion, q: str | None = None) -> list[Empresa]:
+        """Las tiendas que se muestran al público: empresas activas con una
+        suscripción activa y vigente por fecha. Ordenadas por nombre."""
+        from app.core.tiempo import hoy_utc
+
+        hoy = hoy_utc()
+        con_suscripcion_activa = (
+            select(Suscripcion.empresa_id)
+            .where(Suscripcion.estado == "activa", Suscripcion.fecha_vencimiento >= hoy)
+        )
+        consulta = select(Empresa).where(Empresa.activo.is_(True), Empresa.id.in_(con_suscripcion_activa))
+        if q:
+            patron = f"%{q.strip().lower()}%"
+            consulta = consulta.where(
+                func.lower(Empresa.nombre).like(patron) | func.lower(Empresa.codigo).like(patron)
+            )
+        consulta = consulta.order_by(func.lower(Empresa.nombre), Empresa.id).offset(paginacion.offset).limit(paginacion.tamanio)
+        # La suscripción se mira de TODAS las empresas (la lista es pública):
+        # `sin_filtro` va en la consulta externa, que es la que el filtro revisa.
+        return list(db.scalars(sin_filtro(consulta)))
+
+
+class PlanRepository(CRUDBase[Plan, PlanCrear, PlanActualizar]):
+    """`plan` es global. `listar` (heredado) solo trae los activos."""
+
+    def __init__(self) -> None:
+        super().__init__(Plan)
+
+    def obtener_por_codigo(self, db: Session, codigo: str) -> Plan | None:
+        """El plan con ese código, activo o no."""
+        return db.scalar(select(Plan).where(Plan.codigo == codigo))
+
+    def en_uso(self, db: Session, plan_id: int) -> bool:
+        """Si alguna suscripción NO cancelada (de cualquier empresa) usa el plan."""
+        consulta = select(func.count(Suscripcion.id)).where(
+            Suscripcion.plan_id == plan_id, Suscripcion.estado != "cancelada"
+        )
+        return (db.scalar(sin_filtro(consulta)) or 0) > 0
+
+    def listar_todos(self, db: Session, paginacion) -> list[Plan]:
+        """Para el superadministrador: incluye los planes inactivos."""
+        consulta = select(Plan).order_by(Plan.id).offset(paginacion.offset).limit(paginacion.tamanio)
+        return list(db.scalars(consulta))
+
+    def por_ids(self, db: Session, ids) -> dict[int, Plan]:
+        ids = set(ids)
+        if not ids:
+            return {}
+        return {plan.id: plan for plan in db.scalars(select(Plan).where(Plan.id.in_(ids)))}
+
+
+class SuscripcionRepository(CRUDBaseSinActivo[Suscripcion, SuscripcionAsignar, SuscripcionEstadoActualizar]):
+    """Consultas del SUPERADMINISTRADOR sobre las suscripciones de todas las
+    empresas (`sin_filtro`, permitido para esta tabla). Solo se usa desde una
+    sesión sin empresa. Para operar sobre UNA empresa se entra con
+    `core.tenant.en_empresa` y se usan las políticas, que sí filtran."""
+
+    def __init__(self) -> None:
+        super().__init__(Suscripcion)
+
+    def _aplicar_alcance(self, consulta):
+        return sin_filtro(consulta)
+
+    def listar_filtrado(
+        self, db: Session, paginacion, empresa_id: int | None = None, estado: str | None = None
+    ) -> list[Suscripcion]:
+        """`estado` es el EFECTIVO: `vencida` incluye a las activas cuya fecha ya
+        pasó (aunque la tarea no las haya persistido) y `activa` solo a las
+        vigentes por fecha."""
+        from app.core.tiempo import hoy_utc
+
+        hoy = hoy_utc()
+        consulta = self._aplicar_alcance(select(Suscripcion))
+        if empresa_id is not None:
+            consulta = consulta.where(Suscripcion.empresa_id == empresa_id)
+        if estado == "activa":
+            consulta = consulta.where(Suscripcion.estado == "activa", Suscripcion.fecha_vencimiento >= hoy)
+        elif estado == "vencida":
+            consulta = consulta.where(
+                (Suscripcion.estado == "vencida")
+                | ((Suscripcion.estado == "activa") & (Suscripcion.fecha_vencimiento < hoy))
+            )
+        elif estado is not None:
+            consulta = consulta.where(Suscripcion.estado == estado)
+        consulta = consulta.order_by(Suscripcion.id).offset(paginacion.offset).limit(paginacion.tamanio)
+        return list(db.scalars(consulta))
+
+    def vigentes_de(self, db: Session, empresa_ids) -> dict[int, tuple[Suscripcion, Plan]]:
+        """La suscripción NO cancelada (con su plan) de cada empresa, en un solo
+        SELECT, para los listados del superadministrador."""
+        ids = set(empresa_ids)
+        if not ids:
+            return {}
+        consulta = self._aplicar_alcance(
+            select(Suscripcion, Plan)
+            .join(Plan, Plan.id == Suscripcion.plan_id)
+            .where(Suscripcion.empresa_id.in_(ids), Suscripcion.estado != "cancelada")
+        )
+        return {s.empresa_id: (s, p) for s, p in db.execute(consulta)}
+
+    def insertar(
+        self,
+        db: Session,
+        empresa_id: int,
+        plan_id: int,
+        fecha_inicio,
+        fecha_vencimiento,
+        estado: str = "activa",
+    ) -> Suscripcion:
+        """Inserta una suscripción sin confirmar. El `empresa_id` va explícito:
+        la sesión del superadministrador no tiene empresa (o ya está en la
+        misma). Un segundo vigente lo rechaza el índice parcial (IntegrityError
+        al volcar)."""
+        suscripcion = Suscripcion(
+            empresa_id=empresa_id,
+            plan_id=plan_id,
+            estado=estado,
+            fecha_inicio=fecha_inicio,
+            fecha_vencimiento=fecha_vencimiento,
+        )
+        db.add(suscripcion)
+        db.flush()
+        return suscripcion
+
+    def empresa_de_suscripcion(self, db: Session, suscripcion_id: int) -> int:
+        """El `empresa_id` de la suscripción, o 404."""
+        empresa_id = db.scalar(sin_filtro(select(Suscripcion.empresa_id).where(Suscripcion.id == suscripcion_id)))
+        if empresa_id is None:
+            raise NoEncontradoError("Suscripción no encontrada")
+        return empresa_id

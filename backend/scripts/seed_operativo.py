@@ -201,7 +201,15 @@ def verificar_precondiciones(db: Session) -> int:
     return ciudad.id
 
 
-def seed_sucursales(db: Session, ciudad_id: int, ejecutar: bool, resumen: Resumen) -> dict[str, int | None]:
+def seed_sucursales(
+    db: Session,
+    ciudad_id: int,
+    ejecutar: bool,
+    resumen: Resumen,
+    sucursales: list[SucursalSeed] | None = None,
+) -> dict[str, int | None]:
+    """`sucursales` permite sembrar otra lista (p. ej. la de otra empresa de
+    prueba); por defecto, las de FashionStore."""
     from app.plataforma.casos_uso.cu03_gestionar_organizacion import GestionarSucursales
     from app.plataforma.models import Sucursal
     from app.plataforma.politicas import obtener_horario_dia
@@ -209,7 +217,7 @@ def seed_sucursales(db: Session, ciudad_id: int, ejecutar: bool, resumen: Resume
 
     cu_sucursales = GestionarSucursales()
     ids: dict[str, int | None] = {}
-    for s in SUCURSALES:
+    for s in SUCURSALES if sucursales is None else sucursales:
         sucursal = db.scalar(select(Sucursal).where(Sucursal.codigo == s.codigo))
         if sucursal is not None and not sucursal.activo:
             sys.exit(f"La sucursal {s.codigo} existe pero está inactiva: reactivarla a mano antes de seguir")
@@ -244,9 +252,15 @@ def seed_sucursales(db: Session, ciudad_id: int, ejecutar: bool, resumen: Resume
 
 
 def seed_staff(
-    db: Session, sucursales: dict[str, int | None], password: str | None, ejecutar: bool, resumen: Resumen
+    db: Session,
+    sucursales: dict[str, int | None],
+    password: str | None,
+    ejecutar: bool,
+    resumen: Resumen,
+    staff: list[StaffSeed] | None = None,
 ) -> tuple[dict[str, int | None], dict[str, int | None]]:
-    """Devuelve (usuario_id por email, empleado_id por email)."""
+    """Devuelve (usuario_id por email, empleado_id por email). `staff` permite
+    sembrar otra lista; por defecto, la de FashionStore."""
     from app.plataforma.casos_uso.cu03_gestionar_organizacion import GestionarEmpleados
     from app.plataforma.politicas import obtener_empleado_por_usuario
     from app.plataforma.schemas import EmpleadoCrear
@@ -258,7 +272,7 @@ def seed_staff(
     cu_usuarios = GestionarUsuarios()
     usuarios: dict[str, int | None] = {}
     empleados: dict[str, int | None] = {}
-    for s in STAFF:
+    for s in STAFF if staff is None else staff:
         usuario = db.scalar(select(Usuario).where(Usuario.email == s.email))
         if usuario is None:
             resumen.creado("usuario")

@@ -25,6 +25,7 @@ from app.core.exceptions import registrar_handlers
 from app.core.rate_limit import limiter
 from app.core.tenant import contexto_empresa
 from app.inteligencia.router import routers as inteligencia_routers
+from app.plataforma.politicas import vencer_suscripciones
 from app.plataforma.router import routers as plataforma_routers
 
 logger = logging.getLogger(__name__)
@@ -35,11 +36,14 @@ settings = get_settings()
 def _correr_tareas_periodicas() -> None:
     """Vence ventas digitales que quedaron sin pagar y reservas vencidas.
     Sesión propia, igual que la generación en segundo plano del probador.
-    Cada tarea recorre todas las empresas activas (una por una, con su
-    empresa fijada) y va aislada: si una falla, la otra corre igual."""
+    Las de ventas y reservas recorren todas las empresas activas (una por una,
+    con su empresa fijada); la de suscripciones hace una sola pasada sobre
+    todas (no toca datos de negocio). Cada tarea va aislada: si una falla, las
+    otras corren igual."""
     for nombre, tarea in (
         ("ventas pendientes", expirar_ventas_de_todas_las_empresas),
         ("reservas", expirar_reservas_de_todas_las_empresas),
+        ("suscripciones", vencer_suscripciones),
     ):
         db = SessionLocal()
         try:

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import ParametrosPeriodo, periodo_reportes
 from app.core.permisos import PERMISO_REPORTES_VER
+from app.core.planes import FUNC_REPORTES_CONVENCIONALES, FUNC_REPORTES_IA, exigir_funcionalidad
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user, get_current_user_opcional, require_permission
 from app.inteligencia.casos_uso.cu20_recomendar_productos import RecomendarProductos
@@ -71,7 +72,12 @@ def registrar_evento_endpoint(
 
 
 @inteligencia_router.post(
-    "/reporte-voz", response_model=ReporteVozRespuesta, dependencies=[Depends(require_permission(PERMISO_REPORTES_VER))]
+    "/reporte-voz",
+    response_model=ReporteVozRespuesta,
+    dependencies=[
+        Depends(exigir_funcionalidad(FUNC_REPORTES_IA)),  # antes del permiso: orden de errores de 4.6
+        Depends(require_permission(PERMISO_REPORTES_VER)),
+    ],
 )
 @limiter.limit("15/minute")
 def generar_reporte_por_voz(
@@ -90,7 +96,11 @@ ver_requerido = Depends(require_permission(PERMISO_REPORTES_VER))
 cu_consultar_reportes = ConsultarReportesVentasInventario()
 cu_dashboard = VisualizarDashboardIndicadores()
 
-reportes_router = APIRouter(prefix="/api/v1/reportes", tags=["reportes"], dependencies=[ver_requerido])
+reportes_router = APIRouter(
+    prefix="/api/v1/reportes",
+    tags=["reportes"],
+    dependencies=[Depends(exigir_funcionalidad(FUNC_REPORTES_CONVENCIONALES)), ver_requerido],
+)
 
 
 @reportes_router.get("/ventas", response_model=ReporteVentasRespuesta)

@@ -1,6 +1,7 @@
 """Corre, en orden de dependencias, todos los seeds idempotentes: primero
 los catálogos base y después scripts.seed_operativo (sucursales, staff,
-proveedores y stock inicial).
+proveedores y stock inicial). Al final, con --ejecutar, las 2 empresas de
+prueba del multitenant (scripts.seed_empresas_prueba).
 
 scripts.seed_prendas_probador NO está incluido: necesita la carpeta del
 dataset y credenciales de Cloudinary, se corre aparte y antes que este.
@@ -19,6 +20,7 @@ import argparse
 
 from scripts import (
     seed_catalogo,
+    seed_empresas_prueba,
     seed_entregas,
     seed_inventario,
     seed_operativo,
@@ -63,6 +65,13 @@ def main() -> None:
     if args.empresa:
         argv_operativo += ["--empresa", args.empresa]
     seed_operativo.main(argv_operativo)
+
+    # Las 2 empresas de prueba (E04) van al final y solo con --ejecutar: cada
+    # una trae su propio catálogo, staff y plan (no dependen de --empresa).
+    if args.ejecutar:
+        seed_empresas_prueba.main(["--ejecutar"])
+    else:
+        print("(dry-run: las empresas de prueba no se aplican; python -m scripts.seed_empresas_prueba muestra el plan)")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,25 @@ class NoAutenticadoError(DomainError):
         super().__init__(mensaje, status_code=status.HTTP_401_UNAUTHORIZED)
 
 
+class ErrorFuncional(DomainError):
+    """Error del plan o la suscripción de la empresa. Responde
+    `{"detail": <codigo>, "codigo": <codigo>, "mensaje": <texto>, ...contexto}`:
+    `detail` lleva el código (así lo pide el contrato) y los campos de contexto
+    permiten pantallas claras sin analizar texto.
+
+    - `suscripcion_no_activa` (403): + `estado`
+    - `plan_no_incluye_funcionalidad` (403): + `funcionalidad`, `plan`
+    - `limite_plan_excedido` (409): + `recurso`, `limite`, `actual`, `plan`"""
+
+    def __init__(self, codigo: str, mensaje: str, status_code: int, **contexto: object) -> None:
+        super().__init__(mensaje, status_code=status_code)
+        self.codigo = codigo
+        self.contexto = contexto
+
+    def cuerpo(self) -> dict:
+        return {"detail": self.codigo, "codigo": self.codigo, "mensaje": self.mensaje, **self.contexto}
+
+
 class DemasiadosIntentosError(DomainError):
     """429 con la cabecera `Retry-After` (segundos) que el handler agrega."""
 
@@ -49,7 +68,8 @@ def registrar_handlers(app: FastAPI) -> None:
         cabeceras = None
         if isinstance(exc, DemasiadosIntentosError):
             cabeceras = {"Retry-After": str(exc.reintentar_en)}
-        return JSONResponse(status_code=exc.status_code, content={"detail": exc.mensaje}, headers=cabeceras)
+        cuerpo = exc.cuerpo() if isinstance(exc, ErrorFuncional) else {"detail": exc.mensaje}
+        return JSONResponse(status_code=exc.status_code, content=cuerpo, headers=cabeceras)
 
     @app.exception_handler(Exception)
     async def excepcion_no_controlada_handler(request: Request, exc: Exception) -> JSONResponse:

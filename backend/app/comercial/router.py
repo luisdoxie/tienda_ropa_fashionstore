@@ -77,7 +77,15 @@ from app.core.permisos import (
     PERMISO_VENTAS_GESTIONAR,
     PERMISO_VENTAS_PRESENCIAL,
 )
+from app.core.planes import FUNC_GESTION_VENTAS, FUNC_RESERVAS, exigir_funcionalidad
 from app.core.security import get_current_user, require_permission, require_service_token
+
+# Compuertas del plan. Van SIEMPRE antes que las dependencias de permiso en la
+# lista `dependencies=` (orden de errores: 401 -> suscripcion_no_activa ->
+# plan_no_incluye_funcionalidad -> falta el permiso). Las de router se
+# resuelven antes que las de ruta, así que cumplen el orden sin repetirse.
+plan_reservas = Depends(exigir_funcionalidad(FUNC_RESERVAS))
+plan_gestion_ventas = Depends(exigir_funcionalidad(FUNC_GESTION_VENTAS))
 
 
 # ---- Reservas ----
@@ -97,7 +105,7 @@ def _respuesta(db: Session, reserva) -> ReservaRespuesta:
     return ReservaRespuesta.from_modelo(reserva, mapa_codigos_estado_reserva(db))
 
 
-reservas_router = APIRouter(prefix="/api/v1/reservas", tags=["reservas"])
+reservas_router = APIRouter(prefix="/api/v1/reservas", tags=["reservas"], dependencies=[plan_reservas])
 
 
 @reservas_router.post("", response_model=ReservaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[crear_requerido])
@@ -203,7 +211,9 @@ def _venta_respuesta(db: Session, venta) -> VentaRespuesta:
 
 # ---- /api/v1/carrito ---------------------------------------------------------------
 
-carrito_router = APIRouter(prefix="/api/v1/carrito", tags=["carrito"], dependencies=[digital_requerido])
+carrito_router = APIRouter(
+    prefix="/api/v1/carrito", tags=["carrito"], dependencies=[plan_gestion_ventas, digital_requerido]
+)
 
 
 @carrito_router.get("", response_model=CarritoRespuesta)
@@ -242,7 +252,7 @@ def aplicar_promocion(usuario=Depends(get_current_user), db: Session = Depends(g
 
 # ---- /api/v1/ventas -----------------------------------------------------------------
 
-ventas_router = APIRouter(prefix="/api/v1/ventas", tags=["ventas"])
+ventas_router = APIRouter(prefix="/api/v1/ventas", tags=["ventas"], dependencies=[plan_gestion_ventas])
 
 
 @ventas_router.post(
@@ -293,7 +303,9 @@ def obtener_comprobante(
 
 # ---- /api/v1/devoluciones ------------------------------------------------------------
 
-devoluciones_router = APIRouter(prefix="/api/v1/devoluciones", tags=["devoluciones"], dependencies=[staff_ventas_requerido])
+devoluciones_router = APIRouter(
+    prefix="/api/v1/devoluciones", tags=["devoluciones"], dependencies=[plan_gestion_ventas, staff_ventas_requerido]
+)
 
 
 @devoluciones_router.post("", response_model=DevolucionRespuesta, status_code=status.HTTP_201_CREATED)
@@ -305,7 +317,7 @@ def registrar_devolucion(
 
 # ---- /api/v1/promociones -------------------------------------------------------------
 
-promociones_router = APIRouter(prefix="/api/v1/promociones", tags=["promociones"])
+promociones_router = APIRouter(prefix="/api/v1/promociones", tags=["promociones"], dependencies=[plan_gestion_ventas])
 
 
 @promociones_router.get("", response_model=list[PromocionRespuesta])
@@ -360,10 +372,18 @@ def _pago_respuesta(db: Session, pago) -> PagoRespuesta:
     return construir_pago_respuesta(db, pago)
 
 
+# La compuerta va POR RUTA y no en el router: la pantalla QR, su confirmación y
+# el webhook no tienen sesión de usuario (el dinero ya se movió) y no pueden
+# exigir get_current_user.
 pagos_router = APIRouter(prefix="/api/v1/pagos", tags=["pagos"])
 
 
-@pagos_router.post("/iniciar", response_model=PagoIniciarRespuesta, status_code=status.HTTP_201_CREATED)
+@pagos_router.post(
+    "/iniciar",
+    response_model=PagoIniciarRespuesta,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[plan_gestion_ventas],
+)
 def iniciar_pago(
     datos: PagoIniciarRequest, usuario=Depends(get_current_user), db: Session = Depends(get_db)
 ) -> PagoIniciarRespuesta:
@@ -371,7 +391,12 @@ def iniciar_pago(
     return PagoIniciarRespuesta(pago=_pago_respuesta(db, pago), url_redireccion=url)
 
 
-@pagos_router.post("/caja", response_model=PagoCajaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[gestionar_pagos_requerido])
+@pagos_router.post(
+    "/caja",
+    response_model=PagoCajaRespuesta,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[plan_gestion_ventas, gestionar_pagos_requerido],
+)
 def pagar_en_caja(
     datos: PagoCajaRequest, usuario=Depends(get_current_user), db: Session = Depends(get_db)
 ) -> PagoCajaRespuesta:
@@ -379,19 +404,21 @@ def pagar_en_caja(
     return PagoCajaRespuesta(pago=_pago_respuesta(db, pago), cambio=cambio)
 
 
-@pagos_router.get("/{pago_id}/estado", response_model=PagoRespuesta)
+@pagos_router.get("/{pago_id}/estado", response_model=PagoRespuesta, dependencies=[plan_gestion_ventas])
 def obtener_estado(pago_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> PagoRespuesta:
     pago = cu_confirmar_rechazar.obtener_estado(db, usuario.id, pago_id)
     return _pago_respuesta(db, pago)
 
 
-@pagos_router.post("/venta/{venta_id}/cancelar")
+@pagos_router.post("/venta/{venta_id}/cancelar", dependencies=[plan_gestion_ventas])
 def cancelar_compra(venta_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     cu_pagar_pasarela.cancelar(db, usuario.id, venta_id)
     return {"venta_id": venta_id, "estado": "anulada"}
 
 
-@pagos_router.post("/{pago_id}/anular", response_model=PagoRespuesta, dependencies=[gestionar_pagos_requerido])
+@pagos_router.post(
+    "/{pago_id}/anular", response_model=PagoRespuesta, dependencies=[plan_gestion_ventas, gestionar_pagos_requerido]
+)
 def anular_pago(pago_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> PagoRespuesta:
     pago = cu_confirmar_rechazar.anular(db, usuario.id, pago_id)
     return _pago_respuesta(db, pago)
@@ -473,17 +500,26 @@ def obtener_zona(zona_id: int, db: Session = Depends(get_db)) -> ZonaEnvioRespue
     return cu_gestionar_zonas.obtener(db, zona_id)
 
 
-@zonas_router.post("", response_model=ZonaEnvioRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[gestionar_entregas_requerido])
+@zonas_router.post(
+    "",
+    response_model=ZonaEnvioRespuesta,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[plan_gestion_ventas, gestionar_entregas_requerido],
+)
 def crear_zona(datos: ZonaEnvioCrear, db: Session = Depends(get_db)) -> ZonaEnvioRespuesta:
     return cu_gestionar_zonas.crear(db, datos)
 
 
-@zonas_router.put("/{zona_id}", response_model=ZonaEnvioRespuesta, dependencies=[gestionar_entregas_requerido])
+@zonas_router.put(
+    "/{zona_id}", response_model=ZonaEnvioRespuesta, dependencies=[plan_gestion_ventas, gestionar_entregas_requerido]
+)
 def actualizar_zona(zona_id: int, datos: ZonaEnvioActualizar, db: Session = Depends(get_db)) -> ZonaEnvioRespuesta:
     return cu_gestionar_zonas.actualizar(db, zona_id, datos)
 
 
-@zonas_router.delete("/{zona_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[gestionar_entregas_requerido])
+@zonas_router.delete(
+    "/{zona_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[plan_gestion_ventas, gestionar_entregas_requerido]
+)
 def desactivar_zona(zona_id: int, db: Session = Depends(get_db)) -> None:
     cu_gestionar_zonas.desactivar(db, zona_id)
 
@@ -530,6 +566,9 @@ def desactivar_mi_direccion(
 
 # ---- /api/v1/envios ----------------------------------------------------------
 
+# La compuerta va POR RUTA: `cotizar` acepta peticiones sin usuario (la misma
+# cotización es pública bajo /public/{codigo}/envios/cotizar) y la compuerta
+# exige sesión.
 envios_router = APIRouter(prefix="/api/v1/envios", tags=["envios"])
 
 
@@ -538,14 +577,18 @@ def cotizar_envio(datos: CotizarEnvioRequest, db: Session = Depends(get_db)) -> 
     return cu_solicitar_envio.cotizar(db, datos)
 
 
-@envios_router.post("", response_model=EnvioRespuesta, status_code=status.HTTP_201_CREATED)
+@envios_router.post(
+    "", response_model=EnvioRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[plan_gestion_ventas]
+)
 def crear_envio(
     datos: EnvioCrear, usuario=Depends(get_current_user), db: Session = Depends(get_db)
 ) -> EnvioRespuesta:
     return cu_solicitar_envio.crear_envio(db, usuario.id, datos)
 
 
-@envios_router.get("", response_model=list[EnvioRespuesta], dependencies=[gestionar_entregas_requerido])
+@envios_router.get(
+    "", response_model=list[EnvioRespuesta], dependencies=[plan_gestion_ventas, gestionar_entregas_requerido]
+)
 def listar_envios(
     estado: EstadoEnvio | None = None,
     sucursal_id: int | None = None,
@@ -556,19 +599,21 @@ def listar_envios(
     return cu_actualizar_estado.listar(db, usuario.id, paginacion, estado, sucursal_id)
 
 
-@envios_router.get("/venta/{venta_id}", response_model=EnvioRespuesta)
+@envios_router.get("/venta/{venta_id}", response_model=EnvioRespuesta, dependencies=[plan_gestion_ventas])
 def obtener_envio_de_venta(
     venta_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)
 ) -> EnvioRespuesta:
     return cu_actualizar_estado.obtener_por_venta(db, usuario.id, venta_id)
 
 
-@envios_router.get("/{envio_id}", response_model=EnvioRespuesta)
+@envios_router.get("/{envio_id}", response_model=EnvioRespuesta, dependencies=[plan_gestion_ventas])
 def obtener_envio(envio_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> EnvioRespuesta:
     return cu_actualizar_estado.obtener(db, usuario.id, envio_id)
 
 
-@envios_router.put("/{envio_id}/estado", response_model=EnvioRespuesta, dependencies=[gestionar_entregas_requerido])
+@envios_router.put(
+    "/{envio_id}/estado", response_model=EnvioRespuesta, dependencies=[plan_gestion_ventas, gestionar_entregas_requerido]
+)
 def actualizar_estado_envio(
     envio_id: int, datos: EnvioEstadoActualizar, usuario=Depends(get_current_user), db: Session = Depends(get_db)
 ) -> EnvioRespuesta:

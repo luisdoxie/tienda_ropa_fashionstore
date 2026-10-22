@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import PermisoDenegadoError
+from app.core.planes import ruta_exenta_de_suscripcion, verificar_suscripcion_activa
 from app.core.tenant import empresa_de, fijar_empresa_de_usuario
 
 settings = get_settings()
@@ -148,6 +149,7 @@ def permisos_de_usuario(db: Session, usuario_id: int) -> list[str]:
 def get_current_user(
     credenciales: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
+    request: Request = None,  # lo inyecta FastAPI; sin él (llamada directa) no hay ruta exenta
 ):
     from app.plataforma import politicas as plataforma_politicas
 
@@ -177,6 +179,14 @@ def get_current_user(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario inválido")
     else:
         fijar_empresa_de_usuario(db, usuario)
+
+    # Sin suscripción activa la empresa no opera (403 suscripcion_no_activa).
+    # No aplica al superadministrador (sin empresa) ni a las rutas exentas
+    # (sesión, mi-empresa, plataforma, webhook/QR, tareas, salud).
+    if usuario.empresa_id is not None and not (
+        request is not None and ruta_exenta_de_suscripcion(request.url.path)
+    ):
+        verificar_suscripcion_activa(db, request)
     return usuario
 
 
@@ -190,7 +200,7 @@ def fijar_empresa_del_token(request: Request, db: Session) -> None:
     if esquema.lower() != "bearer" or not token:
         return
     try:
-        get_current_user(HTTPAuthorizationCredentials(scheme=esquema, credentials=token), db)
+        get_current_user(HTTPAuthorizationCredentials(scheme=esquema, credentials=token), db, request)
     except HTTPException:
         return
 
@@ -198,15 +208,20 @@ def fijar_empresa_del_token(request: Request, db: Session) -> None:
 def get_current_user_opcional(
     credenciales: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """Igual que `get_current_user`, pero devuelve `None` en vez de 401 si no
     hay token o es inválido/expirado. Para endpoints públicos que igual
     quieren asociar la acción a un usuario logueado cuando lo hay (p. ej.
-    POST /ia/voz, que admite búsqueda anónima)."""
+    POST /ia/voz, que admite búsqueda anónima).
+
+    La suscripción NO se traga: un usuario de una empresa sin suscripción
+    activa recibe el 403 `suscripcion_no_activa` (`ErrorFuncional` no es una
+    `HTTPException`), no se le trata como anónimo."""
     if credenciales is None:
         return None
     try:
-        return get_current_user(credenciales, db)
+        return get_current_user(credenciales, db, request)
     except HTTPException:
         return None
 

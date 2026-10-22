@@ -6,6 +6,9 @@ siguen siendo la fuente de qué códigos existen en la base."""
 # Rol global del administrador de la plataforma: solo lo tienen usuarios sin
 # empresa (`usuario.empresa_id` NULL), y ellos no pueden tener otro.
 ROL_SUPERADMINISTRADOR = "superadministrador"
+# Rol del administrador de cada empresa. Una empresa puede tener varios, pero
+# siempre al menos uno activo (D36).
+ROL_ADMINISTRADOR = "administrador"
 PERMISO_USUARIOS = "usuarios.gestionar"
 PERMISO_ROLES = "roles.gestionar"
 # Acceso a los endpoints de organización (ciudades, sucursales, empleados).

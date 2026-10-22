@@ -37,7 +37,8 @@ fija ni cambia la empresa de la sesión.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from typing import Any, TypeVar
 
 from fastapi import Depends, Request, status
@@ -198,6 +199,52 @@ def por_cada_empresa(
     return resultados
 
 
+@contextmanager
+def en_empresa(db: Session, empresa_id: int) -> Iterator[None]:
+    """Trabaja DENTRO de `empresa_id` y al salir restaura lo que la sesión tenía
+    (otra empresa, el modo plataforma o nada). Para el superadministrador, que
+    opera sobre una empresa ajena en una operación acotada (alta del
+    administrador o de una sucursal).
+
+    Cambiar de empresa vacía el mapa de identidad: lo pendiente se vuelca antes
+    (`flush`, sin confirmar) y los objetos cargados antes quedan desligados, así
+    que hay que guardar los ids que hagan falta y volver a leer lo demás."""
+    db.flush()
+    plataforma = en_modo_plataforma(db)
+    anterior = empresa_de(db)
+    fijar_empresa(db, empresa_id)
+    try:
+        yield
+        db.flush()
+    finally:
+        if plataforma:
+            fijar_plataforma(db)
+        else:
+            fijar_empresa(db, anterior)
+
+
+# Funciones que preparan los datos base de una empresa nueva (tallas,
+# materiales, ciudades...). Cada paquete registra la suya al importarse, así
+# `plataforma` no tiene que importar a `catalogo` (inversión de dependencia).
+_inicializadores: list[Callable[[Session], None]] = []
+
+
+def registrar_inicializador(funcion: Callable[[Session], None]) -> Callable[[Session], None]:
+    """Registra `funcion(db)`: se ejecuta con la empresa ya fijada, es
+    idempotente y no confirma (la transacción es de quien registra la empresa).
+    Sirve de decorador."""
+    if funcion not in _inicializadores:
+        _inicializadores.append(funcion)
+    return funcion
+
+
+def inicializar_empresa(db: Session, empresa_id: int) -> None:
+    """Corre todos los inicializadores registrados dentro de `empresa_id`."""
+    with en_empresa(db, empresa_id):
+        for funcion in list(_inicializadores):
+            funcion(db)
+
+
 # ---- El filtro automático ----
 
 
@@ -297,6 +344,12 @@ def contexto_empresa(request: Request, db: Session = Depends(get_db)) -> None:
     codigo = request.path_params.get("codigo")
     if codigo is not None and request.url.path.startswith(PREFIJO_PUBLICO):
         empresa_publica(codigo, db)
+        # La tienda de una empresa sin suscripción activa no opera (403), salvo
+        # los datos públicos de la tienda (/public/{codigo}/tienda).
+        from app.core.planes import ruta_exenta_de_suscripcion, verificar_suscripcion_activa
+
+        if not ruta_exenta_de_suscripcion(request.url.path):
+            verificar_suscripcion_activa(db, request)
         return
     from app.core.security import fijar_empresa_del_token
 

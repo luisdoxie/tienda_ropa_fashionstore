@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.catalogo.models import (
     Categoria,
+    Material,
     MovimientoInventario,
     ProbadorGeneracion,
     Producto,
@@ -41,6 +42,7 @@ from app.catalogo.schemas import CatalogoItemRespuesta, FiltrosCatalogo, Genero,
 from app.core import storage
 from app.core.deps import ParametrosPeriodo
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
+from app.core.tenant import registrar_inicializador
 from app.plataforma import politicas as plataforma_politicas
 
 
@@ -55,6 +57,46 @@ material_repo = MaterialRepository()
 producto_repo = ProductoRepository()
 variante_repo = VarianteRepository()
 medida_repo = TablaMedidaRepository()
+
+# Datos base de toda empresa (los INSERT de docs/fashionstore_esquema.sql). Una
+# sola fuente: la usan el inicializador de empresa nueva y scripts/seed_catalogo.py.
+# Colores, categorías y productos no se siembran: los define cada empresa.
+# (código, descripción, orden)
+TALLAS_BASE: list[tuple[str, str, int]] = [
+    ("XS", "Extra small", 1),
+    ("S", "Small", 2),
+    ("M", "Medium", 3),
+    ("L", "Large", 4),
+    ("XL", "Extra large", 5),
+    ("XXL", "Doble extra large", 6),
+]
+
+MATERIALES_BASE: list[str] = [
+    "Algodon",
+    "Hilo",
+    "Poliester",
+    "Lino",
+    "Mezclilla",
+    "Lana",
+    "Seda",
+    "Cuero sintetico",
+]
+
+
+@registrar_inicializador
+def sembrar_catalogos_base(db: Session) -> None:
+    """Inicializador de empresa nueva (ver `core.tenant.registrar_inicializador`):
+    crea las tallas y los materiales base que falten en la empresa de la sesión.
+    Idempotente y sin confirmar: la transacción es de quien registra la empresa."""
+    tallas = set(talla_repo.listar_codigos(db))
+    for codigo, descripcion, orden in TALLAS_BASE:
+        if codigo not in tallas:
+            db.add(Talla(codigo=codigo, descripcion=descripcion, orden=orden))
+    materiales = set(material_repo.listar_nombres(db))
+    for nombre in MATERIALES_BASE:
+        if nombre not in materiales:
+            db.add(Material(nombre=nombre))
+    db.flush()
 
 
 def imagen_principal_url(producto: Producto) -> str | None:

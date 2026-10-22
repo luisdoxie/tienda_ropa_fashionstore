@@ -292,9 +292,13 @@ def test_desactivar_usuario_inexistente_o_ya_desactivado_devuelve_404(client, ad
     assert client.delete(f"{USUARIOS}/999999", headers=admin_headers).status_code == 404
 
 
-def test_un_administrador_puede_desactivarse_a_si_mismo(client, admin_headers, db_session):
-    # comportamiento actual: no hay protección contra auto-baja.
+def test_un_administrador_puede_desactivarse_a_si_mismo_si_queda_otro(client, admin_headers, db_session):
+    # No hay protección contra la auto-baja, salvo la de E04 (D36): la empresa
+    # no puede quedarse sin administrador activo.
     yo = client.get("/api/v1/auth/yo", headers=admin_headers).json()
+    assert client.delete(f"{USUARIOS}/{yo['id']}", headers=admin_headers).status_code == 409
+    otro = _crear_usuario(client, admin_headers, email="segundo-admin@example.com")
+    client.put(f"{USUARIOS}/{otro['id']}/roles", json={"nombres_rol": ["administrador"]}, headers=admin_headers)
 
     respuesta = client.delete(f"{USUARIOS}/{yo['id']}", headers=admin_headers)
 

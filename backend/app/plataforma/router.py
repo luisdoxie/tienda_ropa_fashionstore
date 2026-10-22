@@ -1,12 +1,20 @@
-from fastapi import APIRouter, Depends, Request, status
+from typing import Literal
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.deps import ParametrosPaginacion, parametros_paginacion
-from app.core.permisos import PERMISO_ORGANIZACION, PERMISO_PLATAFORMA, PERMISO_ROLES, PERMISO_USUARIOS
+from app.core.permisos import (
+    PERMISO_EMPRESA,
+    PERMISO_ORGANIZACION,
+    PERMISO_PLATAFORMA,
+    PERMISO_ROLES,
+    PERMISO_USUARIOS,
+)
 from app.core.rate_limit import limiter
-from app.core.security import get_current_user, permisos_de_usuario, require_permission
+from app.core.security import get_current_user, permisos_de_usuario, require_permission, require_service_token
 from app.plataforma.casos_uso.cu01_autenticar_registrar_usuarios import (
     IniciarSesion,
     RecuperarContrasena,
@@ -21,9 +29,16 @@ from app.plataforma.casos_uso.cu03_gestionar_organizacion import (
     GestionarEmpleados,
     GestionarSucursales,
 )
+from app.plataforma.casos_uso.cu04_gestionar_empresas_planes_suscripciones import (
+    ConsultarMiEmpresa,
+    GestionarEmpresas,
+    GestionarPlanes,
+    GestionarSuscripciones,
+)
 from app.plataforma import politicas
 from app.plataforma.politicas import obtener_usuario
 from app.plataforma.schemas import (
+    AdministradorRegistrar,
     AsignarPermisosRequest,
     AsignarRolesRequest,
     CiudadActualizar,
@@ -34,12 +49,22 @@ from app.plataforma.schemas import (
     EmpleadoActualizar,
     EmpleadoCrear,
     EmpleadoRespuesta,
+    EmpresaActualizar,
+    EmpresaRegistrar,
+    EmpresaRespuesta,
+    EmpresaResumenRespuesta,
     HorarioActualizar,
     HorarioCrear,
     HorarioRespuesta,
     LoginRequest,
+    MiEmpresaActualizar,
+    MiEmpresaRespuesta,
+    MiSuscripcionRespuesta,
     NotificacionRespuesta,
     PermisoRespuesta,
+    PlanActualizar,
+    PlanCrear,
+    PlanRespuesta,
     RecuperarConfirmarRequest,
     RecuperarRequest,
     RecuperarRespuesta,
@@ -51,6 +76,11 @@ from app.plataforma.schemas import (
     SucursalActualizar,
     SucursalCrear,
     SucursalRespuesta,
+    SuscripcionAsignar,
+    SuscripcionEstadoActualizar,
+    SuscripcionRenovar,
+    SuscripcionRespuesta,
+    TiendaPublicaRespuesta,
     TokenRespuesta,
     UsuarioActualizar,
     UsuarioCrear,
@@ -478,12 +508,216 @@ def registro(request: Request, datos: RegistroRequest, db: Session = Depends(get
     return UsuarioRespuesta.from_modelo(usuario)
 
 
+# Los datos públicos de la tienda (4 campos). Exenta de la suscripción (ver
+# RUTAS_SIN_SUSCRIPCION): la pantalla puede mostrar "Tienda no disponible" con
+# el nombre de la tienda aunque la suscripción no esté activa.
+@publico_tienda_router.get("/tienda", response_model=TiendaPublicaRespuesta, tags=["publico"])
+@limiter.limit("60/minute")
+def tienda_publica(request: Request, codigo: str, db: Session = Depends(get_db)) -> TiendaPublicaRespuesta:
+    return cu_gestionar_empresas.obtener_tienda(db, codigo)
+
+
 for _ruta, _handler, _modelo in (
     ("/sucursales", listar_sucursales, list[SucursalRespuesta]),
     ("/sucursales/{sucursal_id}", obtener_sucursal, SucursalRespuesta),
     ("/sucursales/{sucursal_id}/horarios", listar_horarios, list[HorarioRespuesta]),
 ):
     publico_tienda_router.add_api_route(_ruta, _handler, methods=["GET"], response_model=_modelo)
+
+
+# ---- CU-04: empresas, planes y suscripciones --------------------------------------
+# El router solo instancia el caso de uso y lo llama (regla 5).
+
+cu_gestionar_empresas = GestionarEmpresas()
+cu_gestionar_planes = GestionarPlanes()
+cu_gestionar_suscripciones = GestionarSuscripciones()
+cu_mi_empresa = ConsultarMiEmpresa()
+
+# ---- /api/v1/plataforma (superadministrador) ----------------------------------------
+
+plataforma_router = APIRouter(
+    prefix="/api/v1/plataforma",
+    tags=["plataforma"],
+    dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
+)
+
+
+@plataforma_router.get("/planes", response_model=list[PlanRespuesta])
+def listar_planes(
+    db: Session = Depends(get_db), paginacion: ParametrosPaginacion = Depends(parametros_paginacion)
+) -> list[PlanRespuesta]:
+    return cu_gestionar_planes.listar(db, paginacion)
+
+
+@plataforma_router.get("/planes/{plan_id}", response_model=PlanRespuesta)
+def obtener_plan(plan_id: int, db: Session = Depends(get_db)) -> PlanRespuesta:
+    return cu_gestionar_planes.obtener(db, plan_id)
+
+
+@plataforma_router.post("/planes", response_model=PlanRespuesta, status_code=status.HTTP_201_CREATED)
+def crear_plan(datos: PlanCrear, db: Session = Depends(get_db)) -> PlanRespuesta:
+    return cu_gestionar_planes.crear(db, datos)
+
+
+@plataforma_router.put("/planes/{plan_id}", response_model=PlanRespuesta)
+def actualizar_plan(plan_id: int, datos: PlanActualizar, db: Session = Depends(get_db)) -> PlanRespuesta:
+    return cu_gestionar_planes.actualizar(db, plan_id, datos)
+
+
+@plataforma_router.delete("/planes/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def desactivar_plan(plan_id: int, db: Session = Depends(get_db)) -> None:
+    cu_gestionar_planes.desactivar(db, plan_id)
+
+
+@plataforma_router.get("/empresas", response_model=list[EmpresaRespuesta])
+def listar_empresas(
+    q: str | None = Query(default=None, max_length=120),
+    activo: bool | None = None,
+    db: Session = Depends(get_db),
+    paginacion: ParametrosPaginacion = Depends(parametros_paginacion),
+) -> list[EmpresaRespuesta]:
+    return cu_gestionar_empresas.listar(db, paginacion, q, activo)
+
+
+@plataforma_router.get("/empresas/{empresa_id}", response_model=EmpresaRespuesta)
+def obtener_empresa(empresa_id: int, db: Session = Depends(get_db)) -> EmpresaRespuesta:
+    return cu_gestionar_empresas.obtener(db, empresa_id)
+
+
+@plataforma_router.post("/empresas", response_model=EmpresaRespuesta, status_code=status.HTTP_201_CREATED)
+def registrar_empresa(datos: EmpresaRegistrar, db: Session = Depends(get_db)) -> EmpresaRespuesta:
+    return cu_gestionar_empresas.registrar(db, datos)
+
+
+@plataforma_router.put("/empresas/{empresa_id}", response_model=EmpresaRespuesta)
+def actualizar_empresa(empresa_id: int, datos: EmpresaActualizar, db: Session = Depends(get_db)) -> EmpresaRespuesta:
+    return cu_gestionar_empresas.actualizar(db, empresa_id, datos)
+
+
+@plataforma_router.delete("/empresas/{empresa_id}", status_code=status.HTTP_204_NO_CONTENT)
+def desactivar_empresa(empresa_id: int, db: Session = Depends(get_db)) -> None:
+    cu_gestionar_empresas.desactivar(db, empresa_id)
+
+
+@plataforma_router.get("/empresas/{empresa_id}/resumen", response_model=EmpresaResumenRespuesta)
+def resumen_empresa(empresa_id: int, db: Session = Depends(get_db)) -> EmpresaResumenRespuesta:
+    return cu_gestionar_empresas.resumen(db, empresa_id)
+
+
+@plataforma_router.post(
+    "/empresas/{empresa_id}/usuarios", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED
+)
+def agregar_administrador(
+    empresa_id: int, datos: AdministradorRegistrar, db: Session = Depends(get_db)
+) -> UsuarioRespuesta:
+    return cu_gestionar_empresas.agregar_administrador(db, empresa_id, datos)
+
+
+@plataforma_router.post(
+    "/empresas/{empresa_id}/sucursales", response_model=SucursalRespuesta, status_code=status.HTTP_201_CREATED
+)
+def agregar_sucursal(empresa_id: int, datos: SucursalCrear, db: Session = Depends(get_db)) -> SucursalRespuesta:
+    return cu_gestionar_empresas.agregar_sucursal(db, empresa_id, datos)
+
+
+@plataforma_router.get("/suscripciones", response_model=list[SuscripcionRespuesta])
+def listar_suscripciones(
+    empresa_id: int | None = None,
+    estado: Literal["activa", "suspendida", "vencida", "cancelada"] | None = None,
+    db: Session = Depends(get_db),
+    paginacion: ParametrosPaginacion = Depends(parametros_paginacion),
+) -> list[SuscripcionRespuesta]:
+    return cu_gestionar_suscripciones.listar(db, paginacion, empresa_id, estado)
+
+
+@plataforma_router.get("/suscripciones/{suscripcion_id}", response_model=SuscripcionRespuesta)
+def obtener_suscripcion(suscripcion_id: int, db: Session = Depends(get_db)) -> SuscripcionRespuesta:
+    return cu_gestionar_suscripciones.obtener(db, suscripcion_id)
+
+
+@plataforma_router.post("/suscripciones", response_model=SuscripcionRespuesta, status_code=status.HTTP_201_CREATED)
+def asignar_plan(datos: SuscripcionAsignar, db: Session = Depends(get_db)) -> SuscripcionRespuesta:
+    return cu_gestionar_suscripciones.asignar_o_cambiar_plan(db, datos)
+
+
+@plataforma_router.put("/suscripciones/{suscripcion_id}/renovar", response_model=SuscripcionRespuesta)
+def renovar_suscripcion(
+    suscripcion_id: int, datos: SuscripcionRenovar, db: Session = Depends(get_db)
+) -> SuscripcionRespuesta:
+    return cu_gestionar_suscripciones.renovar(db, suscripcion_id, datos)
+
+
+@plataforma_router.put("/suscripciones/{suscripcion_id}/estado", response_model=SuscripcionRespuesta)
+def cambiar_estado_suscripcion(
+    suscripcion_id: int, datos: SuscripcionEstadoActualizar, db: Session = Depends(get_db)
+) -> SuscripcionRespuesta:
+    return cu_gestionar_suscripciones.cambiar_estado(db, suscripcion_id, datos)
+
+
+# ---- /api/v1/mi-empresa (administrador de la empresa) ------------------------------------
+# Exenta de la suscripción: el administrador ve su estado y pide la renovación
+# aunque la suscripción esté vencida o suspendida.
+
+mi_empresa_router = APIRouter(
+    prefix="/api/v1/mi-empresa",
+    tags=["mi-empresa"],
+    dependencies=[Depends(require_permission(PERMISO_EMPRESA))],
+)
+
+
+@mi_empresa_router.get("", response_model=MiEmpresaRespuesta)
+def obtener_mi_empresa(db: Session = Depends(get_db)) -> MiEmpresaRespuesta:
+    return cu_mi_empresa.obtener(db)
+
+
+@mi_empresa_router.put("", response_model=MiEmpresaRespuesta)
+def actualizar_mi_empresa(datos: MiEmpresaActualizar, db: Session = Depends(get_db)) -> MiEmpresaRespuesta:
+    return cu_mi_empresa.actualizar(db, datos)
+
+
+@mi_empresa_router.get("/suscripcion", response_model=MiSuscripcionRespuesta)
+def obtener_mi_suscripcion(db: Session = Depends(get_db)) -> MiSuscripcionRespuesta:
+    return cu_mi_empresa.obtener_suscripcion(db)
+
+
+# ---- /api/v1/public/tiendas (sin sesión) ---------------------------------------------------
+# Lista de tiendas para elegir (web "/" y "Elige tu tienda" del móvil). No choca
+# con /public/{codigo}/...: aquel siempre lleva un segmento más.
+
+
+def _paginacion_tiendas(
+    pagina: int = Query(default=1, ge=1), tamanio: int = Query(default=20, ge=1, le=50)
+) -> ParametrosPaginacion:
+    return ParametrosPaginacion(pagina=pagina, tamanio=tamanio)
+
+
+publico_tiendas_router = APIRouter(prefix="/api/v1/public", tags=["publico"])
+
+
+# `request: Request` es obligatorio para que slowapi resuelva la IP del cliente.
+@publico_tiendas_router.get("/tiendas", response_model=list[TiendaPublicaRespuesta])
+@limiter.limit("60/minute")
+def listar_tiendas(
+    request: Request,
+    q: str | None = Query(default=None, max_length=120),
+    db: Session = Depends(get_db),
+    paginacion: ParametrosPaginacion = Depends(_paginacion_tiendas),
+) -> list[TiendaPublicaRespuesta]:
+    return cu_gestionar_empresas.listar_tiendas(db, paginacion, q)
+
+
+# ---- /api/v1/tareas (token de servicio) ------------------------------------------------------
+# La dispara un cron/scheduler (la tarea periódica del backend corre sola
+# también). Una sola pasada sobre todas las empresas.
+
+tareas_plataforma_router = APIRouter(
+    prefix="/api/v1/tareas", tags=["tareas"], dependencies=[Depends(require_service_token)]
+)
+
+
+@tareas_plataforma_router.post("/vencer-suscripciones")
+def vencer_suscripciones(db: Session = Depends(get_db)) -> dict:
+    return {"vencidas": cu_gestionar_suscripciones.vencer_pendientes(db)}
 
 
 routers = [
@@ -497,5 +731,9 @@ routers = [
     sucursales_router,
     horarios_router,
     empleados_router,
+    plataforma_router,
+    mi_empresa_router,
+    publico_tiendas_router,
+    tareas_plataforma_router,
     publico_tienda_router,
 ]

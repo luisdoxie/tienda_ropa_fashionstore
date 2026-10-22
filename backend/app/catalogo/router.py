@@ -99,6 +99,7 @@ from app.core.permisos import (
     PERMISO_INVENTARIO_VER,
     PERMISO_PROBADOR,
 )
+from app.core.planes import FUNC_GESTION_PRODUCTOS, exigir_funcionalidad
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user, require_permission
 
@@ -112,6 +113,12 @@ def paginacion_catalogo(
     return ParametrosPaginacion(pagina=pagina, tamanio=tamanio)
 
 admin_catalogo_requerido = Depends(require_permission(PERMISO_CATALOGO))
+# Compuerta del plan (gestion_productos) ANTES del permiso, para respetar el
+# orden de errores: 401 -> suscripcion_no_activa -> plan_no_incluye_funcionalidad
+# -> falta el permiso. Va en las escrituras del catálogo (las lecturas de las
+# tablas de apoyo no se compuertan) y en todo productos/variantes/imágenes.
+plan_gestion_productos = Depends(exigir_funcionalidad(FUNC_GESTION_PRODUCTOS))
+gestion_catalogo_requerida = [plan_gestion_productos, admin_catalogo_requerido]
 
 cu_categorias = GestionarCategorias()
 cu_tallas = GestionarTallas()
@@ -142,14 +149,14 @@ def obtener_categoria(categoria_id: int, db: Session = Depends(get_db)) -> Categ
 
 
 @categorias_router.post(
-    "", response_model=CategoriaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=CategoriaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_categoria(datos: CategoriaCrear, db: Session = Depends(get_db)) -> CategoriaRespuesta:
     return cu_categorias.crear(db, datos)
 
 
 @categorias_router.put(
-    "/{categoria_id}", response_model=CategoriaRespuesta, dependencies=[admin_catalogo_requerido]
+    "/{categoria_id}", response_model=CategoriaRespuesta, dependencies=gestion_catalogo_requerida
 )
 def actualizar_categoria(
     categoria_id: int, datos: CategoriaActualizar, db: Session = Depends(get_db)
@@ -158,7 +165,7 @@ def actualizar_categoria(
 
 
 @categorias_router.delete(
-    "/{categoria_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido]
+    "/{categoria_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida
 )
 def desactivar_categoria(categoria_id: int, db: Session = Depends(get_db)) -> None:
     cu_categorias.desactivar(db, categoria_id)
@@ -182,18 +189,18 @@ def obtener_talla(talla_id: int, db: Session = Depends(get_db)) -> TallaRespuest
 
 
 @tallas_router.post(
-    "", response_model=TallaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=TallaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_talla(datos: TallaCrear, db: Session = Depends(get_db)) -> TallaRespuesta:
     return cu_tallas.crear(db, datos)
 
 
-@tallas_router.put("/{talla_id}", response_model=TallaRespuesta, dependencies=[admin_catalogo_requerido])
+@tallas_router.put("/{talla_id}", response_model=TallaRespuesta, dependencies=gestion_catalogo_requerida)
 def actualizar_talla(talla_id: int, datos: TallaActualizar, db: Session = Depends(get_db)) -> TallaRespuesta:
     return cu_tallas.actualizar(db, talla_id, datos)
 
 
-@tallas_router.delete("/{talla_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido])
+@tallas_router.delete("/{talla_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida)
 def eliminar_talla(talla_id: int, db: Session = Depends(get_db)) -> None:
     cu_tallas.eliminar(db, talla_id)
 
@@ -216,18 +223,18 @@ def obtener_color(color_id: int, db: Session = Depends(get_db)) -> ColorRespuest
 
 
 @colores_router.post(
-    "", response_model=ColorRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=ColorRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_color(datos: ColorCrear, db: Session = Depends(get_db)) -> ColorRespuesta:
     return cu_colores.crear(db, datos)
 
 
-@colores_router.put("/{color_id}", response_model=ColorRespuesta, dependencies=[admin_catalogo_requerido])
+@colores_router.put("/{color_id}", response_model=ColorRespuesta, dependencies=gestion_catalogo_requerida)
 def actualizar_color(color_id: int, datos: ColorActualizar, db: Session = Depends(get_db)) -> ColorRespuesta:
     return cu_colores.actualizar(db, color_id, datos)
 
 
-@colores_router.delete("/{color_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido])
+@colores_router.delete("/{color_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida)
 def eliminar_color(color_id: int, db: Session = Depends(get_db)) -> None:
     cu_colores.eliminar(db, color_id)
 
@@ -250,14 +257,14 @@ def obtener_material(material_id: int, db: Session = Depends(get_db)) -> Materia
 
 
 @materiales_router.post(
-    "", response_model=MaterialRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=MaterialRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_material(datos: MaterialCrear, db: Session = Depends(get_db)) -> MaterialRespuesta:
     return cu_materiales.crear(db, datos)
 
 
 @materiales_router.put(
-    "/{material_id}", response_model=MaterialRespuesta, dependencies=[admin_catalogo_requerido]
+    "/{material_id}", response_model=MaterialRespuesta, dependencies=gestion_catalogo_requerida
 )
 def actualizar_material(
     material_id: int, datos: MaterialActualizar, db: Session = Depends(get_db)
@@ -266,7 +273,7 @@ def actualizar_material(
 
 
 @materiales_router.delete(
-    "/{material_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido]
+    "/{material_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida
 )
 def eliminar_material(material_id: int, db: Session = Depends(get_db)) -> None:
     cu_materiales.eliminar(db, material_id)
@@ -290,14 +297,14 @@ def obtener_temporada(temporada_id: int, db: Session = Depends(get_db)) -> Tempo
 
 
 @temporadas_router.post(
-    "", response_model=TemporadaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=TemporadaRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_temporada(datos: TemporadaCrear, db: Session = Depends(get_db)) -> TemporadaRespuesta:
     return cu_temporadas.crear(db, datos)
 
 
 @temporadas_router.put(
-    "/{temporada_id}", response_model=TemporadaRespuesta, dependencies=[admin_catalogo_requerido]
+    "/{temporada_id}", response_model=TemporadaRespuesta, dependencies=gestion_catalogo_requerida
 )
 def actualizar_temporada(
     temporada_id: int, datos: TemporadaActualizar, db: Session = Depends(get_db)
@@ -306,7 +313,7 @@ def actualizar_temporada(
 
 
 @temporadas_router.delete(
-    "/{temporada_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido]
+    "/{temporada_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida
 )
 def desactivar_temporada(temporada_id: int, db: Session = Depends(get_db)) -> None:
     cu_temporadas.desactivar(db, temporada_id)
@@ -330,14 +337,14 @@ def obtener_coleccion(coleccion_id: int, db: Session = Depends(get_db)) -> Colec
 
 
 @colecciones_router.post(
-    "", response_model=ColeccionRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_catalogo_requerido]
+    "", response_model=ColeccionRespuesta, status_code=status.HTTP_201_CREATED, dependencies=gestion_catalogo_requerida
 )
 def crear_coleccion(datos: ColeccionCrear, db: Session = Depends(get_db)) -> ColeccionRespuesta:
     return cu_colecciones.crear(db, datos)
 
 
 @colecciones_router.put(
-    "/{coleccion_id}", response_model=ColeccionRespuesta, dependencies=[admin_catalogo_requerido]
+    "/{coleccion_id}", response_model=ColeccionRespuesta, dependencies=gestion_catalogo_requerida
 )
 def actualizar_coleccion(
     coleccion_id: int, datos: ColeccionActualizar, db: Session = Depends(get_db)
@@ -346,7 +353,7 @@ def actualizar_coleccion(
 
 
 @colecciones_router.delete(
-    "/{coleccion_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_catalogo_requerido]
+    "/{coleccion_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=gestion_catalogo_requerida
 )
 def desactivar_coleccion(coleccion_id: int, db: Session = Depends(get_db)) -> None:
     cu_colecciones.desactivar(db, coleccion_id)
@@ -357,7 +364,7 @@ def desactivar_coleccion(coleccion_id: int, db: Session = Depends(get_db)) -> No
 # ve el cliente es otro conjunto de endpoints públicos, GET /api/v1/catalogo/*
 # — acá todo requiere permiso de administrador, GET incluido.
 
-productos_router = APIRouter(prefix="/api/v1/productos", tags=["productos"], dependencies=[admin_catalogo_requerido])
+productos_router = APIRouter(prefix="/api/v1/productos", tags=["productos"], dependencies=gestion_catalogo_requerida)
 
 
 @productos_router.get("", response_model=list[ProductoRespuesta])
@@ -410,7 +417,7 @@ def agregar_variantes(
     return [VarianteRespuesta.from_modelo(v) for v in variantes]
 
 
-variantes_router = APIRouter(prefix="/api/v1/variantes", tags=["variantes"], dependencies=[admin_catalogo_requerido])
+variantes_router = APIRouter(prefix="/api/v1/variantes", tags=["variantes"], dependencies=gestion_catalogo_requerida)
 
 
 @variantes_router.put("/{variante_id}", response_model=VarianteRespuesta)
@@ -477,7 +484,7 @@ async def subir_imagen(
     return ImagenRespuesta.from_modelo(imagen, url)
 
 
-imagenes_router = APIRouter(prefix="/api/v1/imagenes", tags=["imagenes"], dependencies=[admin_catalogo_requerido])
+imagenes_router = APIRouter(prefix="/api/v1/imagenes", tags=["imagenes"], dependencies=gestion_catalogo_requerida)
 
 
 @imagenes_router.delete("/{imagen_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -832,6 +839,8 @@ _routers_inventario = [publico_router, inventario_router, transferencias_router]
 
 
 admin_abastecimiento_requerido = Depends(require_permission(PERMISO_ABASTECIMIENTO))
+# El abastecimiento forma parte de la gestión de producto (compuerta del plan).
+gestion_abastecimiento_requerida = [plan_gestion_productos, admin_abastecimiento_requerido]
 
 cu_gestionar_proveedores = GestionarProveedores()
 cu_registrar_recepcion = RegistrarRecepcionMercaderia()
@@ -839,7 +848,7 @@ cu_registrar_recepcion = RegistrarRecepcionMercaderia()
 # ---- /api/v1/proveedores -------------------------------------------------------
 
 proveedores_router = APIRouter(
-    prefix="/api/v1/proveedores", tags=["proveedores"], dependencies=[admin_abastecimiento_requerido]
+    prefix="/api/v1/proveedores", tags=["proveedores"], dependencies=gestion_abastecimiento_requerida
 )
 
 
@@ -875,7 +884,7 @@ def desactivar_proveedor(proveedor_id: int, db: Session = Depends(get_db)) -> No
 # ---- /api/v1/proveedores/{id}/productos ----------------------------------------
 
 productos_proveedor_router = APIRouter(
-    prefix="/api/v1/proveedores/{proveedor_id}/productos", tags=["proveedores"], dependencies=[admin_abastecimiento_requerido]
+    prefix="/api/v1/proveedores/{proveedor_id}/productos", tags=["proveedores"], dependencies=gestion_abastecimiento_requerida
 )
 
 
@@ -905,7 +914,7 @@ def quitar_producto_proveedor(proveedor_id: int, producto_id: int, db: Session =
 # propio del catálogo.
 
 ordenes_compra_router = APIRouter(
-    prefix="/api/v1/ordenes-compra", tags=["ordenes-compra"], dependencies=[admin_abastecimiento_requerido]
+    prefix="/api/v1/ordenes-compra", tags=["ordenes-compra"], dependencies=gestion_abastecimiento_requerida
 )
 
 
@@ -948,7 +957,7 @@ def anular_orden_compra(orden_id: int, db: Session = Depends(get_db)) -> OrdenCo
 # ---- /api/v1/recepciones ---------------------------------------------------------
 
 recepciones_router = APIRouter(
-    prefix="/api/v1/recepciones", tags=["recepciones"], dependencies=[admin_abastecimiento_requerido]
+    prefix="/api/v1/recepciones", tags=["recepciones"], dependencies=gestion_abastecimiento_requerida
 )
 
 

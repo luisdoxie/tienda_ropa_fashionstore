@@ -5,13 +5,22 @@ que nadie más tenga que tocarlas directamente."""
 
 import re
 import unicodedata
+from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import DomainError, NoEncontradoError, PermisoDenegadoError
-from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_SUPERADMINISTRADOR
-from app.core.tenant import sin_filtro
+from app.core.exceptions import (
+    ConflictoError,
+    DomainError,
+    ErrorFuncional,
+    NoEncontradoError,
+    PermisoDenegadoError,
+)
+from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_ADMINISTRADOR, ROL_SUPERADMINISTRADOR
+from app.core.planes import FUNCIONALIDADES
+from app.core.tenant import exigir_empresa, registrar_inicializador, sin_filtro
+from app.core.tiempo import hoy_utc
 from app.plataforma.models import (
     Ciudad,
     Cliente,
@@ -20,8 +29,10 @@ from app.plataforma.models import (
     HorarioSucursal,
     Notificacion,
     Permiso,
+    Plan,
     Rol,
     Sucursal,
+    Suscripcion,
     Usuario,
     rol_permiso,
     usuario_rol,
@@ -165,6 +176,176 @@ def obtener_cliente(db: Session, cliente_id: int) -> Cliente:
     return cliente_repo.obtener(db, cliente_id)
 
 
+# ---- Plan y suscripción ----
+
+# Estados y transiciones de la suscripción (D08). `cancelada` es final. Cambiar
+# de plan no es una transición: cierra la suscripción (cancelada) y crea otra.
+ESTADOS_SUSCRIPCION = ("activa", "suspendida", "vencida", "cancelada")
+_TRANSICIONES = {
+    "activa": frozenset({"suspendida", "vencida", "cancelada"}),
+    "suspendida": frozenset({"activa", "cancelada"}),
+    "vencida": frozenset({"activa", "cancelada"}),
+    "cancelada": frozenset(),
+}
+
+
+def validar_transicion(origen: str, destino: str) -> None:
+    """409 si `origen` → `destino` no está permitida. `vencida → activa` solo
+    ocurre renovando con una fecha futura (lo valida quien renueva)."""
+    if destino not in _TRANSICIONES.get(origen, frozenset()):
+        raise ConflictoError("Transición de estado no permitida")
+
+
+def estado_efectivo(suscripcion: Suscripcion, hoy=None) -> str:
+    """El estado que cuenta: una `activa` cuya fecha de vencimiento ya pasó es
+    `vencida` aunque la tarea periódica todavía no la haya persistido. El
+    bloqueo no puede depender de que haya corrido una tarea."""
+    hoy = hoy or hoy_utc()
+    if suscripcion.estado == "activa" and suscripcion.fecha_vencimiento < hoy:
+        return "vencida"
+    return suscripcion.estado
+
+
+def obtener_suscripcion_vigente(db: Session, bloquear: bool = False) -> Suscripcion | None:
+    """La suscripción NO cancelada de la empresa de la sesión (a lo sumo una).
+    `bloquear=True` toma la fila con SELECT ... FOR UPDATE (solo PostgreSQL; en
+    SQLite se omite) para serializar altas o cambios simultáneos."""
+    consulta = select(Suscripcion).where(Suscripcion.estado != "cancelada")
+    if bloquear:
+        consulta = consulta.with_for_update()
+    return db.scalar(consulta)
+
+
+def plan_de_la_empresa(db: Session) -> Plan | None:
+    """El plan de la suscripción vigente de la empresa de la sesión."""
+    return db.scalar(
+        select(Plan).join(Suscripcion, Suscripcion.plan_id == Plan.id).where(Suscripcion.estado != "cancelada")
+    )
+
+
+@dataclass(frozen=True)
+class SituacionEmpresa:
+    """Lo que hace falta para decidir si una empresa opera: `estado` es el
+    efectivo de su suscripción, o `sin_suscripcion` / `empresa_inactiva`."""
+
+    estado: str
+    suscripcion: Suscripcion | None
+    plan: Plan | None
+
+
+def situacion_de_la_empresa(db: Session) -> SituacionEmpresa:
+    """Empresa activa + suscripción vigente + plan de la empresa de la sesión."""
+    empresa_id = exigir_empresa(db)
+    if not empresa_esta_activa(db, empresa_id):
+        return SituacionEmpresa("empresa_inactiva", None, None)
+    fila = db.execute(
+        select(Suscripcion, Plan).join(Plan, Plan.id == Suscripcion.plan_id).where(Suscripcion.estado != "cancelada")
+    ).first()
+    if fila is None:
+        return SituacionEmpresa("sin_suscripcion", None, None)
+    suscripcion, plan = fila
+    return SituacionEmpresa(estado_efectivo(suscripcion), suscripcion, plan)
+
+
+def funcionalidades_habilitadas(db: Session) -> list[str]:
+    """Las funcionalidades que incluye el plan de la empresa, en el orden de
+    `core.planes.FUNCIONALIDADES`. Sin suscripción vigente, ninguna."""
+    plan = plan_de_la_empresa(db)
+    if plan is None:
+        return []
+    return [nombre for nombre in FUNCIONALIDADES if getattr(plan, nombre)]
+
+
+def contar_sucursales_activas(db: Session) -> int:
+    """Sucursales con `activo` de la empresa de la sesión. El depósito cuenta."""
+    return db.scalar(select(func.count(Sucursal.id)).where(Sucursal.activo.is_(True))) or 0
+
+
+def error_limite_sucursales(plan: Plan, actual: int) -> ErrorFuncional:
+    return ErrorFuncional(
+        "limite_plan_excedido",
+        f"El plan {plan.nombre} permite hasta {plan.max_sucursales} sucursales activas",
+        409,
+        recurso="sucursales",
+        limite=plan.max_sucursales,
+        actual=actual,
+        plan=plan.codigo,
+    )
+
+
+def verificar_limite_sucursales(db: Session) -> None:
+    """Antes de crear o reactivar una sucursal: 409 `limite_plan_excedido` si la
+    empresa ya tiene tantas activas como permite su plan. Bloquea la fila de la
+    suscripción (FOR UPDATE, solo PostgreSQL) para que dos altas simultáneas no
+    superen el límite. Sin suscripción vigente → 403 `suscripcion_no_activa`."""
+    suscripcion = obtener_suscripcion_vigente(db, bloquear=True)
+    if suscripcion is None:
+        raise ErrorFuncional(
+            "suscripcion_no_activa", "La empresa no tiene una suscripción", 403, estado="sin_suscripcion"
+        )
+    plan = db.get(Plan, suscripcion.plan_id)
+    actual = contar_sucursales_activas(db)
+    if actual >= plan.max_sucursales:
+        raise error_limite_sucursales(plan, actual)
+
+
+def obtener_suscripcion_de_la_empresa(db: Session, suscripcion_id: int, bloquear: bool = False) -> Suscripcion:
+    """La suscripción con ese id DENTRO de la empresa de la sesión (la del
+    superadministrador entra antes con `en_empresa`). 404 si no existe o es de
+    otra empresa. `bloquear=True` toma la fila con SELECT ... FOR UPDATE (solo
+    PostgreSQL)."""
+    consulta = select(Suscripcion).where(Suscripcion.id == suscripcion_id)
+    if bloquear:
+        consulta = consulta.with_for_update()
+    suscripcion = db.scalar(consulta)
+    if suscripcion is None:
+        raise NoEncontradoError("Suscripción no encontrada")
+    return suscripcion
+
+
+def cerrar_suscripcion(suscripcion: Suscripcion, hoy=None) -> None:
+    """Cancela la suscripción por un cambio de plan. Su `fecha_vencimiento` se
+    recorta a `min(actual, hoy)` (nunca antes de `fecha_inicio`, que exige
+    `ck_suscripcion_fechas`): así queda constancia de cuándo terminó sin una
+    columna nueva."""
+    hoy = hoy or hoy_utc()
+    suscripcion.estado = "cancelada"
+    suscripcion.fecha_vencimiento = max(suscripcion.fecha_inicio, min(suscripcion.fecha_vencimiento, hoy))
+
+
+def contar_usuarios_activos(db: Session) -> int:
+    """Usuarios activos de la empresa de la sesión (staff y clientes)."""
+    return db.scalar(select(func.count(Usuario.id)).where(Usuario.activo.is_(True))) or 0
+
+
+def administrador_principal(db: Session) -> Usuario | None:
+    """El administrador "principal" de la empresa de la sesión: el usuario
+    activo con el rol administrador de menor id."""
+    return db.scalar(
+        select(Usuario)
+        .join(usuario_rol, usuario_rol.c.usuario_id == Usuario.id)
+        .join(Rol, Rol.id == usuario_rol.c.rol_id)
+        .where(Rol.nombre == ROL_ADMINISTRADOR, Usuario.activo.is_(True))
+        .order_by(Usuario.id)
+        .limit(1)
+    )
+
+
+def vencer_suscripciones(db: Session) -> int:
+    """Persiste `vencida` en las suscripciones activas cuya fecha de
+    vencimiento ya pasó, en TODAS las empresas (una sola pasada: no toca datos
+    de negocio). Idempotente. Devuelve cuántas cambió."""
+    consulta = (
+        update(Suscripcion)
+        .where(Suscripcion.estado == "activa", Suscripcion.fecha_vencimiento < hoy_utc())
+        .values(estado="vencida")
+        .execution_options(synchronize_session=False)
+    )
+    cambiadas = db.execute(sin_filtro(consulta)).rowcount
+    db.commit()
+    return cambiadas
+
+
 # ---- Notificaciones ----
 
 
@@ -205,6 +386,34 @@ ciudad_repo = CiudadRepository()
 sucursal_repo = SucursalRepository()
 horario_repo = HorarioRepository()
 empleado_repo = EmpleadoRepository()
+
+# Las 9 capitales de departamento de Bolivia: lo único que una empresa nueva
+# trae sembrado de la organización (sin ciudad no se puede crear una sucursal).
+# (nombre de la ciudad, departamento)
+CIUDADES_BASE: list[tuple[str, str]] = [
+    ("La Paz", "La Paz"),
+    ("Santa Cruz de la Sierra", "Santa Cruz"),
+    ("Cochabamba", "Cochabamba"),
+    ("Oruro", "Oruro"),
+    ("Potosí", "Potosí"),
+    ("Sucre", "Chuquisaca"),
+    ("Tarija", "Tarija"),
+    ("Trinidad", "Beni"),
+    ("Cobija", "Pando"),
+]
+
+
+@registrar_inicializador
+def sembrar_ciudades_base(db: Session) -> None:
+    """Inicializador de empresa nueva (ver `core.tenant.registrar_inicializador`):
+    crea las ciudades base que falten en la empresa de la sesión. Idempotente y
+    sin confirmar: la transacción es de quien registra la empresa."""
+    existentes = {(nombre, departamento) for nombre, departamento in db.execute(select(Ciudad.nombre, Ciudad.departamento))}
+    for nombre, departamento in CIUDADES_BASE:
+        if (nombre, departamento) not in existentes:
+            db.add(Ciudad(nombre=nombre, departamento=departamento))
+    db.flush()
+
 
 # Quien administra sucursales y empleados (hoy solo el administrador) opera
 # y consulta todas las sucursales; el resto del personal (encargado, cajero)

@@ -350,3 +350,182 @@ class EmpleadoRespuesta(BaseModel):
     cargo: str | None = None
     fecha_ingreso: dt.date | None = None
     activo: bool
+
+
+# ---- Empresas, planes y suscripciones (CU-04) ---------------------------------
+
+COLOR_ACENTO_PATRON = r"^#[0-9A-Fa-f]{6}$"
+
+
+class PlanCrear(BaseModel):
+    codigo: str = Field(pattern=r"^[a-z0-9_-]{2,30}$")
+    nombre: str = Field(min_length=1, max_length=60)
+    max_sucursales: int = Field(ge=1, le=1000)
+    reportes_convencionales: bool = True
+    reportes_ia: bool = False
+    operacion_offline: bool = False
+    analitica_ml: bool = False
+    copias_seguridad: bool = False
+    gestion_productos: bool = True
+    gestion_ventas: bool = True
+    reservas: bool = True
+    max_copias_historial: int = Field(default=0, ge=0, le=1000)
+    plazo_cambio_horas_defecto: int = Field(default=24, ge=0, le=8760)
+
+
+class PlanActualizar(BaseModel):
+    """El `codigo` de un plan no cambia."""
+
+    nombre: str | None = Field(default=None, min_length=1, max_length=60)
+    max_sucursales: int | None = Field(default=None, ge=1, le=1000)
+    reportes_convencionales: bool | None = None
+    reportes_ia: bool | None = None
+    operacion_offline: bool | None = None
+    analitica_ml: bool | None = None
+    copias_seguridad: bool | None = None
+    gestion_productos: bool | None = None
+    gestion_ventas: bool | None = None
+    reservas: bool | None = None
+    max_copias_historial: int | None = Field(default=None, ge=0, le=1000)
+    plazo_cambio_horas_defecto: int | None = Field(default=None, ge=0, le=8760)
+    activo: bool | None = None
+
+
+class PlanRespuesta(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    codigo: str
+    nombre: str
+    max_sucursales: int
+    reportes_convencionales: bool
+    reportes_ia: bool
+    operacion_offline: bool
+    analitica_ml: bool
+    copias_seguridad: bool
+    gestion_productos: bool
+    gestion_ventas: bool
+    reservas: bool
+    max_copias_historial: int
+    plazo_cambio_horas_defecto: int
+    activo: bool
+
+
+class AdministradorRegistrar(BaseModel):
+    nombre: str = Field(min_length=1, max_length=60)
+    apellido: str = Field(min_length=1, max_length=60)
+    email: CorreoNormalizado
+    telefono: str | None = Field(default=None, max_length=20)
+    password: str = Field(min_length=8, max_length=72)
+
+
+class EmpresaRegistrar(BaseModel):
+    """Alta de una empresa con su suscripción inicial y su administrador. El
+    `codigo` sale del nombre (no se pide)."""
+
+    nombre: str = Field(min_length=2, max_length=120)
+    plan_codigo: str | None = Field(default=None, max_length=30)
+    fecha_vencimiento: dt.date | None = None
+    color_acento: str | None = Field(default=None, pattern=COLOR_ACENTO_PATRON)
+    logo_url: str | None = None
+    administrador: AdministradorRegistrar
+
+
+class EmpresaActualizar(BaseModel):
+    """El `codigo` no cambia aunque cambie el nombre comercial."""
+
+    nombre: str | None = Field(default=None, min_length=2, max_length=120)
+    logo_url: str | None = None
+    color_acento: str | None = Field(default=None, pattern=COLOR_ACENTO_PATRON)
+    activo: bool | None = None
+
+
+class EmpresaRespuesta(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    logo_url: str | None = None
+    color_acento: str | None = None
+    activo: bool
+    plan_codigo: str | None = None
+    suscripcion_estado: str | None = None
+    fecha_inicio: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+    administrador_email: str | None = None
+
+
+class EmpresaResumenRespuesta(EmpresaRespuesta):
+    usuarios_activos: int
+    sucursales_activas: int
+    max_sucursales: int | None = None
+
+
+class SuscripcionAsignar(BaseModel):
+    """Asigna un plan a una empresa o lo CAMBIA (cierra la suscripción vigente)."""
+
+    empresa_id: int
+    plan_codigo: str = Field(max_length=30)
+    fecha_inicio: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+
+
+class SuscripcionRenovar(BaseModel):
+    fecha_vencimiento: dt.date
+
+
+class SuscripcionEstadoActualizar(BaseModel):
+    """`vencida` no se pide: la fija el cálculo por fecha y la tarea periódica."""
+
+    estado: Literal["activa", "suspendida", "cancelada"]
+
+
+class SuscripcionRespuesta(BaseModel):
+    id: int
+    empresa_id: int
+    plan_codigo: str
+    plan_nombre: str
+    estado: str
+    estado_efectivo: str
+    fecha_inicio: dt.date
+    fecha_vencimiento: dt.date
+    creado_en: dt.datetime | None = None
+
+
+class MiEmpresaRespuesta(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    logo_url: str | None = None
+    color_acento: str | None = None
+    activo: bool
+
+
+class MiEmpresaActualizar(BaseModel):
+    """Solo la identidad visual. Un plan, un estado o el código enviados aquí se
+    ignoran."""
+
+    nombre: str | None = Field(default=None, min_length=2, max_length=120)
+    logo_url: str | None = None
+    color_acento: str | None = Field(default=None, pattern=COLOR_ACENTO_PATRON)
+
+
+class MiSuscripcionRespuesta(BaseModel):
+    plan_codigo: str | None = None
+    plan_nombre: str | None = None
+    estado: str
+    fecha_inicio: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+    max_sucursales: int | None = None
+    sucursales_activas: int
+    funcionalidades: list[str] = []
+
+
+class TiendaPublicaRespuesta(BaseModel):
+    """Lo único que se publica de una empresa."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    codigo: str
+    nombre: str
+    logo_url: str | None = None
+    color_acento: str | None = None
