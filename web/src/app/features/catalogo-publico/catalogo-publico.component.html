@@ -1,57 +1,113 @@
-<div class="marquee-wrap">
-  <div class="marquee">
-    <span>Camisas</span><span>Poleras</span><span>Chamarras</span><span>Probador virtual</span><span>Nueva temporada</span>
-    <span>Camisas</span><span>Poleras</span><span>Chamarras</span><span>Probador virtual</span><span>Nueva temporada</span>
+<div class="portada fs-zona-oscura">
+  <section class="hero">
+    <div class="hero__texto">
+      <span class="fs-eyebrow">Ropa masculina / Estilo / Tecnología</span>
+      <h1 class="fs-display hero__titular">Tu estilo, <em>en tus manos</em></h1>
+      <p class="hero__sub">
+        Descubre una nueva forma de comprar. Explora la colección de ropa masculina y pruébatela con IA en la app
+        antes de decidir.
+      </p>
+      <div class="hero__acciones">
+        <a class="fs-btn fs-btn--acento" href="#catalogo" (click)="explorarColeccion($event)">
+          Explorar colección
+          <fs-icono nombre="flecha-derecha" [tam]="24" />
+        </a>
+      </div>
+    </div>
+
+    <div class="hero__foto">
+      <img
+        src="/imagenes/portada-tienda.png"
+        width="745"
+        height="1024"
+        fetchpriority="high"
+        alt="Modelo con camisa verde oliva y camiseta blanca frente a un edificio oscuro"
+      />
+      <div class="hero__velo" aria-hidden="true"></div>
+      <div class="hero__probador">
+        <span class="hero__probador-icono"><fs-icono nombre="destellos" [tam]="36" /></span>
+        <span class="hero__probador-texto">Probador virtual<br />con IA en la app</span>
+      </div>
+      <span class="fs-lema hero__lema">Más que ropa,<br />es tu estilo.</span>
+    </div>
+  </section>
+
+  <div class="beneficios">
+    <div class="beneficios__interior">
+      <div class="beneficio">
+        <fs-icono nombre="camion" [tam]="36" />
+        <div>
+          <div class="beneficio__titulo">Envíos a domicilio</div>
+          <div class="beneficio__texto">Según tu zona de entrega</div>
+        </div>
+      </div>
+      <div class="beneficio">
+        <fs-icono nombre="escudo-check" [tam]="36" />
+        <div>
+          <div class="beneficio__titulo">Compra segura</div>
+          <div class="beneficio__texto">Tus datos protegidos</div>
+        </div>
+      </div>
+      <div class="beneficio">
+        <fs-icono nombre="tarjeta" [tam]="36" />
+        <div>
+          <div class="beneficio__titulo">Pagos en línea</div>
+          <div class="beneficio__texto">Con QR o PayPal</div>
+        </div>
+      </div>
+      <div class="beneficio">
+        <fs-icono nombre="auriculares" [tam]="36" />
+        <div>
+          <div class="beneficio__titulo">Asistente en línea</div>
+          <div class="beneficio__texto">Resuelve tus dudas al instante</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<div class="tienda">
-  <section class="hero">
-    <div class="hero-texto">
-      <p class="hero-eyebrow">Probador virtual con inteligencia artificial</p>
-      <h1>Vestite de otra forma: probate cada prenda antes de decidir.</h1>
-      <p class="hero-sub">
-        Elegí una prenda, subí una foto tuya en la app y mirá cómo te queda. Sin vestidores, sin vueltas.
-      </p>
+<section id="catalogo" class="coleccion">
+  <div class="coleccion__cabecera">
+    <div>
+      <span class="fs-eyebrow">Nueva temporada</span>
+      <h2 class="fs-display coleccion__titulo">La colección</h2>
     </div>
 
-    <!-- Explicador de 3 pasos: llena el espacio vacío del hero con el
-         flujo del probador en vez de una imagen (no hay una foto "genérica"
-         que lo represente mejor que el propio flujo). -->
-    <ol class="hero-pasos" aria-label="Cómo funciona el probador virtual">
-      <li class="hero-paso">
-        <span class="hero-paso-numero">01</span>
-        <span class="pi pi-shopping-bag hero-paso-icono" aria-hidden="true"></span>
-        <span class="hero-paso-texto">
-          <strong>Elegí la prenda</strong>
-          <small>Del catálogo, la que quieras probarte.</small>
-        </span>
-      </li>
-      <li class="hero-paso">
-        <span class="hero-paso-numero">02</span>
-        <span class="pi pi-upload hero-paso-icono" aria-hidden="true"></span>
-        <span class="hero-paso-texto">
-          <strong>Subí tu foto</strong>
-          <small>La IA te viste la prenda elegida.</small>
-        </span>
-      </li>
-      <li class="hero-paso hero-paso--final">
-        <span class="hero-paso-numero">03</span>
-        <span class="pi pi-check hero-paso-icono" aria-hidden="true"></span>
-        <span class="hero-paso-texto">
-          <strong>Mirá cómo te queda</strong>
-          <small>Y decidí, sin vestidores ni vueltas.</small>
-        </span>
-      </li>
-    </ol>
-  </section>
-
-  @if (categorias().length) {
-    <div class="pills-fila fs-pill-fila">
+    <div class="fila-busqueda">
+      <label class="buscador">
+        <fs-icono nombre="busqueda" [tam]="24" />
+        <input
+          id="catalogo-buscar"
+          type="text"
+          placeholder="Busca por nombre o estilo"
+          aria-label="Buscar prendas"
+          [(ngModel)]="texto"
+          (ngModelChange)="onBuscar()"
+        />
+      </label>
       <button
         type="button"
-        class="fs-pill"
-        [class.activa]="categoriaSeleccionada() === null"
+        class="fs-btn fs-btn--secundario boton-filtros"
+        [class.activo]="panelFiltros()"
+        [attr.aria-expanded]="panelFiltros()"
+        (click)="alternarPanelFiltros()"
+      >
+        <fs-icono nombre="filtros" [tam]="24" />
+        Filtros
+        @if (contarFiltros(); as puestos) {
+          <span class="globo-filtros fs-num">{{ puestos }}</span>
+        }
+      </button>
+    </div>
+  </div>
+
+  @if (categorias().length) {
+    <div class="categorias" role="group" aria-label="Categorías">
+      <button
+        type="button"
+        class="categoria"
+        [class.categoria--activa]="categoriaSeleccionada() === null"
+        [attr.aria-pressed]="categoriaSeleccionada() === null"
         (click)="seleccionarCategoria(null)"
       >
         Todo
@@ -59,8 +115,9 @@
       @for (categoria of categorias(); track categoria.id) {
         <button
           type="button"
-          class="fs-pill"
-          [class.activa]="categoriaSeleccionada() === categoria.id"
+          class="categoria"
+          [class.categoria--activa]="categoriaSeleccionada() === categoria.id"
+          [attr.aria-pressed]="categoriaSeleccionada() === categoria.id"
           (click)="seleccionarCategoria(categoria.id)"
         >
           {{ categoria.nombre }}
@@ -69,31 +126,12 @@
     </div>
   }
 
-  <div class="fila-busqueda">
-    <div class="buscador">
-      <span class="pi pi-search"></span>
-      <input
-        type="text"
-        placeholder="Buscá por nombre, categoría o estilo"
-        [(ngModel)]="texto"
-        (ngModelChange)="onBuscar()"
-      />
-    </div>
-    <button type="button" class="boton-filtros" [class.activo]="panelFiltros()" (click)="alternarPanelFiltros()">
-      <span class="pi pi-sliders-h"></span>
-      Filtros
-      @if (contarFiltros(); as puestos) {
-        <span class="globo-filtros fs-num">{{ puestos }}</span>
-      }
-    </button>
-  </div>
-
   @if (panelFiltros()) {
     <div class="panel-filtros">
       @if (tallas().length) {
-        <label>
-          <span class="fs-caption">Talla</span>
-          <select [ngModel]="tallaId()" (ngModelChange)="aplicarFiltro('talla', $event)">
+        <label class="fs-etiqueta-campo">
+          Talla
+          <select class="fs-input" [ngModel]="tallaId()" (ngModelChange)="aplicarFiltro('talla', $event)">
             <option value="">Todas</option>
             @for (talla of tallas(); track talla.id) {
               <option [value]="talla.id">{{ talla.codigo }}</option>
@@ -103,9 +141,9 @@
       }
 
       @if (colores().length) {
-        <label>
-          <span class="fs-caption">Color</span>
-          <select [ngModel]="colorId()" (ngModelChange)="aplicarFiltro('color', $event)">
+        <label class="fs-etiqueta-campo">
+          Color
+          <select class="fs-input" [ngModel]="colorId()" (ngModelChange)="aplicarFiltro('color', $event)">
             <option value="">Todos</option>
             @for (color of colores(); track color.id) {
               <option [value]="color.id">{{ color.nombre }}</option>
@@ -115,9 +153,9 @@
       }
 
       @if (materiales().length) {
-        <label>
-          <span class="fs-caption">Material</span>
-          <select [ngModel]="materialId()" (ngModelChange)="aplicarFiltro('material', $event)">
+        <label class="fs-etiqueta-campo">
+          Material
+          <select class="fs-input" [ngModel]="materialId()" (ngModelChange)="aplicarFiltro('material', $event)">
             <option value="">Todos</option>
             @for (material of materiales(); track material.id) {
               <option [value]="material.id">{{ material.nombre }}</option>
@@ -127,9 +165,9 @@
       }
 
       @if (temporadas().length) {
-        <label>
-          <span class="fs-caption">Temporada</span>
-          <select [ngModel]="temporadaId()" (ngModelChange)="aplicarFiltro('temporada', $event)">
+        <label class="fs-etiqueta-campo">
+          Temporada
+          <select class="fs-input" [ngModel]="temporadaId()" (ngModelChange)="aplicarFiltro('temporada', $event)">
             <option value="">Todas</option>
             @for (temporada of temporadas(); track temporada.id) {
               <option [value]="temporada.id">{{ temporada.nombre }}</option>
@@ -138,9 +176,9 @@
         </label>
       }
 
-      <label>
-        <span class="fs-caption">Género</span>
-        <select [ngModel]="genero()" (ngModelChange)="aplicarFiltro('genero', $event)">
+      <label class="fs-etiqueta-campo">
+        Género
+        <select class="fs-input" [ngModel]="genero()" (ngModelChange)="aplicarFiltro('genero', $event)">
           <option value="">Todos</option>
           @for (g of generos; track g.valor) {
             <option [value]="g.valor">{{ g.etiqueta }}</option>
@@ -148,35 +186,35 @@
         </select>
       </label>
 
-      <label>
-        <span class="fs-caption">Precio desde</span>
+      <label class="fs-etiqueta-campo">
+        Precio desde
         <input
           type="number"
           min="0"
           step="1"
           placeholder="Bs"
-          class="fs-num"
+          class="fs-input fs-num"
           [(ngModel)]="precioMin"
           (ngModelChange)="onPrecioCambiado()"
         />
       </label>
 
-      <label>
-        <span class="fs-caption">Precio hasta</span>
+      <label class="fs-etiqueta-campo">
+        Precio hasta
         <input
           type="number"
           min="0"
           step="1"
           placeholder="Bs"
-          class="fs-num"
+          class="fs-input fs-num"
           [(ngModel)]="precioMax"
           (ngModelChange)="onPrecioCambiado()"
         />
       </label>
 
       @if (contarFiltros()) {
-        <button type="button" class="boton-limpiar" (click)="limpiarFiltros()">
-          <span class="pi pi-times"></span>
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="limpiarFiltros()">
+          <fs-icono nombre="cerrar" [tam]="24" />
           Limpiar filtros
         </button>
       }
@@ -184,31 +222,38 @@
   }
 
   @if (cargando()) {
-    <p class="fs-caption estado">Cargando catálogo…</p>
+    <p class="fs-estado-vacio" role="status">Cargando catálogo…</p>
   } @else if (error()) {
-    <div class="estado-error">
-      <p>No se pudo cargar el catálogo.</p>
-      <button type="button" class="boton-reintentar" (click)="cargarProductos()">Reintentar</button>
+    <div class="fs-aviso fs-aviso--error estado-error" role="alert">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span class="estado-error__texto">No se pudo cargar el catálogo.</span>
+      <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="cargarProductos()">Reintentar</button>
     </div>
   } @else if (!productos().length) {
-    <p class="fs-caption estado">No encontramos productos con ese filtro.</p>
+    <div class="fs-estado-vacio">
+      <fs-icono nombre="sin-resultados" [tam]="52" />
+      <p>No encontramos productos con ese filtro.</p>
+    </div>
   } @else {
     <div class="grid">
       @for (producto of productos(); track producto.id) {
-        <a class="fs-card producto-tarjeta" [routerLink]="tienda.ruta('producto', '' + producto.id)">
-          <div class="producto-foto">
+        <a class="tarjeta" [routerLink]="tienda.ruta('producto', '' + producto.id)">
+          <div class="tarjeta__foto">
             @if (producto.imagen_principal) {
-              <img [src]="producto.imagen_principal" [alt]="producto.nombre" />
+              <img [src]="producto.imagen_principal" [alt]="producto.nombre" loading="lazy" />
             } @else {
-              <span class="pi pi-image"></span>
+              <fs-icono nombre="imagen" [tam]="52" />
             }
             @if (producto.admite_probador) {
-              <span class="probador-tag"><span class="pi pi-sparkles"></span>Probador IA</span>
+              <span class="tarjeta__probador">
+                <fs-icono nombre="destellos" [tam]="20" />
+                <span><span class="tarjeta__probador-prefijo">Probador </span>IA</span>
+              </span>
             }
           </div>
-          <div class="producto-cuerpo">
-            <div class="producto-nombre">{{ producto.nombre }}</div>
-            <div class="producto-precio fs-num">{{ producto.precio_base | number: '1.2-2' }}</div>
+          <div class="tarjeta__cuerpo">
+            <span class="tarjeta__nombre">{{ producto.nombre }}</span>
+            <span class="tarjeta__precio fs-num">Bs {{ producto.precio_base | number: '1.2-2' }}</span>
           </div>
         </a>
       }
@@ -216,13 +261,13 @@
 
     <div class="paginacion">
       @if (hayMas()) {
-        <button type="button" class="boton-mas" [disabled]="cargandoMas()" (click)="cargarMas()">
+        <button type="button" class="fs-btn fs-btn--secundario" [disabled]="cargandoMas()" (click)="cargarMas()">
           {{ cargandoMas() ? 'Cargando…' : 'Ver más prendas' }}
         </button>
       } @else {
-        <p class="fs-caption estado">Estás viendo todo el catálogo.</p>
+        <p class="fs-caption">Estás viendo todo el catálogo.</p>
       }
-      <p class="fs-caption estado fs-num">{{ productos().length }} prendas a la vista</p>
+      <p class="fs-caption fs-num">{{ productos().length }} prendas a la vista</p>
     </div>
   }
-</div>
+</section>

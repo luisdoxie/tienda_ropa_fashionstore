@@ -12,6 +12,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--fs-espacio-3);
+  min-height: var(--fs-toque);
   padding: var(--fs-espacio-2) 0;
   border-bottom: 1px solid var(--fs-borde);
 
@@ -33,7 +34,10 @@
   cursor: pointer;
 
   input {
-    accent-color: var(--fs-acento);
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--fs-tinta);
   }
 }
 
@@ -46,28 +50,29 @@
     font-family: var(--fs-fuente-ui);
     font-size: 14px;
     font-variant-numeric: tabular-nums;
+    min-height: var(--fs-toque);
+    box-sizing: border-box;
     padding: var(--fs-espacio-1) var(--fs-espacio-2);
-    border: 1px solid var(--fs-borde);
-    border-radius: var(--fs-radio-sm);
+    border: 1px solid var(--fs-campo-borde);
+    border-radius: var(--fs-radio-md);
     background: var(--fs-superficie);
     color: var(--fs-texto);
 
     &:focus {
-      outline: none;
-      border-color: var(--fs-acento);
+      outline: 2px solid var(--fs-tinta);
+      outline-offset: 1px;
     }
   }
 }
 
 .horarios-aviso {
   margin: var(--fs-espacio-3) 0 0;
-  font-size: 13px;
-  color: var(--fs-error);
 }
 
 .horarios-pie {
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
   margin-top: var(--fs-espacio-4);
   padding-top: var(--fs-espacio-3);
   border-top: 1px solid var(--fs-borde);

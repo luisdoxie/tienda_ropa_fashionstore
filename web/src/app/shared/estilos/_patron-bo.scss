@@ -1,0 +1,451 @@
+// Patrón visual de las pantallas ricas del back office (canvas "Inventario" y
+// "Crud"). Los estilos de Angular van encapsulados por componente, así que cada
+// pantalla incluye SOLO los mixins que usa:
+//
+//   @use '../../shared/estilos/patron-bo' as *;
+//   @include bo-base;
+//   @include bo-panel;
+//
+// Todo sale de los tokens --fs-* de styles.scss.
+
+@mixin bo-base {
+  :host {
+    display: block;
+  }
+}
+
+// ---- Textos de apoyo, estados vacíos y celdas ----------------------------------
+@mixin bo-texto {
+  .ayuda {
+    margin: var(--fs-espacio-2) 0 var(--fs-espacio-4);
+    color: var(--fs-texto-tenue);
+    font-size: 13px;
+    max-width: 720px;
+  }
+
+  .vacio {
+    padding: var(--fs-espacio-8) var(--fs-espacio-4);
+    text-align: center;
+    color: var(--fs-texto-tenue);
+    font-size: 14px;
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tenue {
+    color: var(--fs-texto-tenue);
+  }
+
+  .fuerte {
+    font-weight: 600;
+  }
+}
+
+// ---- Filtros (campos de 48 px) ---------------------------------------------------
+@mixin bo-filtros {
+  .filtros {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-3);
+    flex-wrap: wrap;
+    margin: 0 0 var(--fs-espacio-4);
+  }
+
+  .filtros__fin {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-3);
+    margin-left: auto;
+    font-size: 14px;
+  }
+
+  :host ::ng-deep {
+    .filtros .p-select {
+      min-height: var(--fs-toque-barra);
+      min-width: 200px;
+      align-items: center;
+    }
+
+    .filtros .p-inputnumber-input,
+    .filtros .p-datepicker .p-inputtext,
+    .filtros input.p-inputtext {
+      min-height: var(--fs-toque-barra);
+    }
+
+    .filtros .p-button:not(.p-button-icon-only) {
+      min-height: var(--fs-toque-barra);
+    }
+  }
+}
+
+// Buscador de 48 px con lupa (solo inventario).
+@mixin bo-buscador {
+  .buscador {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--fs-toque-barra);
+    min-width: 280px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    background: var(--fs-superficie);
+    border: 1px solid var(--fs-campo-borde);
+    border-radius: var(--fs-radio-md);
+    color: var(--fs-texto-tenue);
+
+    &:focus-within {
+      outline: 2px solid var(--fs-tinta);
+      outline-offset: 1px;
+    }
+
+    input {
+      width: 100%;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--fs-texto);
+      font: inherit;
+      font-size: 14px;
+    }
+  }
+}
+
+// ---- Interruptor (canvas: 56 x 32, tinta con perilla lima de 24) -------------------
+@mixin bo-interruptor {
+  .interruptor {
+    --p-toggleswitch-width: 56px;
+    --p-toggleswitch-height: 32px;
+    --p-toggleswitch-handle-size: 24px;
+    --p-toggleswitch-checked-background: var(--fs-tinta);
+    --p-toggleswitch-checked-hover-background: var(--fs-tinta);
+    --p-toggleswitch-handle-checked-background: var(--fs-acento-oscuro);
+    --p-toggleswitch-handle-checked-hover-background: var(--fs-acento-oscuro-hover);
+  }
+}
+
+// ---- Pestañas subrayadas (p-tabs con el aspecto de .fs-tabs) -----------------------
+@mixin bo-pestanias {
+  :host ::ng-deep {
+    .p-tablist-tab-list {
+      gap: 28px;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--fs-borde);
+    }
+
+    .p-tab {
+      padding: 8px 0 12px;
+      min-height: var(--fs-toque);
+      font-family: var(--fs-fuente-ui);
+      font-size: 15px;
+      font-weight: 400;
+      color: var(--fs-texto-tenue);
+      background: transparent;
+      border: 0;
+
+      &:hover {
+        color: var(--fs-texto);
+        background: transparent;
+      }
+
+      &.p-tab-active {
+        color: var(--fs-texto);
+        font-weight: 600;
+      }
+    }
+
+    .p-tablist-active-bar {
+      height: 2px;
+      background: var(--fs-texto);
+    }
+
+    .p-tabpanels {
+      padding: var(--fs-espacio-6) 0 0;
+      background: transparent;
+    }
+  }
+}
+
+// ---- Panel con tabla -------------------------------------------------------------------
+@mixin bo-panel {
+  .panel {
+    background: var(--fs-superficie);
+    border: 1px solid var(--fs-borde);
+    border-radius: var(--fs-radio-md);
+    overflow: hidden;
+    margin-bottom: var(--fs-espacio-4);
+  }
+
+  .panel__scroll {
+    overflow-x: auto;
+  }
+
+  :host ::ng-deep .panel .p-datatable {
+    border: 0;
+  }
+}
+
+// Título de un panel.
+@mixin bo-panel-titulo {
+  .panel__titulo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fs-espacio-3);
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--fs-borde);
+
+    h2,
+    h3 {
+      margin: 0;
+      font-family: var(--fs-fuente-display);
+      font-stretch: 112%;
+      font-weight: 800;
+      font-size: 18px;
+    }
+  }
+}
+
+// Pie y total de un panel.
+@mixin bo-panel-pie {
+  .panel__pie {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--fs-espacio-4);
+    flex-wrap: wrap;
+    padding: 14px 20px;
+    background: var(--fs-fondo);
+    border-top: 1px solid var(--fs-borde);
+    font-size: 13px;
+    color: var(--fs-texto-tenue);
+  }
+
+  .panel__total {
+    font-size: 14px;
+    color: var(--fs-texto);
+
+    strong {
+      margin-left: var(--fs-espacio-2);
+      font-family: var(--fs-fuente-display);
+      font-stretch: 112%;
+      font-weight: 800;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+
+// Aviso al pie de un panel.
+@mixin bo-panel-aviso {
+  .panel__aviso {
+    margin: 0;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--fs-texto-tenue);
+    border-top: 1px solid var(--fs-borde);
+  }
+}
+
+// Celdas de acciones y filas resaltadas.
+@mixin bo-tabla {
+  .acciones {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+  }
+
+  .fila-alerta {
+    background: color-mix(in srgb, var(--fs-advertencia) 6%, var(--fs-superficie));
+  }
+
+  .dato-alerta {
+    color: var(--fs-advertencia);
+  }
+
+  .cantidad-negativa {
+    color: var(--fs-error);
+  }
+}
+
+// ---- Botones ----------------------------------------------------------------------------
+// Botón de solo ícono (44 px).
+@mixin bo-btn-icono {
+  .btn-icono {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--fs-toque);
+    height: var(--fs-toque);
+    padding: 0;
+    color: var(--fs-tinta);
+    background: none;
+    border: 0;
+    border-radius: var(--fs-radio-md);
+    cursor: pointer;
+    vertical-align: middle;
+
+    &:hover:not([disabled]) {
+      background: var(--fs-neutro-suave);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--fs-tinta);
+      outline-offset: -2px;
+    }
+
+    &[disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &.btn-icono--peligro {
+      color: var(--fs-error);
+    }
+
+    &.btn-icono--contorno {
+      border: 1px solid var(--fs-campo-borde);
+    }
+  }
+}
+
+// Botón de texto con ícono (44 px).
+@mixin bo-btn-texto {
+  .btn-texto {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--fs-toque);
+    padding: 0 var(--fs-espacio-3);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--fs-tinta);
+    background: none;
+    border: 0;
+    border-radius: var(--fs-radio-md);
+    cursor: pointer;
+
+    &:hover:not([disabled]) {
+      background: var(--fs-neutro-suave);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--fs-tinta);
+      outline-offset: 1px;
+    }
+
+    &[disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &.btn-texto--peligro {
+      color: var(--fs-error);
+    }
+  }
+}
+
+// Ícono que gira (cargando, escuchando).
+@mixin bo-giro {
+  .giro {
+    animation: giro 1s linear infinite;
+  }
+
+  @keyframes giro {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}
+
+// ---- Formularios en diálogo ---------------------------------------------------------------
+@mixin bo-formulario {
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 0;
+
+    label {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--fs-texto);
+    }
+
+    input[pInputText],
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+    }
+  }
+
+  .campo-fila {
+    display: flex;
+    gap: var(--fs-espacio-4);
+    flex-wrap: wrap;
+
+    .campo {
+      flex: 1 1 200px;
+    }
+  }
+
+  :host ::ng-deep .campo {
+    .p-select,
+    .p-inputnumber,
+    .p-inputnumber-input {
+      width: 100%;
+    }
+  }
+}
+
+@mixin bo-dialogo-acciones {
+  .dialogo-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: var(--fs-espacio-4);
+    padding-top: var(--fs-espacio-4);
+    border-top: 1px solid var(--fs-borde);
+  }
+}
+
+// Tabla de líneas editables (recepción, transferencia, límites).
+@mixin bo-tabla-lineas {
+  .tabla-lineas {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: var(--fs-espacio-2);
+
+    th {
+      padding: 12px 10px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--fs-texto-tenue);
+      border-bottom: 1px solid var(--fs-texto);
+    }
+
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--fs-fondo-alt);
+      font-size: 14px;
+    }
+
+    input[type='number'] {
+      width: 110px;
+      min-height: var(--fs-toque);
+    }
+  }
+}

@@ -1,9 +1,19 @@
 <div class="detalle">
   @if (cargando()) {
-    <p class="fs-caption estado">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
   } @else if (error() || !detalle()) {
-    <p class="fs-caption estado">No se pudo cargar esta prenda.</p>
+    <div class="fs-estado-vacio">
+      <fs-icono nombre="alerta" [tam]="52" />
+      <p>No se pudo cargar esta prenda.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta()">Volver al catálogo</a>
+    </div>
   } @else {
+    <nav class="migas" aria-label="Ruta">
+      <a [routerLink]="tienda.ruta()">Catálogo</a>
+      <span aria-hidden="true">/</span>
+      <span class="migas__actual" aria-current="page">{{ detalle()!.nombre }}</span>
+    </nav>
+
     <div class="detalle-grilla">
       <div class="galeria">
         @if (imagenes().length) {
@@ -13,7 +23,14 @@
           @if (imagenes().length > 1) {
             <div class="galeria-miniaturas">
               @for (imagen of imagenes(); track imagen.id; let i = $index) {
-                <button type="button" class="miniatura" [class.activa]="i === imagenActiva()" (click)="imagenActiva.set(i)">
+                <button
+                  type="button"
+                  class="miniatura"
+                  [class.activa]="i === imagenActiva()"
+                  [attr.aria-label]="'Ver foto ' + (i + 1)"
+                  [attr.aria-current]="i === imagenActiva() ? 'true' : null"
+                  (click)="imagenActiva.set(i)"
+                >
                   <img [src]="imagen.url" alt="" />
                 </button>
               }
@@ -21,81 +38,142 @@
           }
         } @else {
           <div class="galeria-principal galeria-vacia">
-            <span class="pi pi-image"></span>
+            <fs-icono nombre="imagen" [tam]="52" />
           </div>
         }
       </div>
 
       <div class="info">
-        <h1>{{ detalle()!.nombre }}</h1>
-        <p class="precio fs-num">{{ precio() | number: '1.2-2' }}</p>
+        <div class="info__titulo">
+          <h1 class="fs-display">{{ detalle()!.nombre }}</h1>
+          <span class="precio fs-num">Bs {{ precio() | number: '1.2-2' }}</span>
+        </div>
+
+        @if (detalle()!.descripcion) {
+          <p class="descripcion">{{ detalle()!.descripcion }}</p>
+        }
 
         <div class="selector">
-          <span class="fs-etiqueta">Talla</span>
-          <div class="fs-pill-fila">
+          <div class="selector__cabecera">
+            <span class="selector__titulo">Color</span>
+            @if (colorSeleccionado(); as color) {
+              <span class="selector__valor">{{ color.nombre }}</span>
+            }
+          </div>
+          <div class="colores" role="group" aria-label="Color">
+            @for (color of coloresDisponibles(); track color.id) {
+              @if (color.codigo_hex) {
+                <button
+                  type="button"
+                  class="color"
+                  [class.activa]="colorId() === color.id"
+                  [attr.aria-label]="'Color ' + color.nombre"
+                  [attr.aria-pressed]="colorId() === color.id"
+                  (click)="seleccionarColor(color.id)"
+                >
+                  <span class="color__muestra" [style.background]="color.codigo_hex"></span>
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="fs-pill"
+                  [class.activa]="colorId() === color.id"
+                  [attr.aria-pressed]="colorId() === color.id"
+                  (click)="seleccionarColor(color.id)"
+                >
+                  {{ color.nombre }}
+                </button>
+              }
+            }
+          </div>
+        </div>
+
+        <div class="selector">
+          <div class="selector__cabecera">
+            <span class="selector__titulo">Talla</span>
+          </div>
+          <div class="tallas" role="group" aria-label="Talla">
             @for (talla of tallasDisponibles(); track talla.id) {
-              <button type="button" class="fs-pill" [class.activa]="tallaId() === talla.id" (click)="seleccionarTalla(talla.id)">
+              <button
+                type="button"
+                class="fs-pill"
+                [class.activa]="tallaId() === talla.id"
+                [attr.aria-pressed]="tallaId() === talla.id"
+                (click)="seleccionarTalla(talla.id)"
+              >
                 {{ talla.codigo }}
               </button>
             }
           </div>
         </div>
 
-        <div class="selector">
-          <span class="fs-etiqueta">Color</span>
-          <div class="fs-pill-fila">
-            @for (color of coloresDisponibles(); track color.id) {
-              <button type="button" class="fs-pill" [class.activa]="colorId() === color.id" (click)="seleccionarColor(color.id)">
-                {{ color.nombre }}
-              </button>
-            }
-          </div>
-        </div>
-
         @if (tallaId() !== null && colorId() !== null && !varianteActiva()) {
-          <p class="auth-error">Esa combinación de talla y color no está disponible.</p>
+          <p class="fs-error-texto" role="alert">
+            <fs-icono nombre="alerta" [tam]="24" />
+            Esa combinación de talla y color no está disponible.
+          </p>
         }
 
         @if (varianteActiva()) {
-          @if (authService.estaAutenticado()) {
-            <button type="button" class="boton-agregar" [disabled]="agregando()" (click)="agregarAlCarrito()">
-              @if (agregando()) {
-                Agregando...
-              } @else if (agregado()) {
-                Agregado ✓
-              } @else {
-                Agregar al carrito
-              }
-            </button>
-            <button type="button" class="boton-secundario" (click)="reservarParaProbar()">
-              @if (reservaCarritoService.contiene(varianteActiva()!.id)) {
-                Ya está en tu reserva ✓
-              } @else {
-                Reservar para probarte
-              }
-            </button>
-          } @else {
-            <a class="boton-agregar" [routerLink]="tienda.ruta('login')" [queryParams]="{ returnTo }">Iniciá sesión para comprar</a>
-          }
+          <div class="acciones">
+            @if (authService.estaAutenticado()) {
+              <button
+                type="button"
+                class="fs-btn fs-btn--primario fs-btn--bloque"
+                [disabled]="agregando()"
+                (click)="agregarAlCarrito()"
+              >
+                @if (agregando()) {
+                  Agregando...
+                } @else if (agregado()) {
+                  <fs-icono nombre="check" [tam]="24" />
+                  Agregado
+                } @else {
+                  <fs-icono nombre="carrito" [tam]="24" />
+                  Agregar al carrito
+                }
+              </button>
+              <button type="button" class="fs-btn fs-btn--secundario fs-btn--bloque" (click)="reservarParaProbar()">
+                @if (reservaCarritoService.contiene(varianteActiva()!.id)) {
+                  <fs-icono nombre="check" [tam]="24" />
+                  Ya está en tu reserva
+                } @else {
+                  <fs-icono nombre="calendario" [tam]="24" />
+                  Reservar para probarte
+                }
+              </button>
+            } @else {
+              <a
+                class="fs-btn fs-btn--primario fs-btn--bloque"
+                [routerLink]="tienda.ruta('login')"
+                [queryParams]="{ returnTo }"
+              >
+                Inicia sesión para comprar
+              </a>
+            }
+          </div>
         }
 
-        @if (detalle()!.descripcion) {
-          <div class="descripcion">
-            <span class="fs-etiqueta">Descripción</span>
-            <p>{{ detalle()!.descripcion }}</p>
+        @if (detalle()!.admite_probador) {
+          <div class="aviso-app">
+            <span class="aviso-app__icono"><fs-icono nombre="movil" [tam]="36" /></span>
+            <p class="aviso-app__texto">
+              <strong>Pruébalo en la app.</strong>
+              Sube una foto tuya y mira cómo te queda esta prenda antes de comprarla.
+            </p>
           </div>
         }
 
         <div class="disponibilidad">
-          <span class="fs-etiqueta">Disponibilidad por sucursal</span>
+          <span class="selector__titulo">Disponibilidad por sucursal</span>
           @if (!varianteActiva()) {
-            <p class="fs-caption">Elegí talla y color para ver la disponibilidad.</p>
+            <p class="fs-caption">Elige talla y color para ver la disponibilidad.</p>
           } @else {
             <ul>
               @for (fila of disponibilidadPorSucursal(); track fila.sucursal.id) {
                 <li>
                   <span>{{ fila.sucursal.nombre }}</span>
-                  <span [class.disponible]="fila.cantidad > 0">
+                  <span class="fs-num" [class.disponible]="fila.cantidad > 0">
                     {{ fila.cantidad > 0 ? 'Disponible (' + fila.cantidad + ')' : 'Agotado' }}
                   </span>
                 </li>

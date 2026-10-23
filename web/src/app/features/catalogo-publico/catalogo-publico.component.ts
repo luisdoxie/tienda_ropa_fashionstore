@@ -4,6 +4,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MessageService } from 'primeng/api';
+import { IconoComponent } from '../../shared/icono/icono.component';
+import { irAColeccion } from '../tienda/ir-a-coleccion';
 import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 import {
   CatalogoItem,
@@ -32,7 +34,7 @@ const GENEROS: { valor: Genero; etiqueta: string }[] = [
 @Component({
   selector: 'app-catalogo-publico',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, RouterLink],
+  imports: [DecimalPipe, FormsModule, RouterLink, IconoComponent],
   templateUrl: './catalogo-publico.component.html',
   styleUrl: './catalogo-publico.component.scss',
 })
@@ -197,7 +199,7 @@ export class CatalogoPublicoComponent implements OnInit {
     this.messageService.add({
       severity: 'error',
       summary: 'No se pudo cargar el catálogo',
-      detail: 'Probá de nuevo en un momento.',
+      detail: 'Prueba de nuevo en un momento.',
     });
   }
 
@@ -249,6 +251,11 @@ export class CatalogoPublicoComponent implements OnInit {
     this.precioMin = null;
     this.precioMax = null;
     this.cargarProductos();
+  }
+
+  /** "Explorar colección" del hero: baja a la sección del catálogo. */
+  protected explorarColeccion(evento: Event): void {
+    irAColeccion(evento);
   }
 
   protected alternarPanelFiltros(): void {

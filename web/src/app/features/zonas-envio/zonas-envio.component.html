@@ -1,37 +1,63 @@
-<h1>Zonas de envío</h1>
-
 <app-tabla-generica
   endpoint="/zonas-envio"
+  titulo="Zonas de envío"
+  eyebrow="Comercial"
+  etiquetaNuevo="Nueva zona"
+  placeholderBusqueda="Buscar zona"
   [columnas]="columnas"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
 />
 
-<p-dialog header="Zona de envío" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar zona de envío' : 'Nueva zona de envío'"
+  formId="form-zona-envio"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-zona-envio" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="ciudad">Ciudad</label>
     <p-select
       inputId="ciudad"
-      formControlName="ciudad_id"
+      formControlName="ciudad_id" appAriaError="err-ciudad_id"
       [options]="ciudades()"
       optionLabel="nombre"
       optionValue="id"
-      placeholder="Seleccioná una ciudad"
+      placeholder="Selecciona una ciudad"
       [disabled]="editando() !== null"
     />
+    <app-error-campo id="err-ciudad_id" [control]="formulario.controls.ciudad_id">Selecciona una ciudad.</app-error-campo>
 
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="anillo_desde">Anillo desde</label>
-    <p-inputnumber inputId="anillo_desde" formControlName="anillo_desde" [useGrouping]="false" [min]="1" />
+    <p-inputnumber
+      inputId="anillo_desde"
+      formControlName="anillo_desde"
+      [useGrouping]="false"
+      [min]="1"
+      appAriaError="err-anillo_desde"
+    />
+    <app-error-campo id="err-anillo_desde" [control]="formulario.controls.anillo_desde">
+      Ingresa un número desde 1.
+    </app-error-campo>
 
     <label for="anillo_hasta">Anillo hasta (vacío = sin límite superior)</label>
-    <p-inputnumber inputId="anillo_hasta" formControlName="anillo_hasta" [useGrouping]="false" [min]="1" />
+    <p-inputnumber
+      inputId="anillo_hasta"
+      formControlName="anillo_hasta"
+      [useGrouping]="false"
+      [min]="1"
+      appAriaError="err-anillo_hasta"
+    />
+    <app-error-campo id="err-anillo_hasta" [control]="formulario.controls.anillo_hasta">
+      Ingresa un número desde 1 o deja el campo vacío.
+    </app-error-campo>
 
     <label for="tarifa_base">Tarifa base</label>
-    <p-inputnumber inputId="tarifa_base" formControlName="tarifa_base" mode="currency" currency="BOB" locale="es-BO" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
+    <p-inputnumber inputId="tarifa_base" formControlName="tarifa_base" appAriaError="err-tarifa_base" mode="currency" currency="BOB" locale="es-BO" />
+    <app-error-campo id="err-tarifa_base" [control]="formulario.controls.tarifa_base">Ingresa una tarifa válida.</app-error-campo>
   </form>
-</p-dialog>
+</app-dialogo-crud>

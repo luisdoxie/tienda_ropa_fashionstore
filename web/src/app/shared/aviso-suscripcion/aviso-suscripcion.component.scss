@@ -1,0 +1,32 @@
+// Franja entre la barra superior y el contenido. Advertencia = vence pronto;
+// error = bloqueada.
+:host {
+  display: block;
+}
+
+.aviso-suscripcion {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--fs-toque);
+  padding: 12px var(--fs-espacio-6);
+  background: var(--fs-advertencia-suave);
+  color: var(--fs-advertencia);
+  border-bottom: 1px solid color-mix(in srgb, var(--fs-advertencia) 30%, transparent);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.aviso-suscripcion--bloqueada {
+  background: var(--fs-error-suave);
+  color: var(--fs-error);
+  border-bottom-color: color-mix(in srgb, var(--fs-error) 30%, transparent);
+}
+
+@media (max-width: 600px) {
+  .aviso-suscripcion {
+    padding-inline: var(--fs-espacio-4);
+    font-size: 14px;
+  }
+}

@@ -1,7 +1,9 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';import { HorarioSucursal, Sucursal } from '../../../core/models/organizacion.models';
+import { Router } from '@angular/router';
+import { HorarioSucursal, Sucursal } from '../../../core/models/organizacion.models';
 import { ReservaCrear } from '../../../core/models/reservas.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { ReservasClienteService } from '../data/reservas.service';
 import { ReservaCarritoService } from '../state/reserva-carrito.service';
@@ -17,7 +19,7 @@ function aIso(fecha: Date): string {
 @Component({
   selector: 'app-reserva-confirmar',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, IconoComponent],
   templateUrl: './reserva-confirmar.component.html',
   styleUrl: './reserva-confirmar.component.scss',
 })
@@ -141,7 +143,7 @@ export class ReservaConfirmarComponent implements OnInit {
       },
       error: () => {
         this.enviando.set(false);
-        this.error.set('No se pudo confirmar la reserva. Probá de nuevo.');
+        this.error.set('No se pudo confirmar la reserva. Prueba de nuevo.');
       },
     });
   }

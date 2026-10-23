@@ -1,47 +1,70 @@
-<div class="checkout">
-  <h1>Reservar para probarte</h1>
-  <p class="fs-caption">Elegí sucursal, fecha y horario. Te esperamos con las prendas listas.</p>
+<div class="reserva">
+  <div class="encabezado">
+    <div>
+      <span class="fs-eyebrow">Reserva en tienda</span>
+      <h1 class="fs-display">Reservar para probarte</h1>
+      <p class="encabezado__texto">Elige sucursal, fecha y horario. Te esperamos con las prendas listas.</p>
+    </div>
+  </div>
 
   <div class="lineas">
     @for (item of reservaCarritoService.lista(); track item.varianteId) {
-      <div class="fs-card linea">
+      <div class="linea">
         @if (item.imagenPrincipal) {
-          <img class="linea-foto" [src]="item.imagenPrincipal" alt="" />
+          <img class="linea__foto" [src]="item.imagenPrincipal" alt="" />
         } @else {
-          <div class="linea-foto linea-foto--vacia"><span class="pi pi-image"></span></div>
+          <div class="linea__foto linea__foto--vacia"><fs-icono nombre="imagen" [tam]="36" /></div>
         }
-        <div class="linea-info">
-          <div class="linea-nombre">{{ item.productoNombre }}</div>
-          <div class="fs-caption">{{ [item.tallaCodigo, item.colorNombre].join(' · ') }}</div>
+        <div class="linea__info">
+          <span class="linea__nombre">{{ item.productoNombre }}</span>
+          <span class="linea__detalle">{{ [item.tallaCodigo, item.colorNombre].join(' · ') }}</span>
         </div>
-        <button type="button" class="linea-quitar" (click)="quitar(item.varianteId)">Quitar</button>
+        <button
+          type="button"
+          class="linea__quitar"
+          [attr.aria-label]="'Quitar ' + item.productoNombre"
+          (click)="quitar(item.varianteId)"
+        >
+          <fs-icono nombre="basura" [tam]="24" />
+          Quitar
+        </button>
       </div>
     }
   </div>
 
-  <div class="seccion">
-    <span class="fs-etiqueta">¿En qué sucursal te probás?</span>
+  <section class="seccion">
+    <span class="seccion__titulo">¿En qué sucursal te pruebas las prendas?</span>
     @if (cargandoSucursales()) {
       <p class="fs-caption">Cargando disponibilidad...</p>
     } @else if (sucursales().length === 0) {
-      <p class="auth-error">Ninguna sucursal tiene stock de todas las prendas elegidas.</p>
+      <p class="fs-error-texto" role="alert">
+        <fs-icono nombre="alerta" [tam]="24" />
+        Ninguna sucursal tiene stock de todas las prendas elegidas.
+      </p>
     } @else {
       <div class="fs-pill-fila">
         @for (sucursal of sucursales(); track sucursal.id) {
-          <button type="button" class="fs-pill" [class.activa]="sucursalId() === sucursal.id" (click)="elegirSucursal(sucursal.id)">
+          <button
+            type="button"
+            class="fs-pill"
+            [class.activa]="sucursalId() === sucursal.id"
+            [attr.aria-pressed]="sucursalId() === sucursal.id"
+            (click)="elegirSucursal(sucursal.id)"
+          >
             {{ sucursal.nombre }}
           </button>
         }
       </div>
     }
-  </div>
+  </section>
 
   @if (sucursalId() !== null) {
-    <div class="seccion">
-      <span class="fs-etiqueta">Fecha de visita</span>
+    <section class="seccion">
+      <label class="seccion__titulo" for="fecha-visita">Fecha de visita</label>
       <input
+        id="fecha-visita"
         type="date"
-        class="campo-fecha"
+        class="fs-input campo-fecha"
         [min]="minFecha"
         [max]="maxFecha"
         [ngModel]="fecha()"
@@ -50,37 +73,51 @@
       @if (cargandoHorarios()) {
         <p class="fs-caption">Cargando horarios...</p>
       } @else if (fecha() && !horarioDelDia()) {
-        <p class="auth-error">Esta sucursal no atiende ese día. Elegí otra fecha.</p>
+        <p class="fs-error-texto" role="alert">
+          <fs-icono nombre="alerta" [tam]="24" />
+          Esta sucursal no atiende ese día. Elige otra fecha.
+        </p>
       }
-    </div>
+    </section>
   }
 
   @if (horarioDelDia()) {
-    <div class="seccion">
-      <span class="fs-etiqueta">
+    <section class="seccion">
+      <span class="seccion__titulo fs-num">
         Horario de atención: {{ horarioDelDia()!.hora_apertura.slice(0, 5) }} - {{ horarioDelDia()!.hora_cierre.slice(0, 5) }}
       </span>
       <div class="fila-horas">
-        <div>
-          <label for="desde">Desde</label>
-          <input id="desde" type="time" [ngModel]="horaDesde()" (ngModelChange)="horaDesde.set($event)" />
-        </div>
-        <div>
-          <label for="hasta">Hasta</label>
-          <input id="hasta" type="time" [ngModel]="horaHasta()" (ngModelChange)="horaHasta.set($event)" />
-        </div>
+        <label class="fs-etiqueta-campo">
+          Desde
+          <input type="time" class="fs-input" [ngModel]="horaDesde()" (ngModelChange)="horaDesde.set($event)" />
+        </label>
+        <label class="fs-etiqueta-campo">
+          Hasta
+          <input type="time" class="fs-input" [ngModel]="horaHasta()" (ngModelChange)="horaHasta.set($event)" />
+        </label>
       </div>
       @if (errorFranja()) {
-        <p class="auth-error">{{ errorFranja() }}</p>
+        <p class="fs-error-texto" role="alert">
+          <fs-icono nombre="alerta" [tam]="24" />
+          {{ errorFranja() }}
+        </p>
       }
-    </div>
+    </section>
   }
 
   @if (error()) {
-    <p class="auth-error">{{ error() }}</p>
+    <p class="fs-error-texto" role="alert">
+      <fs-icono nombre="alerta" [tam]="24" />
+      {{ error() }}
+    </p>
   }
 
-  <button type="button" class="boton-continuar" [disabled]="!listoParaConfirmar()" (click)="confirmar()">
-    {{ enviando() ? 'Confirmando...' : 'Confirmar reserva' }}
+  <button type="button" class="fs-btn fs-btn--primario fs-btn--bloque confirmar" [disabled]="!listoParaConfirmar()" (click)="confirmar()">
+    @if (enviando()) {
+      Confirmando...
+    } @else {
+      <fs-icono nombre="calendario" [tam]="24" />
+      Confirmar reserva
+    }
   </button>
 </div>

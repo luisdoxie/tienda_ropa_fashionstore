@@ -9,6 +9,12 @@ import { RecuperarRespuesta, RegistroRequest, TokenRespuesta, Usuario, UsuarioYo
 const CLAVE_ACCESS_TOKEN = 'fs_access_token';
 const CLAVE_REFRESH_TOKEN = 'fs_refresh_token';
 
+/** Rol global del superadministrador de la plataforma (`core/permisos.py`). */
+export const ROL_SUPERADMINISTRADOR = 'superadministrador';
+
+/** Entrada del personal (administrador, encargado, cajero y superadministrador). */
+export const RUTA_LOGIN_PERSONAL = '/admin/login';
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly usuarioActual = signal<UsuarioYo | null>(null);
@@ -22,6 +28,16 @@ export class AuthService {
   readonly empresaId = computed(() => this.usuarioActual()?.empresa_id ?? null);
   /** Código de la empresa de la sesión: lo que se compara con la tienda actual (/t/:codigo). */
   readonly empresaCodigo = computed(() => this.usuarioActual()?.empresa_codigo ?? null);
+  /** Superadministrador de la plataforma: rol propio o sesión sin empresa. */
+  readonly esSuperadmin = computed(() => {
+    const usuario = this.usuarioActual();
+    return usuario !== null && (usuario.roles.includes(ROL_SUPERADMINISTRADOR) || usuario.empresa_id === null);
+  });
+  /** Cuenta de comprador: su único rol es "cliente" (no entra al back office). */
+  readonly esSoloCliente = computed(() => {
+    const roles = this.roles();
+    return roles.length > 0 && roles.every((rol) => rol === 'cliente');
+  });
 
   private readonly tienda = inject(TiendaActualService);
 
@@ -90,11 +106,11 @@ export class AuthService {
 
   logout(): void {
     this.limpiarSesion();
-    // Dentro de una tienda se vuelve a su login; fuera, al login del personal (E16 lo cambia).
+    // Dentro de una tienda se vuelve a su login; fuera, al login del personal.
     if (this.tienda.codigo()) {
       this.router.navigate(this.tienda.ruta('login'));
     } else {
-      this.router.navigate(['/login']);
+      this.router.navigate([RUTA_LOGIN_PERSONAL]);
     }
   }
 

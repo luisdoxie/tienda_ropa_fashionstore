@@ -1,0 +1,130 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Plataforma</span>
+    <h1>Planes</h1>
+    <p>
+      Los límites y las funcionalidades se leen de aquí en cada petición: editar un plan cambia lo que pueden hacer todas
+      las empresas que lo tienen.
+    </p>
+  </div>
+</div>
+
+<p-table [value]="planes()" [loading]="cargando()" dataKey="id" styleClass="p-datatable-sm">
+  <ng-template #header>
+    <tr>
+      <th>Plan</th>
+      <th class="numero">Sucursales</th>
+      <th class="numero">Copias en historial</th>
+      <th class="numero">Plazo de cambio (h)</th>
+      <th>Funcionalidades</th>
+      <th>Activo</th>
+      <th class="columna-acciones">Acciones</th>
+    </tr>
+  </ng-template>
+  <ng-template #body let-plan>
+    <tr>
+      <td>
+        <strong>{{ plan.nombre }}</strong>
+        <div class="fs-caption">{{ plan.codigo }}</div>
+      </td>
+      <td class="numero">{{ plan.max_sucursales }}</td>
+      <td class="numero">{{ plan.max_copias_historial }}</td>
+      <td class="numero">{{ plan.plazo_cambio_horas_defecto }}</td>
+      <td>
+        <div class="funciones">
+          @for (funcion of funciones; track funcion.id) {
+            <span class="funcion" [class.funcion--incluida]="plan[funcion.id]">
+              <fs-icono [nombre]="plan[funcion.id] ? 'check' : 'menos'" [tam]="20" />
+              {{ funcion.etiqueta }}
+            </span>
+          }
+        </div>
+      </td>
+      <td>
+        <span class="fs-chip" [class.fs-chip--exito]="plan.activo">{{ plan.activo ? 'Activo' : 'Inactivo' }}</span>
+      </td>
+      <td>
+        <p-button icon="pi pi-pencil" [text]="true" ariaLabel="Editar plan" (onClick)="abrirEditar(plan)" />
+      </td>
+    </tr>
+  </ng-template>
+  <ng-template #emptymessage>
+    <tr>
+      <td colspan="7" class="fs-estado-vacio">Sin planes.</td>
+    </tr>
+  </ng-template>
+</p-table>
+
+<p-dialog
+  [header]="'Editar plan ' + (editando()?.nombre ?? '')"
+  [(visible)]="dialogoVisible"
+  [modal]="true"
+  [style]="{ width: '480px', maxWidth: '96vw' }"
+>
+  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+    <div class="plan-identidad">
+      <div>
+        <label for="plan-codigo">Código</label>
+        <input id="plan-codigo" class="fs-input plan-fijo" [value]="editando()?.codigo ?? ''" disabled />
+      </div>
+      <div>
+        <label for="plan-nombre">Nombre</label>
+        <input id="plan-nombre" class="fs-input plan-fijo" [value]="editando()?.nombre ?? ''" disabled />
+      </div>
+    </div>
+
+    <label for="max_sucursales">Máximo de sucursales activas</label>
+    <p-inputnumber
+      inputId="max_sucursales"
+      formControlName="max_sucursales"
+      [min]="limites.max_sucursales.min"
+      [max]="limites.max_sucursales.max"
+      [useGrouping]="false"
+    />
+    @if (hayError('max_sucursales')) {
+      <small class="fs-error-texto">Ingresa un número entero entre 1 y 1000.</small>
+    }
+
+    <label for="max_copias_historial">Copias de seguridad en el historial</label>
+    <p-inputnumber
+      inputId="max_copias_historial"
+      formControlName="max_copias_historial"
+      [min]="limites.max_copias_historial.min"
+      [max]="limites.max_copias_historial.max"
+      [useGrouping]="false"
+    />
+    @if (hayError('max_copias_historial')) {
+      <small class="fs-error-texto">Ingresa un número entero entre 0 y 1000.</small>
+    }
+
+    <label for="plazo_cambio_horas_defecto">Plazo de cambio por defecto (horas)</label>
+    <p-inputnumber
+      inputId="plazo_cambio_horas_defecto"
+      formControlName="plazo_cambio_horas_defecto"
+      [min]="limites.plazo_cambio_horas_defecto.min"
+      [max]="limites.plazo_cambio_horas_defecto.max"
+      [useGrouping]="false"
+    />
+    @if (hayError('plazo_cambio_horas_defecto')) {
+      <small class="fs-error-texto">Ingresa un número entero entre 0 y 8760.</small>
+    }
+
+    <h3 class="plan-seccion">Funcionalidades incluidas</h3>
+    <div class="plan-banderas">
+      @for (funcion of funciones; track funcion.id) {
+        <label class="formulario__checkbox" [attr.for]="'func-' + funcion.id">
+          <p-checkbox [inputId]="'func-' + funcion.id" [formControlName]="funcion.id" [binary]="true" />
+          {{ funcion.etiqueta }}
+        </label>
+      }
+    </div>
+
+    <p class="plan-aviso">
+      Bajar el límite de sucursales no desactiva las que una empresa ya tiene: solo impide crear o reactivar sucursales
+      hasta que quede dentro del límite. Quitar una funcionalidad sí la bloquea enseguida en todas las empresas con este
+      plan.
+    </p>
+
+    <p-button type="submit" label="Guardar" styleClass="w-full" [loading]="guardando()" />
+  </form>
+</p-dialog>

@@ -9,13 +9,11 @@ import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
 import { environment } from '../../../environments/environment';
 import { EnvioEstadoActualizar, Envio, EstadoEnvio } from '../../core/models/entregas.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 
 const TAMANIO_PAGINA = 20;
-
-type Severidad = 'info' | 'warn' | 'success' | 'danger' | 'secondary';
 
 const ETIQUETAS_ESTADO: Record<EstadoEnvio, string> = {
   programado: 'Programado',
@@ -24,11 +22,11 @@ const ETIQUETAS_ESTADO: Record<EstadoEnvio, string> = {
   fallido: 'Fallido',
 };
 
-const SEVERIDAD_ESTADO: Record<EstadoEnvio, Severidad> = {
-  programado: 'info',
-  en_ruta: 'warn',
-  entregado: 'success',
-  fallido: 'danger',
+const CLASE_ESTADO: Record<EstadoEnvio, string> = {
+  programado: '',
+  en_ruta: 'fs-chip--advertencia',
+  entregado: 'fs-chip--exito',
+  fallido: 'fs-chip--error',
 };
 
 const OPCIONES_ESTADO: { label: string; value: EstadoEnvio | null }[] = [
@@ -51,7 +49,7 @@ const MENSAJE_EXITO: Record<EstadoEnvio, string> = {
  * encargado de sucursal) ve los envíos de su alcance y los hace avanzar:
  * programado → en ruta → entregado, o fallido desde cualquiera de los dos.
  * Las reglas (transiciones, venta pagada, sucursal) las valida el backend;
- * acá solo se ofrecen los botones que tienen sentido para cada estado.
+ * aquí solo se ofrecen los botones que tienen sentido para cada estado.
  */
 @Component({
   selector: 'app-envios',
@@ -66,7 +64,7 @@ const MENSAJE_EXITO: Record<EstadoEnvio, string> = {
     InputTextModule,
     SelectModule,
     TableModule,
-    TagModule,
+    IconoComponent,
   ],
   providers: [ConfirmationService],
   templateUrl: './envios.component.html',
@@ -98,8 +96,8 @@ export class EnviosComponent implements OnInit {
     return ETIQUETAS_ESTADO[estado];
   }
 
-  protected severidadEstado(estado: EstadoEnvio): Severidad {
-    return SEVERIDAD_ESTADO[estado];
+  protected claseEstado(estado: EstadoEnvio): string {
+    return CLASE_ESTADO[estado];
   }
 
   protected cambiarFiltro(estado: EstadoEnvio | null): void {

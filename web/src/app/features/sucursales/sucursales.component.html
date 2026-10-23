@@ -1,35 +1,46 @@
-<h1>Sucursales</h1>
-
 <app-tabla-generica
   endpoint="/sucursales"
+  titulo="Sucursales"
+  eyebrow="Organización"
+  etiquetaNuevo="Nueva sucursal"
+  placeholderBusqueda="Buscar sucursal"
   [columnas]="columnas"
-  accionExtraIcono="pi pi-clock"
+  accionExtraIcono="reloj"
   accionExtraEtiqueta="Horarios de atención"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
   (accionExtra)="abrirHorarios($event)"
 />
 
-<p-dialog header="Sucursal" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar sucursal' : 'Nueva sucursal'"
+  formId="form-sucursal"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-sucursal" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="ciudad">Ciudad</label>
     <p-select
       inputId="ciudad"
-      formControlName="ciudad_id"
+      formControlName="ciudad_id" appAriaError="err-ciudad_id"
       [options]="ciudades()"
       optionLabel="nombre"
       optionValue="id"
-      placeholder="Seleccioná una ciudad"
+      placeholder="Selecciona una ciudad"
     />
+    <app-error-campo id="err-ciudad_id" [control]="formulario.controls.ciudad_id">Selecciona una ciudad.</app-error-campo>
 
     <label for="codigo">Código</label>
-    <input id="codigo" pInputText formControlName="codigo" />
+    <input id="codigo" pInputText formControlName="codigo" appAriaError="err-codigo" />
+    <app-error-campo id="err-codigo" [control]="formulario.controls.codigo">Ingresa el código.</app-error-campo>
 
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="direccion">Dirección</label>
-    <input id="direccion" pInputText formControlName="direccion" />
+    <input id="direccion" pInputText formControlName="direccion" appAriaError="err-direccion" />
+    <app-error-campo id="err-direccion" [control]="formulario.controls.direccion">Ingresa la dirección.</app-error-campo>
 
     <label for="telefono">Teléfono</label>
     <input id="telefono" pInputText formControlName="telefono" />
@@ -45,10 +56,8 @@
         Activo
       </label>
     }
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>
 
 <!-- RF06: horarios de atención por día. De estos horarios depende además la
      validación de la franja de una reserva, así que lo que se cargue acá
@@ -57,13 +66,14 @@
   [header]="'Horarios de ' + (sucursalHorarios()?.nombre ?? '')"
   [(visible)]="dialogoHorarios"
   [modal]="true"
-  [style]="{ width: '540px' }"
+  [draggable]="false"
+  [style]="{ width: '540px', maxWidth: '96vw' }"
 >
   @if (cargandoHorarios()) {
     <p class="fs-caption">Cargando horarios…</p>
   } @else {
     <p class="fs-caption horarios-ayuda">
-      Destildar un día lo deja cerrado y <strong>borra</strong> su horario: no se puede deshacer.
+      Desmarcar un día lo deja cerrado y <strong>borra</strong> su horario: no se puede deshacer.
     </p>
 
     <div class="horarios-lista">
@@ -78,12 +88,14 @@
             <div class="horarios-rango">
               <input
                 type="time"
+                [attr.aria-label]="'Apertura del ' + fila.nombre"
                 [value]="fila.hora_apertura"
                 (change)="cambiarHora(fila.dia_semana, 'hora_apertura', $any($event.target).value)"
               />
               <span class="fs-caption">a</span>
               <input
                 type="time"
+                [attr.aria-label]="'Cierre del ' + fila.nombre"
                 [value]="fila.hora_cierre"
                 (change)="cambiarHora(fila.dia_semana, 'hora_cierre', $any($event.target).value)"
               />
@@ -96,13 +108,18 @@
     </div>
 
     @if (diasInvalidos().length) {
-      <p class="horarios-aviso">
+      <p class="fs-error-texto horarios-aviso">
+        <fs-icono nombre="alerta" [tam]="20" />
         El cierre tiene que ser posterior a la apertura: {{ diasInvalidos().join(', ') }}.
       </p>
     }
 
     <div class="horarios-pie">
-      <p-button label="Guardar horarios" [loading]="guardandoHorarios()" (onClick)="guardarHorarios()" />
+      <button type="button" class="fs-btn fs-btn--secundario" (click)="dialogoHorarios.set(false)">Cancelar</button>
+      <button type="button" class="fs-btn fs-btn--primario" [disabled]="guardandoHorarios()" (click)="guardarHorarios()">
+        <fs-icono nombre="check" [tam]="24" />
+        Guardar horarios
+      </button>
     </div>
   }
 </p-dialog>

@@ -1,9 +1,11 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MetodoPagoPasarela, Pago } from '../../../core/models/pagos.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { PagosService } from '../data/pagos.service';
 import { CheckoutService } from '../state/checkout.service';
 import { TiendaActualService } from '../state/tienda-actual.service';
+import { PasosCompraComponent } from './pasos-compra.component';
 
 const INTERVALO_MS = 3000;
 const MAX_INTENTOS = 20;
@@ -16,7 +18,7 @@ const MAX_INTENTOS_ERROR = 5;
 @Component({
   selector: 'app-checkout-estado',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, IconoComponent, PasosCompraComponent],
   templateUrl: './checkout-estado.component.html',
   styleUrl: './checkout-estado.component.scss',
 })

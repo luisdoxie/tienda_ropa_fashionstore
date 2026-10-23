@@ -1,0 +1,6 @@
+@if (aviso(); as aviso) {
+  <div class="aviso-suscripcion" [class.aviso-suscripcion--bloqueada]="aviso.gravedad === 'bloqueada'" role="status">
+    <fs-icono [nombre]="aviso.icono" [tam]="28" />
+    <span>{{ aviso.texto }}</span>
+  </div>
+}

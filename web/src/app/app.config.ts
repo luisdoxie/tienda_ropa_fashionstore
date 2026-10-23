@@ -19,25 +19,82 @@ import { authInterceptor } from './core/auth.interceptor';
 import { errorInterceptor } from './core/error.interceptor';
 import { environment } from '../environments/environment';
 
-// El preset de PrimeNG trae su propio color "primario" (el verde por
-// defecto de Aura) que no tiene nada que ver con --fs-acento -- sin esto,
-// cada p-button/p-checkbox/etc. se queda con el verde de fábrica aunque el
-// resto del CSS ya esté en terracota. Rampa 50-950 derivada del acento
-// #9A3E1F (CLAUDE.md, tokens de diseño).
+// Preset de PrimeNG alineado con styles.scss (CLAUDE.md, tokens de diseño).
+// Sobre fondo claro el "primario" es la tinta (#151515), igual que el botón
+// primario propio (.fs-btn--primario): el color de acento (lima u oliva) no
+// pinta controles, solo detalles. Grises cálidos, esquinas casi rectas y
+// áreas tocables de 44-48 px.
 const FashionStorePreset = definePreset(Aura, {
+  primitive: {
+    borderRadius: { none: '0', xs: '2px', sm: '2px', md: '4px', lg: '6px', xl: '8px' },
+  },
   semantic: {
     primary: {
-      50: '#f7ede7',
-      100: '#ecd6c8',
-      200: '#ddb69e',
-      300: '#c99274',
-      400: '#b06e4c',
-      500: '#9a3e1f',
-      600: '#732e16',
-      700: '#5c2512',
-      800: '#451c0e',
-      900: '#2f1309',
-      950: '#1c0b05',
+      50: '#f7f5f1',
+      100: '#efebe4',
+      200: '#e4dfd6',
+      300: '#c9c2b6',
+      400: '#a39b8f',
+      500: '#6b645c',
+      600: '#3d3a35',
+      700: '#2a2723',
+      800: '#1f1d19',
+      900: '#151515',
+      950: '#0d0c0b',
+    },
+    formField: {
+      paddingX: '0.875rem',
+      paddingY: '0.8rem',
+      borderRadius: '{border.radius.md}',
+    },
+    overlay: {
+      modal: { borderRadius: '{border.radius.xl}', padding: '1.5rem', shadow: '0 20px 48px rgba(22, 20, 18, 0.3)' },
+    },
+    colorScheme: {
+      light: {
+        surface: {
+          0: '#ffffff',
+          50: '#f7f5f1',
+          100: '#efebe4',
+          200: '#e4dfd6',
+          300: '#c9c2b6',
+          400: '#a39b8f',
+          500: '#6b645c',
+          600: '#544e48',
+          700: '#3d3935',
+          800: '#272421',
+          900: '#1b1916',
+          950: '#0f0d0b',
+        },
+        primary: {
+          color: '{primary.900}',
+          contrastColor: '#f5f4f0',
+          hoverColor: '{primary.700}',
+          activeColor: '{primary.600}',
+        },
+        highlight: {
+          background: '{primary.900}',
+          focusBackground: '{primary.700}',
+          color: '#f5f4f0',
+          focusColor: '#f5f4f0',
+        },
+      },
+    },
+  },
+  components: {
+    button: {
+      root: {
+        paddingX: '1.25rem',
+        paddingY: '0.85rem',
+        label: { fontWeight: '600' },
+      },
+    },
+    datatable: {
+      headerCell: { background: 'transparent', color: '{text.muted.color}' },
+      bodyCell: { padding: '0.5rem 0.75rem' },
+    },
+    dialog: {
+      title: { fontSize: '1.25rem', fontWeight: '800' },
     },
   },
 });

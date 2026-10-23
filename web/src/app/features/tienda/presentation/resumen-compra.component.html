@@ -1,0 +1,32 @@
+<aside class="resumen" aria-label="Resumen de la compra">
+  <h2 class="resumen__titulo">Resumen</h2>
+
+  @if (subtotal() === null || total() === null) {
+    <p class="resumen__calculando" role="status">
+      {{ cargando() ? 'Calculando…' : 'No se pudo calcular el resumen.' }}
+    </p>
+  } @else {
+    <div class="resumen__fila">
+      <span class="resumen__etiqueta">Subtotal</span>
+      <span class="fs-num">Bs {{ subtotal() | number: '1.2-2' }}</span>
+    </div>
+    @if (descuento() > 0) {
+      <div class="resumen__fila">
+        <span class="resumen__etiqueta">Descuento</span>
+        <span class="fs-num resumen__descuento">- Bs {{ descuento() | number: '1.2-2' }}</span>
+      </div>
+    }
+    @if (envio() !== null) {
+      <div class="resumen__fila">
+        <span class="resumen__etiqueta">Envío</span>
+        <span class="fs-num">Bs {{ envio() | number: '1.2-2' }}</span>
+      </div>
+    }
+    <div class="resumen__total">
+      <span class="resumen__total-etiqueta">Total</span>
+      <span class="resumen__total-importe fs-num">Bs {{ total() | number: '1.2-2' }}</span>
+    </div>
+  }
+
+  <ng-content />
+</aside>

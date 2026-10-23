@@ -1,27 +1,82 @@
 <div class="checkout">
-  <h1>Pago</h1>
+  <app-pasos-compra class="checkout__pasos" [actual]="1" />
 
-  <div class="fs-card resumen-entrega">
-    <strong>{{ checkoutService.tipoEntrega() === 'retiro' ? 'Retiro en sucursal' : 'Envío a domicilio' }}</strong>
-    @if (checkoutService.costoEnvio() > 0) {
-      <span class="fs-caption">Costo de envío: {{ checkoutService.costoEnvio() | number: '1.2-2' }}</span>
-    }
+  <div class="columnas">
+    <div class="columnas__principal">
+      <h1 class="fs-display titulo">Pago</h1>
+
+      <div class="entrega">
+        <span class="entrega__icono">
+          <fs-icono [nombre]="checkoutService.tipoEntrega() === 'retiro' ? 'tienda' : 'camion'" [tam]="32" />
+        </span>
+        <div class="entrega__datos">
+          <div class="entrega__titulo">
+            {{ checkoutService.tipoEntrega() === 'retiro' ? 'Retiro en sucursal' : 'Envío a domicilio' }}
+          </div>
+          @if (checkoutService.costoEnvio() > 0) {
+            <div class="entrega__texto fs-num">Costo de envío Bs {{ checkoutService.costoEnvio() | number: '1.2-2' }}</div>
+          }
+        </div>
+        @if (!checkoutService.venta()) {
+          <a class="entrega__cambiar" [routerLink]="tienda.ruta('checkout', 'entrega')">Cambiar</a>
+        }
+      </div>
+
+      <section class="bloque">
+        <span class="bloque__titulo">Método de pago</span>
+        <div class="metodos" role="group" aria-label="Método de pago">
+          @for (opcion of metodos; track opcion.codigo) {
+            <button
+              type="button"
+              class="metodo"
+              [class.metodo--elegido]="metodo() === opcion.codigo"
+              [attr.aria-pressed]="metodo() === opcion.codigo"
+              (click)="elegirMetodo(opcion.codigo)"
+            >
+              <span class="metodo__icono"><fs-icono [nombre]="opcion.icono" [tam]="36" /></span>
+              <span>
+                <span class="metodo__nombre">{{ opcion.etiqueta }}</span>
+                <span class="metodo__texto">{{ opcion.texto }}</span>
+              </span>
+            </button>
+          }
+        </div>
+      </section>
+
+      @if (error()) {
+        <p class="fs-error-texto" role="alert">
+          <fs-icono nombre="alerta" [tam]="24" />
+          {{ error() }}
+        </p>
+      }
+    </div>
+
+    <div class="columnas__lateral">
+      <app-resumen-compra
+        [subtotal]="resumenVista()?.subtotal ?? null"
+        [descuento]="resumenVista()?.descuento ?? 0"
+        [envio]="checkoutService.tipoEntrega() ? checkoutService.costoEnvio() : null"
+        [total]="resumenVista()?.total ?? null"
+        [cargando]="carritoService.calculandoResumen()"
+      >
+        <button
+          type="button"
+          class="fs-btn fs-btn--primario fs-btn--bloque pagar"
+          [disabled]="procesando()"
+          (click)="pagar()"
+        >
+          @if (procesando()) {
+            Procesando...
+          } @else {
+            <fs-icono nombre="candado" [tam]="24" />
+            @if (resumenVista(); as r) {
+              Pagar Bs {{ r.total | number: '1.2-2' }}
+            } @else {
+              Pagar
+            }
+          }
+        </button>
+      </app-resumen-compra>
+    </div>
   </div>
-
-  <span class="fs-etiqueta">Método de pago</span>
-  <div class="fs-pill-fila">
-    @for (opcion of metodos; track opcion.codigo) {
-      <button type="button" class="fs-pill" [class.activa]="metodo() === opcion.codigo" (click)="elegirMetodo(opcion.codigo)">
-        {{ opcion.etiqueta }}
-      </button>
-    }
-  </div>
-
-  @if (error()) {
-    <p class="auth-error">{{ error() }}</p>
-  }
-
-  <button type="button" class="boton-continuar" [disabled]="procesando()" (click)="pagar()">
-    {{ procesando() ? 'Procesando...' : 'Pagar' }}
-  </button>
 </div>

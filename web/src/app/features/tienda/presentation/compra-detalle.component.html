@@ -1,72 +1,76 @@
-<div class="compra">
+<div class="cuenta">
   @if (cargando()) {
-    <p class="fs-caption">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
   } @else if (error() || !venta()) {
-    <p class="fs-caption">No se pudo cargar esta compra.</p>
+    <div class="fs-estado-vacio">
+      <fs-icono nombre="alerta" [tam]="52" />
+      <p>No se pudo cargar esta compra.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta('mis-compras')">Volver a mis compras</a>
+    </div>
   } @else {
-    <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">← Mis compras</a>
-    <h1>{{ venta()!.codigo }}</h1>
-    <p class="fs-caption">
-      {{ venta()!.costo_envio > 0 ? 'Envío a domicilio' : 'Retiro en sucursal' }}
-    </p>
-
-    @if (envio(); as envio) {
-      <div class="fs-card seguimiento">
-        <div class="seguimiento-estado" [class]="'seguimiento-estado seguimiento-estado--' + envio.estado">
-          {{ etiquetaEnvio(envio.estado) }}
-        </div>
-        @if (envio.estado === 'entregado' && envio.fecha_entrega) {
-          <div class="fs-caption">Entregado el {{ fechaLocal(envio.fecha_entrega) | date: 'dd/MM/yyyy HH:mm' }}</div>
-        }
-        @if (envio.estado === 'fallido') {
-          <div class="fs-caption">No se pudo entregar tu pedido. Comunicate con la sucursal.</div>
-        }
-        @if (envio.repartidor) {
-          <div class="fs-caption">Repartidor: {{ envio.repartidor }}</div>
-        }
+    <div class="encabezado">
+      <div>
+        <span class="fs-eyebrow">
+          {{ venta()!.costo_envio > 0 ? 'Envío a domicilio' : 'Retiro en sucursal' }}
+        </span>
+        <h1 class="fs-display fs-num">{{ venta()!.codigo }}</h1>
       </div>
-    }
-
-    <div class="lineas">
-      @for (linea of lineas(); track linea.id) {
-        <div class="fs-card linea">
-          @if (linea.imagenPrincipal) {
-            <img class="linea-foto" [src]="linea.imagenPrincipal" alt="" />
-          } @else {
-            <div class="linea-foto linea-foto--vacia"><span class="pi pi-image"></span></div>
-          }
-          <div class="linea-info">
-            <div class="linea-nombre">{{ linea.productoNombre ?? 'Prenda' }}</div>
-            @if (linea.tallaCodigo || linea.colorNombre) {
-              <div class="fs-caption">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</div>
-            }
-            <div class="fs-caption">Cantidad: {{ linea.cantidad }}</div>
-          </div>
-          <span class="fs-num">{{ linea.subtotal | number: '1.2-2' }}</span>
-        </div>
-      }
+      <a class="enlace-volver" [routerLink]="tienda.ruta('mis-compras')">
+        <fs-icono nombre="flecha-izquierda" [tam]="24" />
+        Mis compras
+      </a>
     </div>
 
-    <div class="fs-card resumen">
-      <div class="resumen-fila">
-        <span>Subtotal</span>
-        <span class="fs-num">{{ venta()!.subtotal | number: '1.2-2' }}</span>
+    <div class="columnas">
+      <div class="columnas__principal">
+        @if (envio(); as envio) {
+          <div class="seguimiento">
+            <span class="seguimiento__icono" [class]="'seguimiento__icono seguimiento__icono--' + envio.estado">
+              <fs-icono nombre="camion" [tam]="32" />
+            </span>
+            <div class="seguimiento__datos">
+              <div class="seguimiento__estado">{{ etiquetaEnvio(envio.estado) }}</div>
+              @if (envio.estado === 'entregado' && envio.fecha_entrega) {
+                <div class="seguimiento__texto">
+                  Entregado el {{ fechaLocal(envio.fecha_entrega) | date: 'dd/MM/yyyy HH:mm' }}
+                </div>
+              }
+              @if (envio.estado === 'fallido') {
+                <div class="seguimiento__texto">No se pudo entregar tu pedido. Comunícate con la sucursal.</div>
+              }
+              @if (envio.repartidor) {
+                <div class="seguimiento__texto">Repartidor: {{ envio.repartidor }}</div>
+              }
+            </div>
+          </div>
+        }
+
+        @for (linea of lineas(); track linea.id) {
+          <div class="linea">
+            @if (linea.imagenPrincipal) {
+              <img class="linea__foto" [src]="linea.imagenPrincipal" alt="" />
+            } @else {
+              <div class="linea__foto linea__foto--vacia"><fs-icono nombre="imagen" [tam]="36" /></div>
+            }
+            <div class="linea__info">
+              <span class="linea__nombre">{{ linea.productoNombre ?? 'Prenda' }}</span>
+              @if (linea.tallaCodigo || linea.colorNombre) {
+                <span class="linea__detalle">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</span>
+              }
+              <span class="linea__detalle fs-num">Cantidad: {{ linea.cantidad }}</span>
+            </div>
+            <span class="linea__precio fs-num">Bs {{ linea.subtotal | number: '1.2-2' }}</span>
+          </div>
+        }
       </div>
-      @if (venta()!.descuento > 0) {
-        <div class="resumen-fila descuento">
-          <span>Descuento</span>
-          <span class="fs-num">-{{ venta()!.descuento | number: '1.2-2' }}</span>
-        </div>
-      }
-      @if (venta()!.costo_envio > 0) {
-        <div class="resumen-fila">
-          <span>Envío</span>
-          <span class="fs-num">{{ venta()!.costo_envio | number: '1.2-2' }}</span>
-        </div>
-      }
-      <div class="resumen-fila total">
-        <span>Total</span>
-        <span class="fs-num">{{ venta()!.total | number: '1.2-2' }}</span>
+
+      <div class="columnas__lateral">
+        <app-resumen-compra
+          [subtotal]="venta()!.subtotal"
+          [descuento]="venta()!.descuento"
+          [envio]="venta()!.costo_envio > 0 ? venta()!.costo_envio : null"
+          [total]="venta()!.total"
+        />
       </div>
     </div>
   }

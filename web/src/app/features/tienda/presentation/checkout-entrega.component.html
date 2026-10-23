@@ -1,89 +1,134 @@
 <div class="checkout">
-  <h1>Entrega</h1>
+  <app-pasos-compra class="checkout__pasos" [actual]="0" />
 
-  <span class="fs-etiqueta">¿Cómo querés recibir tu pedido?</span>
-  <div class="fs-pill-fila">
-    <button
-      type="button"
-      class="fs-pill"
-      [class.activa]="checkoutService.tipoEntrega() === 'retiro'"
-      (click)="elegirTipoEntrega('retiro')"
-    >
-      Retiro en sucursal
-    </button>
-    <button
-      type="button"
-      class="fs-pill"
-      [class.activa]="checkoutService.tipoEntrega() === 'domicilio'"
-      (click)="elegirTipoEntrega('domicilio')"
-    >
-      Envío a domicilio
-    </button>
+  <div class="columnas">
+    <div class="columnas__principal">
+      <h1 class="fs-display titulo">Entrega</h1>
+
+      <section class="bloque">
+        <span class="bloque__titulo">¿Cómo quieres recibir tu pedido?</span>
+        <div class="tipos" role="group" aria-label="Tipo de entrega">
+          <button
+            type="button"
+            class="tipo"
+            [class.tipo--elegido]="checkoutService.tipoEntrega() === 'retiro'"
+            [attr.aria-pressed]="checkoutService.tipoEntrega() === 'retiro'"
+            (click)="elegirTipoEntrega('retiro')"
+          >
+            <span class="tipo__icono"><fs-icono nombre="tienda" [tam]="36" /></span>
+            <span>
+              <span class="tipo__titulo">Retiro en sucursal</span>
+              <span class="tipo__texto">Sin costo de envío</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="tipo"
+            [class.tipo--elegido]="checkoutService.tipoEntrega() === 'domicilio'"
+            [attr.aria-pressed]="checkoutService.tipoEntrega() === 'domicilio'"
+            (click)="elegirTipoEntrega('domicilio')"
+          >
+            <span class="tipo__icono"><fs-icono nombre="camion" [tam]="36" /></span>
+            <span>
+              <span class="tipo__titulo">Envío a domicilio</span>
+              <span class="tipo__texto">Según tu zona de entrega</span>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      @if (checkoutService.tipoEntrega() === 'domicilio') {
+        <section class="bloque">
+          <span class="bloque__titulo">Dirección</span>
+          @if (cargandoDirecciones()) {
+            <p class="fs-caption">Cargando tus direcciones...</p>
+          } @else {
+            <div class="direcciones">
+              @for (direccion of direcciones(); track direccion.id) {
+                <button
+                  type="button"
+                  class="direccion"
+                  [class.direccion--elegida]="checkoutService.direccionId() === direccion.id"
+                  [attr.aria-pressed]="checkoutService.direccionId() === direccion.id"
+                  (click)="elegirDireccion(direccion.id)"
+                >
+                  <fs-icono nombre="ubicacion" [tam]="28" />
+                  <span>
+                    <span class="direccion__alias">{{ direccion.alias || 'Dirección' }}</span>
+                    <span class="direccion__texto">{{ direccion.direccion }}</span>
+                  </span>
+                </button>
+              }
+              <button type="button" class="direccion direccion--nueva" (click)="abrirDialogoDireccion()">
+                <fs-icono nombre="mas" [tam]="24" />
+                Nueva dirección
+              </button>
+            </div>
+          }
+          @if (checkoutService.direccionId() !== null) {
+            <p class="costo-envio" role="status">
+              @if (cotizando()) {
+                Calculando costo de envío...
+              } @else if (checkoutService.cotizacion()) {
+                Envío a {{ checkoutService.cotizacion()!.zona_nombre }}:
+                <strong class="fs-num">Bs {{ checkoutService.cotizacion()!.costo | number: '1.2-2' }}</strong>
+              }
+            </p>
+          }
+        </section>
+      }
+
+      @if (checkoutService.tipoEntrega()) {
+        <section class="bloque">
+          <span class="bloque__titulo">
+            {{ checkoutService.tipoEntrega() === 'retiro' ? '¿En qué sucursal retiras?' : 'Sucursal que despacha tu pedido' }}
+          </span>
+          @if (cargandoSucursales()) {
+            <p class="fs-caption">Cargando disponibilidad...</p>
+          } @else if (sucursales().length === 0) {
+            <p class="fs-error-texto" role="alert">
+              <fs-icono nombre="alerta" [tam]="24" />
+              Ninguna sucursal tiene stock de todas las prendas de tu carrito.
+            </p>
+          } @else {
+            <div class="fs-pill-fila">
+              @for (sucursal of sucursales(); track sucursal.id) {
+                <button
+                  type="button"
+                  class="fs-pill"
+                  [class.activa]="checkoutService.sucursalId() === sucursal.id"
+                  [attr.aria-pressed]="checkoutService.sucursalId() === sucursal.id"
+                  (click)="elegirSucursal(sucursal.id)"
+                >
+                  {{ sucursal.nombre }}
+                </button>
+              }
+            </div>
+          }
+        </section>
+      }
+    </div>
+
+    <div class="columnas__lateral">
+      <app-resumen-compra
+        [subtotal]="carritoService.resumen()?.subtotal ?? null"
+        [descuento]="carritoService.resumen()?.descuento ?? 0"
+        [envio]="envioResumen()"
+        [total]="totalResumen()"
+        [cargando]="carritoService.calculandoResumen()"
+      >
+        <button
+          type="button"
+          class="fs-btn fs-btn--primario fs-btn--bloque continuar"
+          [disabled]="!checkoutService.listoParaPagar()"
+          (click)="continuar()"
+        >
+          Continuar al pago
+          <fs-icono nombre="flecha-derecha" [tam]="24" />
+        </button>
+      </app-resumen-compra>
+    </div>
   </div>
-
-  @if (checkoutService.tipoEntrega() === 'domicilio') {
-    <div class="seccion">
-      <span class="fs-etiqueta">Dirección</span>
-      @if (cargandoDirecciones()) {
-        <p class="fs-caption">Cargando tus direcciones...</p>
-      } @else {
-        <div class="direcciones">
-          @for (direccion of direcciones(); track direccion.id) {
-            <button
-              type="button"
-              class="fs-card direccion-tarjeta"
-              [class.seleccionada]="checkoutService.direccionId() === direccion.id"
-              (click)="elegirDireccion(direccion.id)"
-            >
-              <strong>{{ direccion.alias || 'Dirección' }}</strong>
-              <span>{{ direccion.direccion }}</span>
-            </button>
-          }
-          <p-button label="Nueva dirección" icon="pi pi-plus" [text]="true" (onClick)="abrirDialogoDireccion()" />
-        </div>
-      }
-      @if (checkoutService.direccionId() !== null) {
-        <p class="fs-caption costo-envio">
-          @if (cotizando()) {
-            Calculando costo de envío...
-          } @else if (checkoutService.cotizacion()) {
-            Envío a {{ checkoutService.cotizacion()!.zona_nombre }}:
-            <span class="fs-num">{{ checkoutService.cotizacion()!.costo | number: '1.2-2' }}</span>
-          }
-        </p>
-      }
-    </div>
-  }
-
-  @if (checkoutService.tipoEntrega()) {
-    <div class="seccion">
-      <span class="fs-etiqueta">
-        {{ checkoutService.tipoEntrega() === 'retiro' ? '¿En qué sucursal retirás?' : 'Sucursal que despacha tu pedido' }}
-      </span>
-      @if (cargandoSucursales()) {
-        <p class="fs-caption">Cargando disponibilidad...</p>
-      } @else if (sucursales().length === 0) {
-        <p class="auth-error">Ninguna sucursal tiene stock de todas las prendas de tu carrito.</p>
-      } @else {
-        <div class="fs-pill-fila">
-          @for (sucursal of sucursales(); track sucursal.id) {
-            <button
-              type="button"
-              class="fs-pill"
-              [class.activa]="checkoutService.sucursalId() === sucursal.id"
-              (click)="elegirSucursal(sucursal.id)"
-            >
-              {{ sucursal.nombre }}
-            </button>
-          }
-        </div>
-      }
-    </div>
-  }
-
-  <button type="button" class="boton-continuar" [disabled]="!checkoutService.listoParaPagar()" (click)="continuar()">
-    Continuar
-  </button>
 </div>
 
 <p-dialog header="Nueva dirección" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px', maxWidth: '92vw' }">
@@ -104,7 +149,7 @@
       [options]="zonas()"
       optionLabel="nombre"
       optionValue="id"
-      placeholder="Seleccioná una zona"
+      placeholder="Selecciona una zona"
     />
 
     <p-button type="submit" label="Guardar dirección" styleClass="w-full" />

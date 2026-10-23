@@ -1,51 +1,90 @@
-<div class="estado-pago">
+<div class="checkout">
+  <app-pasos-compra class="checkout__pasos" [actual]="pago()?.estado === 'aprobado' ? 3 : 2" />
+
+  <div class="encabezado">
+    <span class="fs-eyebrow">Confirmación</span>
+    <h1 class="fs-display">Estado del pago</h1>
+  </div>
+
   @if (cargando()) {
-    <div class="panel">
-      <p class="fs-caption">Consultando el estado del pago...</p>
-    </div>
+    <section class="panel panel--neutro" role="status">
+      <span class="panel__icono"><fs-icono nombre="reloj" [tam]="52" [trazo]="1.6" /></span>
+      <h2 class="panel__titulo">Consultando el estado del pago...</h2>
+    </section>
   } @else if (pago()?.estado === 'aprobado') {
-    <div class="panel">
-      <span class="pi pi-check-circle icono icono--exito"></span>
-      <h1>¡Pago aprobado!</h1>
-      <button type="button" class="boton-continuar" (click)="irAMiCompra()">Ver mi compra</button>
-    </div>
+    <section class="panel panel--exito" role="status">
+      <span class="panel__icono"><fs-icono nombre="check" [tam]="52" [trazo]="1.6" /></span>
+      <span class="fs-chip fs-chip--exito">Aprobado</span>
+      <h2 class="panel__titulo">¡Pago aprobado!</h2>
+      <p class="panel__texto">Recibimos tu pago. Te avisaremos cuando tu pedido esté listo.</p>
+      <div class="panel__acciones">
+        <button type="button" class="fs-btn fs-btn--primario fs-btn--bloque" (click)="irAMiCompra()">Ver mi compra</button>
+      </div>
+    </section>
   } @else if (pago()?.estado === 'rechazado') {
-    <div class="panel">
-      <span class="pi pi-times-circle icono icono--error"></span>
-      <h1>El pago fue rechazado</h1>
-      <p class="fs-caption">Podés intentar de nuevo con el mismo método u otro.</p>
-      <button type="button" class="boton-continuar" [disabled]="reintentando()" (click)="reintentar()">
-        {{ reintentando() ? 'Reintentando...' : 'Reintentar' }}
-      </button>
-    </div>
+    <section class="panel panel--error" role="alert">
+      <span class="panel__icono"><fs-icono nombre="cerrar" [tam]="52" [trazo]="1.6" /></span>
+      <span class="fs-chip fs-chip--error">Rechazado</span>
+      <h2 class="panel__titulo">El pago fue rechazado</h2>
+      <p class="panel__texto">Puedes intentarlo de nuevo con el mismo método u otro.</p>
+      <div class="panel__acciones">
+        <button
+          type="button"
+          class="fs-btn fs-btn--primario fs-btn--bloque"
+          [disabled]="reintentando()"
+          (click)="reintentar()"
+        >
+          {{ reintentando() ? 'Reintentando...' : 'Reintentar' }}
+        </button>
+      </div>
+    </section>
   } @else if (errorConsulta()) {
-    <div class="panel">
-      <span class="pi pi-exclamation-triangle icono icono--error"></span>
-      <h1>No pudimos consultar el estado</h1>
-      <p class="fs-caption">
-        Falló la conexión al consultar el pago, así que dejamos de reintentar. Tu pago puede haberse
-        procesado igual: revisalo en "Mis compras" antes de volver a pagar.
+    <section class="panel panel--neutro" role="alert">
+      <span class="panel__icono"><fs-icono nombre="advertencia" [tam]="52" [trazo]="1.6" /></span>
+      <span class="fs-chip">Sin conexión</span>
+      <h2 class="panel__titulo">No pudimos consultar el estado</h2>
+      <p class="panel__texto">
+        Falló la conexión y dejamos de reintentar. Tu pago puede haberse procesado: revísalo en "Mis compras" antes
+        de volver a pagar.
       </p>
-      <button type="button" class="boton-continuar" (click)="volverAConsultar()">Volver a consultar</button>
-      <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
-    </div>
+      <div class="panel__acciones">
+        <button type="button" class="fs-btn fs-btn--primario fs-btn--bloque" (click)="volverAConsultar()">
+          Volver a consultar
+        </button>
+        <a class="panel__enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
+      </div>
+    </section>
   } @else if (agotado()) {
-    <div class="panel">
-      <span class="pi pi-hourglass icono"></span>
-      <h1>Pago pendiente de confirmación</h1>
-      <p class="fs-caption">
-        Todavía no tenemos la confirmación de la pasarela. Podés reintentar el pago o revisar más tarde en
-        "Mis compras".
+    <section class="panel panel--advertencia" role="status">
+      <span class="panel__icono"><fs-icono nombre="reloj-arena" [tam]="52" [trazo]="1.6" /></span>
+      <span class="fs-chip fs-chip--advertencia">Pendiente</span>
+      <h2 class="panel__titulo">Pago pendiente de confirmación</h2>
+      <p class="panel__texto">
+        Todavía no tenemos la confirmación de la pasarela. Puedes reintentar el pago o revisar más tarde en "Mis
+        compras".
       </p>
-      <button type="button" class="boton-continuar" [disabled]="reintentando()" (click)="reintentar()">
-        {{ reintentando() ? 'Reintentando...' : 'Reintentar' }}
-      </button>
-      <a class="auth-enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
-    </div>
+      <div class="panel__acciones">
+        <button
+          type="button"
+          class="fs-btn fs-btn--primario fs-btn--bloque"
+          [disabled]="reintentando()"
+          (click)="reintentar()"
+        >
+          {{ reintentando() ? 'Reintentando...' : 'Reintentar' }}
+        </button>
+        <a class="panel__enlace" [routerLink]="tienda.ruta('mis-compras')">Ver mis compras</a>
+      </div>
+    </section>
   } @else {
-    <div class="panel">
-      <p class="fs-caption">Esperando la confirmación de la pasarela...</p>
-      <button type="button" class="boton-secundario" (click)="consultarAhora()">Ya completé el pago</button>
-    </div>
+    <section class="panel panel--neutro" role="status">
+      <span class="panel__icono"><fs-icono nombre="reloj-arena" [tam]="52" [trazo]="1.6" /></span>
+      <h2 class="panel__titulo">Esperando la confirmación de la pasarela...</h2>
+      <p class="panel__texto">Completa el pago en la ventana que se abrió. Esta pantalla se actualiza sola.</p>
+      <div class="panel__acciones">
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--bloque" (click)="consultarAhora()">
+          Ya completé el pago
+        </button>
+      </div>
+    </section>
   }
 </div>

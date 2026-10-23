@@ -64,8 +64,38 @@ describe('PlataformaHomeComponent', () => {
     const acceso = html().querySelector<HTMLAnchorElement>('.home-acceso');
     expect(acceso?.textContent).toContain('Acceso del personal');
     expect(acceso?.getAttribute('href')).toBe(RUTA_ACCESO_PERSONAL);
-    expect(html().textContent).toContain('Elegí tu tienda');
-    expect(html().textContent).toContain('Con la tecnología de FashionStore');
+    expect(html().textContent).toContain('Visita una tienda');
+    expect(html().textContent).toContain('FashionStore · Plataforma para tiendas de ropa');
+  });
+
+  it('presenta servicios y los dos planes, sin precio ni cifras de relleno', () => {
+    crear();
+    pedidoTiendas(1).flush([]);
+    fixture.detectChanges();
+
+    const texto = html().textContent ?? '';
+    expect(html().querySelectorAll('.home-servicio').length).toBe(6);
+    expect(Array.from(html().querySelectorAll('.home-plan__nombre')).map((n) => n.textContent?.trim())).toEqual([
+      'Básico',
+      'Profesional',
+    ]);
+    expect(texto).not.toMatch(/\[(N|precio)\]/);
+    expect(texto).not.toContain('Bs [');
+    // Sin endpoint de alta: la franja final lleva al acceso del personal, no a un formulario.
+    expect(html().querySelector('form')).toBeNull();
+    expect(html().querySelector('.home-cta__enlace')?.getAttribute('href')).toBe(RUTA_ACCESO_PERSONAL);
+  });
+
+  it('el plan Profesional marca como próximamente lo que aún no existe', () => {
+    crear();
+    pedidoTiendas(1).flush([]);
+    fixture.detectChanges();
+
+    const profesional = html().querySelectorAll('.home-plan')[1].textContent ?? '';
+    expect(profesional).toContain('Reportes con IA');
+    expect(profesional).toContain('Analítica con aprendizaje automático (próximamente)');
+    expect(profesional).toContain('Trabajo sin conexión (próximamente)');
+    expect(profesional).not.toContain('Funciones de IA y analítica');
   });
 
   it('muestra esqueletos mientras carga y luego una tarjeta por tienda, con enlace a /t/<codigo>', () => {
@@ -79,14 +109,14 @@ describe('PlataformaHomeComponent', () => {
     const enlaces = Array.from(html().querySelectorAll<HTMLAnchorElement>('a.tarjeta'));
     expect(enlaces.map((a) => a.getAttribute('href'))).toEqual(['/t/acme', '/t/andina']);
     expect(enlaces[0].textContent).toContain('Acme');
-    // Sin logo: la inicial sobre el color de acento.
-    expect(enlaces[0].querySelector('.tarjeta__inicial')?.textContent).toBe('A');
+    // Sin logo: las siglas de la marca.
+    expect(enlaces[0].querySelector('.marca__monograma')?.textContent?.trim()).toBe('AC');
     expect(enlaces[0].style.getPropertyValue('--tarjeta-acento')).toBe('#9a3e1f');
     // Sin color propio: queda el acento base de la app.
     expect(enlaces[1].style.getPropertyValue('--tarjeta-acento')).toBe('');
   });
 
-  it('solo usa logos http/https; otro esquema muestra la inicial', () => {
+  it('solo usa logos http/https; otro esquema muestra las siglas', () => {
     crear();
     pedidoTiendas(1).flush([
       tienda('con', 'Con logo', { logo_url: 'https://cdn.example.com/logo.png' }),
@@ -97,10 +127,10 @@ describe('PlataformaHomeComponent', () => {
     const tarjetas = html().querySelectorAll('a.tarjeta');
     expect(tarjetas[0].querySelector('img')?.getAttribute('src')).toBe('https://cdn.example.com/logo.png');
     expect(tarjetas[1].querySelector('img')).toBeNull();
-    expect(tarjetas[1].querySelector('.tarjeta__inicial')?.textContent).toBe('M');
+    expect(tarjetas[1].querySelector('.marca__monograma')?.textContent?.trim()).toBe('MA');
   });
 
-  it('si el logo no carga, muestra la inicial', () => {
+  it('si el logo no carga, muestra las siglas', () => {
     crear();
     pedidoTiendas(1).flush([tienda('rota', 'Rota', { logo_url: 'https://cdn.example.com/rota.png' })]);
     fixture.detectChanges();
@@ -109,7 +139,7 @@ describe('PlataformaHomeComponent', () => {
     fixture.detectChanges();
 
     expect(html().querySelector('img')).toBeNull();
-    expect(html().querySelector('.tarjeta__inicial')?.textContent).toBe('R');
+    expect(html().querySelector('a.tarjeta .marca__monograma')?.textContent?.trim()).toBe('RO');
   });
 
   it('el buscador espera 350 ms y pide con ?q=', () => {

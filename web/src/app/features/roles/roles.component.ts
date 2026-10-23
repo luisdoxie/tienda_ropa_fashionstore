@@ -2,11 +2,14 @@ import { HttpClient } from '@angular/common/http';
 import { Component, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MessageService } from 'primeng/api';
-import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
+import { finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Permiso, Rol } from '../../core/models/seguridad.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
+import { IconoComponent } from '../../shared/icono/icono.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Rol>[] = [
@@ -25,13 +28,15 @@ interface GrupoPermisos {
 @Component({
   selector: 'app-roles',
   standalone: true,
-  imports: [ReactiveFormsModule, ButtonModule, DialogModule, InputTextModule, TablaGenericaComponent],
+  imports: [ReactiveFormsModule, DialogModule, InputTextModule, TablaGenericaComponent, DialogoCrudComponent, IconoComponent, ErrorCampoComponent, AriaErrorDirective],
   templateUrl: './roles.component.html',
   styleUrl: './roles.component.scss',
 })
 export class RolesComponent {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Rol | null>(null);
 
   // ---- Permisos por rol (RF03) ----
@@ -76,7 +81,8 @@ export class RolesComponent {
       ? this.http.put(`${environment.apiUrl}/roles/${rol.id}`, datos)
       : this.http.post(`${environment.apiUrl}/roles`, datos);
 
-    peticion.subscribe(() => {
+    this.guardando.set(true);
+    peticion.pipe(finalize(() => this.guardando.set(false))).subscribe(() => {
       this.dialogoVisible.set(false);
       this.tabla.recargar();
     });
@@ -100,7 +106,7 @@ export class RolesComponent {
         this.messageService.add({
           severity: 'error',
           summary: 'No se pudieron cargar los permisos',
-          detail: 'Probá de nuevo en un momento.',
+          detail: 'Prueba de nuevo en un momento.',
         });
       },
     });
@@ -153,13 +159,19 @@ export class RolesComponent {
     return grupo.permisos.length > 0 && grupo.permisos.every((p) => this.seleccionados().has(p.codigo));
   }
 
+  /** Algunos permisos del módulo están marcados, pero no todos (estado "mixto" de la casilla). */
+  protected moduloParcial(grupo: GrupoPermisos): boolean {
+    const marcados = grupo.permisos.filter((p) => this.seleccionados().has(p.codigo)).length;
+    return marcados > 0 && marcados < grupo.permisos.length;
+  }
+
   guardarPermisos(): void {
     const rol = this.rolPermisos();
     if (!rol || this.guardandoPermisos()) return;
 
     this.guardandoPermisos.set(true);
     // El endpoint REEMPLAZA la lista completa, no es incremental: se manda
-    // todo lo tildado, y lo que no está se quita.
+    // todo lo marcado, y lo que no está se quita.
     const codigos_permiso = [...this.seleccionados()];
 
     this.http.put<Rol>(`${environment.apiUrl}/roles/${rol.id}/permisos`, { codigos_permiso }).subscribe({

@@ -1,63 +1,106 @@
 <div class="carrito">
-  <h1>Tu carrito</h1>
+  <div class="encabezado">
+    <div>
+      <span class="fs-eyebrow">Tu compra</span>
+      <h1 class="fs-display">Tu carrito</h1>
+    </div>
+    <a class="enlace-volver" [routerLink]="tienda.ruta()">
+      <fs-icono nombre="flecha-izquierda" [tam]="24" />
+      Seguir comprando
+    </a>
+  </div>
 
   @if (cargando()) {
-    <p class="fs-caption">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
   } @else if (carritoService.lineas().length === 0) {
-    <div class="vacio">
-      <p class="fs-caption">Todavía no agregaste ninguna prenda.</p>
-      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
+    <div class="fs-estado-vacio vacio">
+      <fs-icono nombre="carrito" [tam]="52" />
+      <p>Todavía no has agregado ninguna prenda.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
-    <div class="lineas">
-      @for (linea of carritoService.lineas(); track linea.variante_id) {
-        <div class="fs-card linea">
-          @if (linea.imagenPrincipal) {
-            <img class="linea-foto" [src]="linea.imagenPrincipal" alt="" />
-          } @else {
-            <div class="linea-foto linea-foto--vacia"><span class="pi pi-image"></span></div>
-          }
-          <div class="linea-info">
-            <div class="linea-nombre">{{ linea.productoNombre ?? 'Prenda' }}</div>
-            @if (linea.tallaCodigo || linea.colorNombre) {
-              <div class="fs-caption">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</div>
+    <div class="columnas">
+      <div class="columnas__principal">
+        @for (linea of carritoService.lineas(); track linea.variante_id) {
+          <div class="linea" [class.linea--aviso]="!linea.disponible">
+            @if (linea.imagenPrincipal) {
+              <img class="linea__foto" [src]="linea.imagenPrincipal" alt="" />
+            } @else {
+              <div class="linea__foto linea__foto--vacia"><fs-icono nombre="imagen" [tam]="36" /></div>
             }
-            <div class="linea-precio fs-num">{{ linea.precio_unitario | number: '1.2-2' }}</div>
-            @if (!linea.disponible) {
-              <div class="linea-no-disponible">Ya no está disponible: quitala para continuar</div>
-            }
-          </div>
-          <div class="linea-acciones">
-            <div class="linea-cantidad">
-              <button type="button" (click)="disminuir(linea.variante_id, linea.cantidad)">-</button>
-              <span>{{ linea.cantidad }}</span>
-              <button type="button" [disabled]="!linea.disponible" (click)="aumentar(linea.variante_id, linea.cantidad)">+</button>
+            <div class="linea__info">
+              <span class="linea__nombre">{{ linea.productoNombre ?? 'Prenda' }}</span>
+              @if (linea.tallaCodigo || linea.colorNombre) {
+                <span class="linea__detalle">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</span>
+              }
+              <span class="linea__precio fs-num">Bs {{ linea.precio_unitario | number: '1.2-2' }}</span>
+              @if (!linea.disponible) {
+                <span class="linea__no-disponible">
+                  <fs-icono nombre="advertencia" [tam]="24" />
+                  Ya no está disponible: quítala para continuar
+                </span>
+              }
             </div>
-            <button type="button" class="linea-quitar" (click)="quitar(linea.variante_id)">Quitar</button>
-          </div>
-        </div>
-      }
-    </div>
-
-    @if (resumen(); as resumen) {
-      <div class="fs-card resumen">
-        <div class="resumen-fila">
-          <span>Subtotal</span>
-          <span class="fs-num">{{ resumen.subtotal | number: '1.2-2' }}</span>
-        </div>
-        @if (resumen.descuento > 0) {
-          <div class="resumen-fila descuento">
-            <span>Descuento</span>
-            <span class="fs-num">-{{ resumen.descuento | number: '1.2-2' }}</span>
+            <div class="linea__acciones">
+              <div class="cantidad">
+                <button
+                  type="button"
+                  class="cantidad__boton"
+                  aria-label="Disminuir cantidad"
+                  (click)="disminuir(linea.variante_id, linea.cantidad)"
+                >
+                  <fs-icono nombre="menos" [tam]="24" />
+                </button>
+                <span class="cantidad__valor fs-num">{{ linea.cantidad }}</span>
+                <button
+                  type="button"
+                  class="cantidad__boton"
+                  aria-label="Aumentar cantidad"
+                  [disabled]="!linea.disponible"
+                  (click)="aumentar(linea.variante_id, linea.cantidad)"
+                >
+                  <fs-icono nombre="mas" [tam]="24" />
+                </button>
+              </div>
+              <button
+                type="button"
+                class="linea__quitar"
+                [attr.aria-label]="'Quitar ' + (linea.productoNombre ?? 'prenda')"
+                (click)="quitar(linea.variante_id)"
+              >
+                <fs-icono nombre="basura" [tam]="24" />
+                Quitar
+              </button>
+            </div>
           </div>
         }
-        <div class="resumen-fila total">
-          <span>Total</span>
-          <span class="fs-num">{{ resumen.total | number: '1.2-2' }}</span>
-        </div>
       </div>
-    }
 
-    <button type="button" class="boton-continuar" [disabled]="hayNoDisponibles()" (click)="continuar()">Continuar</button>
+      <div class="columnas__lateral">
+        <app-resumen-compra
+          [subtotal]="carritoService.resumen()?.subtotal ?? null"
+          [descuento]="carritoService.resumen()?.descuento ?? 0"
+          [total]="carritoService.resumen()?.total ?? null"
+          [cargando]="carritoService.calculandoResumen()"
+        >
+          <button
+            type="button"
+            class="fs-btn fs-btn--primario fs-btn--bloque continuar"
+            [disabled]="hayNoDisponibles()"
+            (click)="continuar()"
+          >
+            Continuar
+            <fs-icono nombre="flecha-derecha" [tam]="24" />
+          </button>
+          @if (hayNoDisponibles()) {
+            <p class="nota">Quita las prendas que ya no están disponibles para continuar con la compra.</p>
+          }
+          <p class="seguro">
+            <fs-icono nombre="escudo-check" [tam]="28" />
+            Pagos seguros con QR, PayPal o Libélula.
+          </p>
+        </app-resumen-compra>
+      </div>
+    </div>
   }
 </div>

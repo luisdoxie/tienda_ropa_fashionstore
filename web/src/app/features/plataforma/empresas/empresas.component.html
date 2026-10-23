@@ -1,0 +1,353 @@
+<p-confirmdialog />
+
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Plataforma</span>
+    <h1>Empresas</h1>
+  </div>
+  <p-button label="Nueva empresa" icon="pi pi-plus" (onClick)="abrirNueva()" />
+</div>
+
+<div class="filtros">
+  <span class="fs-campo filtros__buscar">
+    <fs-icono class="fs-campo__icono" nombre="busqueda" [tam]="24" />
+    <input
+      type="search"
+      class="fs-input fs-input--icono"
+      placeholder="Buscar por nombre o código"
+      aria-label="Buscar empresas"
+      (input)="escribirBusqueda($any($event.target).value)"
+    />
+  </span>
+  <p-select
+    [options]="opcionesActivo"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Mostrar empresas"
+    [ngModel]="filtroActivo()"
+    (ngModelChange)="cambiarFiltroActivo($event)"
+  />
+  <p-select
+    [options]="opcionesEstado"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Estado de la suscripción"
+    [ngModel]="filtroEstado()"
+    (ngModelChange)="filtroEstado.set($event)"
+  />
+  <p-select
+    [options]="opcionesPlanFiltro()"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Plan"
+    [ngModel]="filtroPlan()"
+    (ngModelChange)="filtroPlan.set($event)"
+  />
+  <p-button icon="pi pi-refresh" [text]="true" ariaLabel="Recargar" (onClick)="cargar()" />
+</div>
+<p class="fs-caption filtros__nota">Los filtros de suscripción y plan se aplican a las empresas de esta página.</p>
+
+<p-table [value]="filas()" [loading]="cargando()" dataKey="id" styleClass="p-datatable-sm">
+  <ng-template #header>
+    <tr>
+      <th>Empresa</th>
+      <th>Código</th>
+      <th>Plan</th>
+      <th>Suscripción</th>
+      <th>Vence</th>
+      <th>Activa</th>
+      <th class="columna-acciones">Acciones</th>
+    </tr>
+  </ng-template>
+  <ng-template #body let-empresa>
+    <tr [class.inactiva]="!empresa.activo">
+      <td>
+        <div class="empresa">
+          <fs-marca
+            class="empresa__marca"
+            [nombre]="empresa.nombre"
+            [logoUrl]="logoValido(empresa.logo_url)"
+            variante="claro"
+            tam="sm"
+            [soloMonograma]="true"
+          />
+          <div>
+            <span class="empresa__nombre">{{ empresa.nombre }}</span>
+            @if (empresa.administrador_email) {
+              <div class="fs-caption">{{ empresa.administrador_email }}</div>
+            }
+          </div>
+        </div>
+      </td>
+      <td><code>{{ empresa.codigo }}</code></td>
+      <td>{{ nombrePlan(empresa.plan_codigo) }}</td>
+      <td>
+        <span [class]="claseChip(empresa.suscripcion_estado)">{{ etiquetaEstado(empresa.suscripcion_estado) }}</span>
+      </td>
+      <td class="numero">{{ fecha(empresa.fecha_vencimiento) ? (fecha(empresa.fecha_vencimiento) | date: 'dd/MM/yyyy') : '—' }}</td>
+      <td>
+        <button
+          type="button"
+          role="switch"
+          class="interruptor"
+          [class.interruptor--activo]="empresa.activo"
+          [attr.aria-checked]="empresa.activo"
+          [attr.aria-label]="'Empresa activa: ' + empresa.nombre"
+          (click)="pedirCambioActivo(empresa)"
+        >
+          <span class="interruptor__pista"><span class="interruptor__bola"></span></span>
+        </button>
+      </td>
+      <td>
+        <div class="acciones">
+          <a
+            class="enlace-icono"
+            [class.deshabilitado]="!empresa.activo"
+            [attr.href]="empresa.activo ? urlTienda(empresa.codigo) : null"
+            target="_blank"
+            rel="noopener"
+            title="Ver tienda"
+            aria-label="Ver tienda"
+          >
+            <fs-icono nombre="enlace-externo" [tam]="24" />
+          </a>
+          <p-button icon="pi pi-pencil" [text]="true" ariaLabel="Editar empresa" (onClick)="abrirEditar(empresa)" />
+        </div>
+      </td>
+    </tr>
+  </ng-template>
+  <ng-template #emptymessage>
+    <tr>
+      <td colspan="7" class="fs-estado-vacio">Sin empresas.</td>
+    </tr>
+  </ng-template>
+</p-table>
+
+<div class="paginacion">
+  <p-button icon="pi pi-chevron-left" [text]="true" ariaLabel="Página anterior" [disabled]="pagina() === 1" (onClick)="irAPaginaAnterior()" />
+  <span>Página {{ pagina() }}</span>
+  <p-button icon="pi pi-chevron-right" [text]="true" ariaLabel="Página siguiente" [disabled]="!hayPaginaSiguiente()" (onClick)="irAPaginaSiguiente()" />
+</div>
+
+<!-- Alta: todo en un solo diálogo, con el resumen al final. -->
+<p-dialog
+  [header]="creada() ? 'Empresa creada' : 'Nueva empresa'"
+  [(visible)]="dialogoNuevoVisible"
+  [modal]="true"
+  [style]="{ width: '580px', maxWidth: '96vw' }"
+  (onHide)="limpiarAlta()"
+>
+  @if (creada(); as c) {
+    <div class="resumen">
+      <p class="resumen__titulo">
+        <fs-icono nombre="escudo-check" [tam]="24" />
+        {{ c.nombre }} ya está lista.
+      </p>
+      <dl class="resumen__datos">
+        <dt>Código</dt>
+        <dd><code>{{ c.codigo }}</code></dd>
+        <dt>Tienda</dt>
+        <dd>
+          <a [attr.href]="urlTienda(c.codigo)" target="_blank" rel="noopener">{{ urlTiendaCompleta(c.codigo) }}</a>
+        </dd>
+        <dt>Administrador</dt>
+        <dd>{{ c.administrador_email }}</dd>
+        <dt>Clave inicial</dt>
+        <dd class="resumen__clave">
+          <code>{{ claveInicial() }}</code>
+          <p-button icon="pi pi-copy" [text]="true" ariaLabel="Copiar la clave" (onClick)="copiarClave()" />
+        </dd>
+      </dl>
+      <p class="resumen__aviso">Anota la clave inicial: no se vuelve a mostrar.</p>
+      <p-button label="Listo" styleClass="w-full" (onClick)="cerrarNueva()" />
+    </div>
+  } @else {
+    <form [formGroup]="formulario" (ngSubmit)="crear()" class="formulario" autocomplete="off">
+      <label for="emp-nombre">Nombre comercial</label>
+      <input id="emp-nombre" pInputText formControlName="nombre" maxlength="120" />
+      @if (formulario.controls.nombre.touched && formulario.controls.nombre.errors; as e) {
+        <small class="fs-error-texto">
+          @if (e['required']) { Ingresa el nombre de la empresa. }
+          @else if (e['corto']) { El nombre necesita al menos 2 caracteres. }
+          @else if (e['largo']) { El nombre admite hasta 120 caracteres. }
+          @else { Usa al menos una letra o un número. }
+        </small>
+      }
+      @if (errorNombre(); as mensaje) {
+        <small class="fs-error-texto">{{ mensaje }}</small>
+      }
+      <p class="codigo-vista">
+        Código: <code>{{ codigoVistaPrevia() || '—' }}</code>
+        <span class="fs-caption">No cambia aunque cambies el nombre.</span>
+      </p>
+
+      <div class="dos-columnas">
+        <div class="campo">
+          <label for="emp-logo">Logo (URL)</label>
+          <input id="emp-logo" pInputText formControlName="logo_url" placeholder="https://…" />
+          @if (formulario.controls.logo_url.errors && formulario.controls.logo_url.touched) {
+            <small class="fs-error-texto">Ingresa una dirección que empiece con http:// o https://.</small>
+          }
+        </div>
+        <div class="campo">
+          <label for="emp-color">Color de acento</label>
+          <div class="color-fila">
+            <input
+              type="color"
+              class="color-selector"
+              aria-label="Elegir color de acento"
+              [value]="colorSelectorAlta()"
+              (input)="elegirColorAlta($any($event.target).value)"
+            />
+            <input id="emp-color" pInputText formControlName="color_acento" placeholder="#9a3e1f" maxlength="7" />
+          </div>
+          @if (formulario.controls.color_acento.errors && formulario.controls.color_acento.touched) {
+            <small class="fs-error-texto">Usa un color hexadecimal, por ejemplo #9a3e1f.</small>
+          }
+          @if (colorPocoContrasteAlta()) {
+            <p class="fs-aviso aviso-color" role="status">
+              <fs-icono nombre="alerta" [tam]="24" />
+              <span>Este color contrasta poco con el blanco: la tienda usará el color base de FashionStore. Puedes guardarlo igual.</span>
+            </p>
+          }
+        </div>
+      </div>
+
+      <div class="dos-columnas">
+        <div class="campo">
+          <label for="emp-plan">Plan</label>
+          <p-select
+            inputId="emp-plan"
+            formControlName="plan_codigo"
+            [options]="opcionesPlanAlta()"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Básico por defecto"
+            appendTo="body"
+          />
+        </div>
+        <div class="campo">
+          <label for="emp-vence">Vence</label>
+          <p-datepicker
+            inputId="emp-vence"
+            formControlName="fecha_vencimiento"
+            dateFormat="dd/mm/yy"
+            [showIcon]="true"
+            [minDate]="manana"
+            appendTo="body"
+          />
+          @if (formulario.controls.fecha_vencimiento.errors && formulario.controls.fecha_vencimiento.touched) {
+            <small class="fs-error-texto">Elige una fecha posterior a hoy.</small>
+          }
+        </div>
+      </div>
+
+      <h3 class="seccion">Administrador de la empresa</h3>
+      <div formGroupName="administrador" class="formulario">
+        <div class="dos-columnas">
+          <div class="campo">
+            <label for="adm-nombre">Nombre</label>
+            <input id="adm-nombre" pInputText formControlName="nombre" maxlength="60" />
+            @if (formulario.controls.administrador.controls.nombre.invalid && formulario.controls.administrador.controls.nombre.touched) {
+              <small class="fs-error-texto">Ingresa el nombre.</small>
+            }
+          </div>
+          <div class="campo">
+            <label for="adm-apellido">Apellido</label>
+            <input id="adm-apellido" pInputText formControlName="apellido" maxlength="60" />
+            @if (formulario.controls.administrador.controls.apellido.invalid && formulario.controls.administrador.controls.apellido.touched) {
+              <small class="fs-error-texto">Ingresa el apellido.</small>
+            }
+          </div>
+        </div>
+
+        <label for="adm-email">Correo</label>
+        <input id="adm-email" pInputText type="email" formControlName="email" autocomplete="off" />
+        @if (formulario.controls.administrador.controls.email.invalid && formulario.controls.administrador.controls.email.touched) {
+          <small class="fs-error-texto">Ingresa un correo válido.</small>
+        }
+
+        <label for="adm-telefono">Teléfono (opcional)</label>
+        <input id="adm-telefono" pInputText formControlName="telefono" maxlength="20" />
+
+        <label for="adm-password">Clave inicial</label>
+        <input id="adm-password" pInputText type="password" formControlName="password" autocomplete="new-password" maxlength="72" />
+        @if (formulario.controls.administrador.controls.password.invalid && formulario.controls.administrador.controls.password.touched) {
+          <small class="fs-error-texto">La clave necesita entre 8 y 72 caracteres.</small>
+        }
+      </div>
+
+      @if (errorAlta(); as mensaje) {
+        <p class="fs-error-texto">{{ mensaje }}</p>
+      }
+
+      <p class="simulacion">Simulación de contratación: no se realiza ningún cobro.</p>
+      <p-button type="submit" label="Crear empresa" styleClass="w-full" [loading]="guardandoAlta()" />
+    </form>
+  }
+</p-dialog>
+
+<!-- Edición: identidad visual. El código se ve pero no cambia. -->
+<p-dialog
+  [header]="'Editar ' + (editando()?.nombre ?? 'empresa')"
+  [(visible)]="dialogoEditarVisible"
+  [modal]="true"
+  [style]="{ width: '500px', maxWidth: '96vw' }"
+>
+  <form [formGroup]="formularioEdicion" (ngSubmit)="guardarEdicion()" class="formulario">
+    <label for="ed-codigo">Código</label>
+    <input id="ed-codigo" pInputText class="campo-fijo" [value]="editando()?.codigo ?? ''" disabled />
+    <small class="fs-caption">El código identifica la tienda y no cambia aunque cambies el nombre.</small>
+
+    <label for="ed-nombre">Nombre comercial</label>
+    <input id="ed-nombre" pInputText formControlName="nombre" maxlength="120" />
+    @if (formularioEdicion.controls.nombre.errors && formularioEdicion.controls.nombre.touched) {
+      <small class="fs-error-texto">Ingresa un nombre de entre 2 y 120 caracteres, con al menos una letra o un número.</small>
+    }
+
+    <label for="ed-logo">Logo (URL)</label>
+    <input id="ed-logo" pInputText formControlName="logo_url" placeholder="https://…" />
+    @if (formularioEdicion.controls.logo_url.errors && formularioEdicion.controls.logo_url.touched) {
+      <small class="fs-error-texto">Ingresa una dirección que empiece con http:// o https://.</small>
+    }
+
+    <label for="ed-color">Color de acento</label>
+    <div class="color-fila">
+      <input
+        type="color"
+        class="color-selector"
+        aria-label="Elegir color de acento"
+        [value]="colorSelectorEdicion()"
+        (input)="elegirColorEdicion($any($event.target).value)"
+      />
+      <input id="ed-color" pInputText formControlName="color_acento" placeholder="#9a3e1f" maxlength="7" />
+    </div>
+    @if (formularioEdicion.controls.color_acento.errors && formularioEdicion.controls.color_acento.touched) {
+      <small class="fs-error-texto">Usa un color hexadecimal, por ejemplo #9a3e1f.</small>
+    }
+    @if (colorPocoContrasteEdicion()) {
+      <p class="fs-aviso aviso-color" role="status">
+        <fs-icono nombre="alerta" [tam]="24" />
+        <span>Este color contrasta poco con el blanco: la tienda usará el color base de FashionStore. Puedes guardarlo igual.</span>
+      </p>
+    }
+
+    <h3 class="seccion">Uso actual</h3>
+    @if (cargandoResumen()) {
+      <p class="fs-caption">Cargando…</p>
+    } @else if (resumen(); as r) {
+      <dl class="resumen__datos">
+        <dt>Sucursales activas</dt>
+        <dd class="numero">{{ r.sucursales_activas }} de {{ r.max_sucursales ?? '—' }}</dd>
+        <dt>Usuarios activos</dt>
+        <dd class="numero">{{ r.usuarios_activos }}</dd>
+        <dt>Administrador</dt>
+        <dd>{{ r.administrador_email ?? '—' }}</dd>
+      </dl>
+    } @else {
+      <p class="fs-caption">No se pudo cargar el uso de la empresa.</p>
+    }
+
+    <p-button type="submit" label="Guardar" styleClass="w-full" [loading]="guardandoEdicion()" />
+  </form>
+</p-dialog>

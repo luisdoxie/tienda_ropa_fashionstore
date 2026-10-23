@@ -1,21 +1,33 @@
-<h1>Temporadas</h1>
+<app-tabla-generica
+  endpoint="/temporadas"
+  titulo="Temporadas"
+  eyebrow="Catálogo"
+  etiquetaNuevo="Nueva temporada"
+  placeholderBusqueda="Buscar temporada"
+  [columnas]="columnas"
+  (crear)="abrirCrear()"
+  (editar)="abrirEditar($event)"
+/>
 
-<app-tabla-generica endpoint="/temporadas" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
-
-<p-dialog header="Temporada" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar temporada' : 'Nueva temporada'"
+  formId="form-temporada"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-temporada" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" placeholder="Primavera-verano" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" placeholder="Primavera-verano" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="anio">Año</label>
-    <p-inputnumber inputId="anio" formControlName="anio" [useGrouping]="false" />
+    <p-inputnumber inputId="anio" formControlName="anio" [useGrouping]="false" appAriaError="err-anio" />
+    <app-error-campo id="err-anio" [control]="formulario.controls.anio">Ingresa un año entre 2000 y 2100.</app-error-campo>
 
     <label for="fecha_inicio">Desde (opcional)</label>
     <p-datepicker inputId="fecha_inicio" formControlName="fecha_inicio" dateFormat="dd/mm/yy" [showIcon]="true" />
 
     <label for="fecha_fin">Hasta (opcional)</label>
     <p-datepicker inputId="fecha_fin" formControlName="fecha_fin" dateFormat="dd/mm/yy" [showIcon]="true" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

@@ -1,22 +1,32 @@
-<h1>Usuarios</h1>
-
 <app-tabla-generica
   endpoint="/usuarios"
+  titulo="Usuarios"
+  eyebrow="Organización"
+  etiquetaNuevo="Nuevo usuario"
+  placeholderBusqueda="Buscar usuario"
   [columnas]="columnas"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
 />
 
-<p-dialog header="Usuario" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '380px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar usuario' : 'Nuevo usuario'"
+  formId="form-usuario"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-usuario" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="apellido">Apellido</label>
-    <input id="apellido" pInputText formControlName="apellido" />
+    <input id="apellido" pInputText formControlName="apellido" appAriaError="err-apellido" />
+    <app-error-campo id="err-apellido" [control]="formulario.controls.apellido">Ingresa el apellido.</app-error-campo>
 
     <label for="email">Email</label>
-    <input id="email" pInputText type="email" formControlName="email" />
+    <input id="email" pInputText type="email" formControlName="email" appAriaError="err-email" />
+    <app-error-campo id="err-email" [control]="formulario.controls.email">Ingresa un email válido.</app-error-campo>
 
     <label for="telefono">Teléfono</label>
     <input id="telefono" pInputText formControlName="telefono" />
@@ -34,7 +44,8 @@
 
     @if (!editando()) {
       <label for="password">Contraseña</label>
-      <p-password inputId="password" formControlName="password" [feedback]="false" [toggleMask]="true" />
+      <p-password inputId="password" formControlName="password" appAriaError="err-password" [feedback]="false" [toggleMask]="true" />
+      <app-error-campo id="err-password" [control]="formulario.controls.password">Usa al menos 8 caracteres.</app-error-campo>
     }
 
     @if (editando()) {
@@ -43,7 +54,5 @@
         Activo
       </label>
     }
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

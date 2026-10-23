@@ -6,7 +6,7 @@ import { MessageService } from 'primeng/api';
 import { CLAVE_ULTIMA_TIENDA, TiendaActualService } from '../features/tienda/state/tienda-actual.service';
 import { AuthService } from './auth.service';
 import { UsuarioYo } from './models/seguridad.models';
-import { authGuard, staffGuard, tiendaSesionGuard } from './guards';
+import { authGuard, permisoGuard, rolGuard, staffGuard, superadminGuard, tiendaSesionGuard } from './guards';
 
 function usuario(roles: string[], empresaCodigo: string | null): UsuarioYo {
   return {
@@ -74,7 +74,7 @@ describe('guards', () => {
         expect.objectContaining({
           severity: 'info',
           summary: 'Sesión cerrada',
-          detail: 'Cerramos tu sesión porque entraste a otra tienda. Ingresá con tu cuenta de Acme.',
+          detail: 'Cerramos tu sesión porque entraste a otra tienda. Ingresa con tu cuenta de Acme.',
         }),
       );
     });
@@ -105,10 +105,10 @@ describe('guards', () => {
       );
     });
 
-    it('sin sesión fuera de una tienda va a /login', () => {
+    it('sin sesión fuera de una tienda va a /admin/login', () => {
       const resultado = ejecutar(authGuard, '/dashboard');
 
-      expect(router.serializeUrl(resultado as UrlTree)).toBe('/login?returnTo=%2Fdashboard');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login?returnTo=%2Fdashboard');
     });
 
     it('con sesión devuelve true', () => {
@@ -141,6 +141,105 @@ describe('guards', () => {
       iniciarSesion(usuario(['administrador'], 'acme'));
 
       expect(ejecutar(staffGuard, '/dashboard')).toBe(true);
+    });
+
+    it('sin sesión va a /admin/login', () => {
+      const resultado = ejecutar(staffGuard, '/dashboard');
+
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login');
+    });
+
+    it('manda al superadministrador que pide una pantalla del back office a /plataforma/empresas', () => {
+      iniciarSesion(usuario(['superadministrador'], null));
+
+      for (const url of ['/dashboard', '/caja', '/mi-empresa', '/']) {
+        const resultado = ejecutar(staffGuard, url);
+        expect(router.serializeUrl(resultado as UrlTree)).toBe('/plataforma/empresas');
+      }
+    });
+
+    it('deja al superadministrador entrar a /plataforma/...', () => {
+      iniciarSesion(usuario(['superadministrador'], null));
+
+      expect(ejecutar(staffGuard, '/plataforma/empresas')).toBe(true);
+      expect(ejecutar(staffGuard, '/plataforma/planes?x=1')).toBe(true);
+    });
+
+    it('no confunde /plataformas con /plataforma', () => {
+      iniciarSesion(usuario(['superadministrador'], null));
+
+      const resultado = ejecutar(staffGuard, '/plataformas');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/plataforma/empresas');
+    });
+  });
+
+  describe('superadminGuard', () => {
+    it('deja pasar al superadministrador', () => {
+      iniciarSesion(usuario(['superadministrador'], null));
+
+      expect(ejecutar(superadminGuard, '/plataforma/empresas')).toBe(true);
+    });
+
+    it('un administrador de empresa que escribe /plataforma/... termina en /dashboard', () => {
+      iniciarSesion(usuario(['administrador'], 'acme'));
+
+      const resultado = ejecutar(superadminGuard, '/plataforma/empresas');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('un cliente tampoco entra', () => {
+      iniciarSesion(usuario(['cliente'], 'acme'));
+
+      const resultado = ejecutar(superadminGuard, '/plataforma/empresas');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('sin sesión va a /admin/login', () => {
+      const resultado = ejecutar(superadminGuard, '/plataforma/empresas');
+
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login');
+    });
+  });
+
+  describe('rolGuard', () => {
+    it('deja pasar a quien tiene uno de los roles', () => {
+      iniciarSesion(usuario(['cajero', 'encargado'], 'acme'));
+
+      expect(ejecutar(rolGuard('administrador', 'encargado'), '/x')).toBe(true);
+    });
+
+    it('manda al dashboard a quien no tiene ninguno', () => {
+      iniciarSesion(usuario(['cajero'], 'acme'));
+
+      const resultado = ejecutar(rolGuard('administrador'), '/x');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('al superadministrador sin el rol pedido lo manda a su panel', () => {
+      iniciarSesion(usuario(['superadministrador'], null));
+
+      const resultado = ejecutar(rolGuard('administrador'), '/x');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/plataforma/empresas');
+    });
+  });
+
+  describe('permisoGuard', () => {
+    it('sin el permiso manda al dashboard', () => {
+      iniciarSesion(usuario(['cajero'], 'acme'));
+
+      const resultado = ejecutar(permisoGuard('empresa.gestionar'), '/mi-empresa');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('con el permiso deja pasar', () => {
+      iniciarSesion({ ...usuario(['administrador'], 'acme'), permisos: ['empresa.gestionar'] });
+
+      expect(ejecutar(permisoGuard('empresa.gestionar'), '/mi-empresa')).toBe(true);
+    });
+
+    it('sin sesión va a /admin/login', () => {
+      const resultado = ejecutar(permisoGuard('empresa.gestionar'), '/mi-empresa');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login');
     });
   });
 });

@@ -1,36 +1,27 @@
-h1 {
-  margin-bottom: var(--fs-espacio-4);
-}
+@use '../../shared/estilos/patron-bo' as *;
 
-.filtros {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-2);
-  margin: var(--fs-espacio-4) 0;
-  flex-wrap: wrap;
-}
-
-.numero {
-  font-variant-numeric: tabular-nums;
-}
-
-.acciones {
-  display: flex;
-  gap: var(--fs-espacio-1);
-}
+@include bo-base;
+@include bo-texto;
+@include bo-filtros;
+@include bo-panel;
+@include bo-panel-pie;
+@include bo-tabla;
+@include bo-btn-icono;
+@include bo-btn-texto;
+@include bo-formulario;
+@include bo-dialogo-acciones;
 
 .paginacion {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--fs-espacio-2);
-  margin-top: var(--fs-espacio-3);
-  font-size: 13px;
-  color: var(--fs-texto-tenue);
+  gap: 6px;
 }
 
-.formulario {
+.formulario-dialogo {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-2);
+  gap: var(--fs-espacio-4);
+
+  .dialogo-acciones {
+    margin-top: 0;
+  }
 }

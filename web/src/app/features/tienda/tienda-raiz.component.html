@@ -9,12 +9,13 @@
     <app-tienda-no-disponible motivo="no_disponible" />
   }
   @case ('error') {
-    <section class="raiz-estado" role="alert">
-      <p class="raiz-estado__marca">FashionStore</p>
-      <h1>No pudimos cargar la tienda</h1>
-      <p class="raiz-estado__texto">Revisá tu conexión e intentá de nuevo.</p>
-      <button type="button" class="raiz-estado__boton" (click)="reintentar()">Reintentar</button>
-    </section>
+    <app-panel-estado-tienda
+      icono="advertencia"
+      titulo="No pudimos cargar la tienda"
+      texto="Revisa tu conexión e inténtalo de nuevo."
+    >
+      <button type="button" class="fs-btn fs-btn--acento" (click)="reintentar()">Reintentar</button>
+    </app-panel-estado-tienda>
   }
   @default {
     <section class="raiz-estado" aria-busy="true" aria-label="Cargando la tienda">

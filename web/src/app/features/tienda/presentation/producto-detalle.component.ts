@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/auth.service';
 import { CatalogoDetalle, Color, Talla } from '../../../core/models/catalogo.models';
 import { Disponibilidad } from '../../../core/models/inventario.models';
 import { Sucursal } from '../../../core/models/organizacion.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { CarritoService } from '../data/carrito.service';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { ReservaCarritoService } from '../state/reserva-carrito.service';
@@ -15,7 +16,7 @@ import { TiendaActualService } from '../state/tienda-actual.service';
 @Component({
   selector: 'app-producto-detalle',
   standalone: true,
-  imports: [RouterLink, DecimalPipe],
+  imports: [RouterLink, DecimalPipe, IconoComponent],
   templateUrl: './producto-detalle.component.html',
   styleUrl: './producto-detalle.component.scss',
 })
@@ -55,6 +56,8 @@ export class ProductoDetalleComponent implements OnInit {
     const ids = new Set(this.detalle()?.variantes.map((v) => v.color_id) ?? []);
     return this.colores().filter((c) => ids.has(c.id));
   });
+
+  protected readonly colorSeleccionado = computed(() => this.colores().find((c) => c.id === this.colorId()) ?? null);
 
   protected readonly varianteActiva = computed(() => {
     const tallaId = this.tallaId();

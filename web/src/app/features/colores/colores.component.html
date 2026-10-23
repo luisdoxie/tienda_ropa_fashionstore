@@ -1,18 +1,28 @@
-<h1>Colores</h1>
+<app-tabla-generica
+  endpoint="/colores"
+  titulo="Colores"
+  eyebrow="Catálogo"
+  etiquetaNuevo="Nuevo color"
+  placeholderBusqueda="Buscar color"
+  [columnas]="columnas"
+  (crear)="abrirCrear()"
+  (editar)="abrirEditar($event)"
+/>
 
-<app-tabla-generica endpoint="/colores" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
-
-<p-dialog header="Color" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '360px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar color' : 'Nuevo color'"
+  formId="form-color"
+  ancho="440px"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-color" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="hex">Color (hex, opcional)</label>
-    <input id="hex" pInputText formControlName="codigo_hex" placeholder="#9A3E1F" />
-    @if (formulario.controls.codigo_hex.invalid && formulario.controls.codigo_hex.touched) {
-      <span class="auth-error">Formato inválido, usá #RRGGBB.</span>
-    }
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
+    <input id="hex" pInputText formControlName="codigo_hex" appAriaError="err-codigo_hex" placeholder="#9A3E1F" />
+    <app-error-campo id="err-codigo_hex" [control]="formulario.controls.codigo_hex">Formato inválido, usa #RRGGBB.</app-error-campo>
   </form>
-</p-dialog>
+</app-dialogo-crud>

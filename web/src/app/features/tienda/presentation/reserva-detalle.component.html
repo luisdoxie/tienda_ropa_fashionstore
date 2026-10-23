@@ -1,63 +1,83 @@
-<div class="reserva">
+<div class="cuenta">
   @if (cargando()) {
-    <p class="fs-caption">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
   } @else if (error() || !reserva()) {
-    <p class="fs-caption">No se pudo cargar esta reserva.</p>
+    <div class="fs-estado-vacio">
+      <fs-icono nombre="alerta" [tam]="52" />
+      <p>No se pudo cargar esta reserva.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta('mis-reservas')">Volver a mis reservas</a>
+    </div>
   } @else {
-    <a class="auth-enlace" [routerLink]="tienda.ruta('mis-reservas')">← Mis reservas</a>
     <div class="encabezado">
-      <h1>{{ reserva()!.codigo }}</h1>
-      <span class="chip" [class]="'chip--' + reserva()!.estado">{{ etiquetaEstado(reserva()!.estado) }}</span>
+      <div>
+        <span class="fs-eyebrow fs-num">
+          {{ reserva()!.fecha_visita }} · {{ reserva()!.hora_visita_desde.slice(0, 5) }} -
+          {{ reserva()!.hora_visita_hasta.slice(0, 5) }}
+        </span>
+        <h1 class="fs-display fs-num">{{ reserva()!.codigo }}</h1>
+      </div>
+      <a class="enlace-volver" [routerLink]="tienda.ruta('mis-reservas')">
+        <fs-icono nombre="flecha-izquierda" [tam]="24" />
+        Mis reservas
+      </a>
     </div>
-    <p class="fs-caption">
-      {{ reserva()!.fecha_visita }} · {{ reserva()!.hora_visita_desde.slice(0, 5) }} -
-      {{ reserva()!.hora_visita_hasta.slice(0, 5) }}
-    </p>
-    @if (reserva()!.observacion) {
-      <p class="fs-caption">{{ reserva()!.observacion }}</p>
-    }
 
-    <h3>Prendas</h3>
-    <div class="lineas">
-      @for (linea of lineas(); track linea.id) {
-        <div class="fs-card linea">
-          @if (linea.imagenPrincipal) {
-            <img class="linea-foto" [src]="linea.imagenPrincipal" alt="" />
-          } @else {
-            <div class="linea-foto linea-foto--vacia"><span class="pi pi-image"></span></div>
+    <div class="columnas">
+      <div class="columnas__principal">
+        <div class="estado">
+          <span [class]="'fs-chip ' + claseEstado(reserva()!.estado)">{{ etiquetaEstado(reserva()!.estado) }}</span>
+          @if (reserva()!.observacion) {
+            <p class="estado__observacion">{{ reserva()!.observacion }}</p>
           }
-          <div class="linea-info">
-            <div class="linea-nombre">{{ linea.productoNombre ?? 'Prenda' }}</div>
-            @if (linea.tallaCodigo || linea.colorNombre) {
-              <div class="fs-caption">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</div>
+        </div>
+
+        <section class="seccion">
+          <h2 class="seccion__titulo">Prendas</h2>
+          @for (linea of lineas(); track linea.id) {
+            <div class="linea">
+              @if (linea.imagenPrincipal) {
+                <img class="linea__foto" [src]="linea.imagenPrincipal" alt="" />
+              } @else {
+                <div class="linea__foto linea__foto--vacia"><fs-icono nombre="imagen" [tam]="36" /></div>
+              }
+              <div class="linea__info">
+                <span class="linea__nombre">{{ linea.productoNombre ?? 'Prenda' }}</span>
+                @if (linea.tallaCodigo || linea.colorNombre) {
+                  <span class="linea__detalle">{{ [linea.tallaCodigo, linea.colorNombre].join(' · ') }}</span>
+                }
+              </div>
+              @if (linea.seleccionada !== null) {
+                <span class="fs-chip" [class.fs-chip--exito]="linea.seleccionada">
+                  {{ linea.seleccionada ? 'Comprada' : 'No seleccionada' }}
+                </span>
+              }
+            </div>
+          }
+        </section>
+      </div>
+
+      <div class="columnas__lateral">
+        <section class="historial">
+          <h2 class="seccion__titulo">Historial</h2>
+          <ol class="historial__lista">
+            @for (fila of reserva()!.historial; track fila.id) {
+              <li class="historial__fila">
+                <span class="historial__fecha">{{ fila.creado_en | date: 'medium' }}</span>
+                <strong>{{ etiquetaEstado(fila.estado) }}</strong>
+                @if (fila.comentario) {
+                  <span class="historial__fecha">{{ fila.comentario }}</span>
+                }
+              </li>
             }
-          </div>
-          @if (linea.seleccionada !== null) {
-            <span class="fs-caption" [class.disponible]="linea.seleccionada">
-              {{ linea.seleccionada ? 'Comprada' : 'No seleccionada' }}
-            </span>
-          }
-        </div>
-      }
-    </div>
+          </ol>
 
-    <h3>Historial</h3>
-    <div class="historial">
-      @for (fila of reserva()!.historial; track fila.id) {
-        <div class="fila-historial">
-          <span class="fs-caption">{{ fila.creado_en | date: 'medium' }}</span>
-          <strong>{{ etiquetaEstado(fila.estado) }}</strong>
-          @if (fila.comentario) {
-            <span class="fs-caption">{{ fila.comentario }}</span>
+          @if (esCancelable()) {
+            <button type="button" class="fs-btn fs-btn--secundario fs-btn--bloque cancelar" [disabled]="cancelando()" (click)="cancelar()">
+              {{ cancelando() ? 'Cancelando...' : 'Cancelar reserva' }}
+            </button>
           }
-        </div>
-      }
+        </section>
+      </div>
     </div>
-
-    @if (esCancelable()) {
-      <button type="button" class="boton-cancelar" [disabled]="cancelando()" (click)="cancelar()">
-        {{ cancelando() ? 'Cancelando...' : 'Cancelar reserva' }}
-      </button>
-    }
   }
 </div>

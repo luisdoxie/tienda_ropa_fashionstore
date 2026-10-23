@@ -1,159 +1,280 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   background: var(--fs-fondo);
 }
 
-.tienda-nav {
-  padding: var(--fs-espacio-4) 0;
-  border-bottom: 1px solid var(--fs-borde);
+.tienda-principal {
+  flex: 1 0 auto;
+  min-width: 0;
 }
 
-.tienda-nav-inner {
+// ---------------------------------------------------------------------------
+// Cabecera. Clara (--fs-banda) en las páginas interiores; oscura en la portada,
+// donde continúa el hero (.fs-zona-oscura la repinta).
+// ---------------------------------------------------------------------------
+.cab {
+  --cab-fondo: var(--fs-banda);
+  --cab-texto: var(--fs-tinta);
+  --cab-texto-tenue: var(--fs-texto);
+  --cab-borde: var(--fs-borde-fuerte);
+  // Insignia de contadores: tinta fija con texto claro, contrasta siempre (no depende del acento).
+  --cab-badge-fondo: var(--fs-carbon-2);
+  --cab-badge-texto: var(--fs-claro);
+
+  position: relative;
+  z-index: 10;
+  background: var(--cab-fondo);
+  color: var(--cab-texto);
+  border-bottom: 1px solid var(--cab-borde);
+}
+
+// La portada es una zona oscura: el fondo es plano (el halo vive en el hero) para
+// que no se note la unión entre la cabecera y el hero.
+.cab--oscura {
+  --cab-fondo: var(--fs-carbon);
+  --cab-texto: var(--fs-claro);
+  --cab-texto-tenue: var(--fs-claro-suave);
+  --cab-borde: transparent;
+  --cab-badge-fondo: var(--fs-acento);
+  --cab-badge-texto: var(--fs-sobre-acento-oscuro);
+
+  background: var(--cab-fondo);
+}
+
+.cab__interior {
   max-width: 1360px;
   margin: 0 auto;
-  padding: 0 var(--fs-espacio-6);
+  padding: 20px 32px;
+  box-sizing: border-box;
   display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.cab--simple .cab__interior {
   justify-content: space-between;
-  align-items: center;
-  position: relative;
 }
 
-.tienda-nav-grupo {
+.cab__marca {
   display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-4);
-}
-
-.tienda-logo {
-  font-family: var(--fs-fuente-display);
-  font-style: italic;
-  font-weight: 600;
-  font-size: 28px;
-  color: var(--fs-texto);
+  min-width: 0;
+  color: inherit;
   text-decoration: none;
+
+  // Una marca con nombre largo se recorta con puntos suspensivos en vez de pisar los íconos.
+  fs-marca {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 4px;
+  }
 }
 
-.tienda-logo__img {
-  display: block;
-  max-height: 32px;
-  width: auto;
-}
-
-.tienda-pie {
-  padding: var(--fs-espacio-4) var(--fs-espacio-6);
-  text-align: center;
-  font-size: 12px;
-  color: var(--fs-texto-tenue);
-}
-
-.tienda-nav-iconos {
+.cab__seguro {
   display: flex;
   align-items: center;
-  gap: var(--fs-espacio-4);
+  gap: 10px;
+  font-size: 14px;
+  color: var(--cab-texto-tenue);
 }
 
-.tienda-menu-boton {
-  display: none;
+// En escritorio el panel no existe como caja: sus dos grupos son hijos de la fila.
+.cab__panel {
+  display: contents;
+}
+
+.cab__nav {
+  display: flex;
+  gap: 36px;
+  margin-left: 16px;
+  font-size: 15px;
+}
+
+.cab__cuenta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-left: auto;
+}
+
+.cab__enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--fs-toque);
+  box-sizing: border-box;
+  padding: 0;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--cab-texto-tenue);
   background: none;
-  border: none;
-  padding: var(--fs-espacio-1);
-  font-size: 20px;
-  color: var(--fs-texto);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
   cursor: pointer;
+
+  &:hover {
+    color: var(--cab-texto);
+  }
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
 }
 
-.tienda-nav-derecha {
+.cab__enlace--activo {
+  color: var(--cab-texto);
+  border-bottom-color: var(--fs-acento);
+}
+
+.cab__enlace--icono {
+  color: var(--cab-texto);
+}
+
+.cab__enlace--contorno {
+  padding: 0 20px;
+  font-weight: 500;
+  color: var(--cab-texto);
+  border: 1px solid currentColor;
+  border-radius: var(--fs-radio-md);
+}
+
+.cab__iconos {
   display: flex;
   align-items: center;
-  gap: var(--fs-espacio-4);
+  gap: 8px;
 }
 
-@media (max-width: 760px) {
-  .tienda-menu-boton {
-    display: block;
-  }
-
-  // El menú de sesión se despliega debajo de la barra en vez de compartir
-  // la fila con el logo y los íconos -ahí no entraba ni "Mis compras".
-  .tienda-nav-derecha {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: 1px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--fs-espacio-1);
-    background: var(--fs-superficie);
-    border: 1px solid var(--fs-borde);
-    border-radius: 0 0 var(--fs-radio-md) var(--fs-radio-md);
-    padding: var(--fs-espacio-3) var(--fs-espacio-4);
-    box-shadow: 0 12px 24px rgba(28, 23, 19, 0.12);
-    z-index: 20;
-
-    &.abierto {
-      display: flex;
-    }
-  }
-
-  .tienda-enlace {
-    text-align: center;
-  }
-}
-
-.tienda-carrito {
+.cab__icono {
   position: relative;
   display: flex;
-  color: var(--fs-texto);
-  font-size: 20px;
+  align-items: center;
+  justify-content: center;
+  width: var(--fs-toque-barra);
+  height: var(--fs-toque-barra);
+  padding: 0;
+  color: var(--cab-texto);
+  background: none;
+  border: 0;
+  cursor: pointer;
   text-decoration: none;
+
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: -4px;
+  }
 }
 
-.tienda-carrito__badge {
+.cab__menu {
+  display: none;
+}
+
+.cab__badge {
   position: absolute;
-  top: -8px;
-  right: -10px;
+  top: 4px;
+  right: 2px;
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  border-radius: 999px;
-  background: var(--fs-acento);
-  color: var(--fs-superficie);
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--cab-badge-fondo);
+  color: var(--cab-badge-texto);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
 }
 
-.tienda-enlace {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  padding: var(--fs-espacio-2) var(--fs-espacio-3);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  color: var(--fs-texto-tenue);
-  background: none;
-  text-decoration: none;
-  cursor: pointer;
-
-  &:hover {
-    color: var(--fs-texto);
+// En pantallas angostas la lupa se oculta: el buscador está a la vista en la propia colección.
+@media (max-width: 520px) {
+  .cab__icono--buscar {
+    display: none;
   }
 }
 
-.tienda-enlace--boton {
-  border-color: var(--fs-borde);
+@media (max-width: 960px) {
+  .cab__interior {
+    padding: 10px 8px 10px 16px;
+    gap: 8px;
+  }
+
+  .cab__iconos {
+    margin-left: auto;
+    gap: 0;
+  }
+
+  .cab__menu {
+    display: flex;
+  }
+
+  // El menú se despliega debajo de la barra en vez de compartir la fila con la marca.
+  .cab__panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    padding: 8px 16px 16px;
+    background: var(--cab-fondo);
+    border-bottom: 1px solid var(--fs-borde-fuerte);
+    box-shadow: var(--fs-sombra-md);
+
+    &.abierto {
+      display: flex;
+    }
+  }
+
+  .cab__nav,
+  .cab__cuenta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+  }
+
+  .cab__cuenta {
+    border-top: 1px solid var(--fs-borde-fuerte);
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  .cab__enlace {
+    min-height: var(--fs-toque-barra);
+    border-bottom: 0;
+  }
+
+  .cab__enlace--activo {
+    font-weight: 600;
+  }
+
+  .cab__enlace--contorno {
+    justify-content: center;
+    margin-top: 8px;
+  }
 }
 
-.tienda-enlace--relleno {
-  background: var(--fs-acento);
-  color: var(--fs-superficie);
+// ---------------------------------------------------------------------------
+// Pie claro
+// ---------------------------------------------------------------------------
+.tienda-pie {
+  margin-top: auto;
+  padding: 28px 32px;
+  background: var(--fs-pie);
+  border-top: 1px solid var(--fs-borde-fuerte);
+  color: var(--fs-neutro-texto);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-align: center;
 
-  &:hover {
-    background: var(--fs-acento-hover);
-    color: var(--fs-superficie);
+  @media (max-width: 960px) {
+    padding: 20px 16px;
   }
 }

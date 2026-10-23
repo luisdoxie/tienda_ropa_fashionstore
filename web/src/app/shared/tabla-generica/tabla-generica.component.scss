@@ -2,17 +2,151 @@
   display: block;
 }
 
-.tabla-generica-barra {
+// Barra de búsqueda de 48 px (patrón Crud del canvas).
+.tg-barra {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--fs-espacio-3);
-  margin-bottom: var(--fs-espacio-3);
+  margin-bottom: var(--fs-espacio-4);
 }
 
-.tabla-generica-pie {
+.tg-buscar {
   display: flex;
   align-items: center;
-  gap: var(--fs-espacio-3);
-  margin-top: var(--fs-espacio-3);
+  gap: 10px;
+  flex: 0 1 360px;
+  min-width: 220px;
+  min-height: var(--fs-toque-barra);
+  padding: 0 14px;
+  box-sizing: border-box;
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  color: var(--fs-texto-tenue);
+
+  &:focus-within {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 1px;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font-family: var(--fs-fuente-ui);
+    font-size: 14px;
+    color: var(--fs-texto);
+  }
+}
+
+.tg-conteo {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.tg-nuevo {
+  margin-left: var(--fs-espacio-2);
+}
+
+// Tarjeta que envuelve la tabla y la paginación.
+.tg-tarjeta {
+  overflow: hidden;
+
+  ::ng-deep .p-datatable {
+    border: 0;
+    border-radius: 0;
+  }
+
+  ::ng-deep .p-datatable-table-container {
+    overflow-x: auto;
+  }
+
+  ::ng-deep .p-datatable-thead > tr > th {
+    background: transparent;
+    padding-left: 20px !important;
+  }
+
+  ::ng-deep .p-datatable-tbody > tr > td {
+    background: transparent;
+  }
+
+  ::ng-deep .p-datatable-tbody > tr > td:first-child {
+    padding-left: 20px !important;
+  }
+}
+
+.tg-reintentar {
+  display: flex;
+  margin: var(--fs-espacio-3) auto 0;
+}
+
+.tg-celda-principal {
+  font-weight: 600;
+}
+
+.tg-th-acciones {
+  text-align: right !important;
+}
+
+.tg-acciones {
+  text-align: right;
+  white-space: nowrap;
+}
+
+// Botones de ícono de 44 px.
+.tg-accion,
+.tg-pagina {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--fs-toque);
+  height: var(--fs-toque);
+  padding: 0;
+  vertical-align: middle;
+  background: none;
+  border: 0;
+  border-radius: var(--fs-radio-md);
+  color: var(--fs-tinta);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--fs-neutro-suave);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: -2px;
+  }
+}
+
+.tg-accion--suave {
+  color: var(--fs-texto-tenue);
+}
+
+.tg-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.tg-paginas {
+  display: flex;
+  gap: 6px;
+}
+
+.tg-pagina {
+  border: 1px solid var(--fs-campo-borde);
+
+  &:disabled {
+    border-color: var(--fs-borde);
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 }

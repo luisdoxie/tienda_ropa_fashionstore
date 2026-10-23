@@ -1,107 +1,150 @@
-<h1>Caja</h1>
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Venta presencial</span>
+    <h1>Caja</h1>
+  </div>
+  @if (!cargandoSucursal() && !noEsEmpleado() && sucursalId() !== null && !vistaResumenGlobal()) {
+    <ul class="atajos" aria-label="Atajos de teclado">
+      <li><kbd>Enter</kbd> agrega</li>
+      <li><kbd>↑ ↓</kbd> navegan</li>
+      <li><kbd>F2</kbd> reserva</li>
+      <li><kbd>F9</kbd> cobrar</li>
+      <li><kbd>Esc</kbd> limpiar</li>
+    </ul>
+  }
+</div>
 
 @if (cargandoSucursal()) {
-  <p class="ayuda">Cargando...</p>
+  <p class="aviso-estado">Cargando...</p>
 } @else if (noEsEmpleado()) {
-  <p class="ayuda">Tu usuario no tiene un registro de empleado: no podés operar la caja.</p>
-} @else if (sucursalId() === null) {
-  <p class="ayuda">No tenés una sucursal asignada. Pedile a un administrador que te la asigne.</p>
+  <p class="fs-aviso fs-aviso--error" role="status">
+    <fs-icono nombre="alerta" [tam]="24" />
+    Tu usuario no tiene un registro de empleado: no puedes operar la caja.
+  </p>
 } @else if (vistaResumenGlobal()) {
   <p class="ayuda">
-    Como administrador no tenés una sucursal propia, así que no podés cobrar acá -- este es el resumen de cómo
+    Como administrador no tienes una sucursal propia, así que no puedes cobrar aquí. Este es el resumen de cómo
     le está yendo hoy a cada una.
   </p>
 
-  <p-table [value]="resumenPorSucursal()" [loading]="cargandoResumen()" styleClass="p-datatable-sm">
-    <ng-template #header>
-      <tr>
-        <th>Sucursal</th>
-        <th>Ventas de hoy</th>
-        <th>Total</th>
-      </tr>
-    </ng-template>
-    <ng-template #body let-fila>
-      <tr>
-        <td>{{ fila.sucursal }}</td>
-        <td>{{ fila.transacciones }}</td>
-        <td>Bs {{ fila.total_ventas | number: '1.2-2' }}</td>
-      </tr>
-    </ng-template>
-    <ng-template #emptymessage>
-      <tr>
-        <td colspan="3">Todavía no hay ventas hoy en ninguna sucursal.</td>
-      </tr>
-    </ng-template>
-  </p-table>
-} @else {
-  <p class="atajos">
-    <strong>Atajos:</strong> Enter agrega el producto (o navega los resultados con ↑ ↓) · F2 va al código de
-    reserva · F9 cobra / confirma el pago · Esc limpia la búsqueda
+  <section class="panel">
+    <div class="panel__scroll">
+      <p-table
+        [value]="resumenPorSucursal()"
+        [loading]="cargandoResumen()"
+        styleClass="p-datatable-sm"
+        [tableStyle]="{ 'min-width': '480px' }"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Sucursal</th>
+            <th class="num">Ventas de hoy</th>
+            <th class="num">Total</th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-fila>
+          <tr>
+            <td class="fuerte">{{ fila.sucursal }}</td>
+            <td class="num">{{ fila.transacciones }}</td>
+            <td class="num">Bs {{ fila.total_ventas | number: '1.2-2' }}</td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr>
+            <td colspan="3"><div class="vacio">Todavía no hay ventas hoy en ninguna sucursal.</div></td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  </section>
+} @else if (sucursalId() === null) {
+  <p class="fs-aviso" role="status">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    No tienes una sucursal asignada. Pide a un administrador que te la asigne.
   </p>
-
+} @else {
   <div class="caja-layout">
     <!-- ================= Columna izquierda: armado de la venta ================= -->
     <section class="columna-armado">
       @if (fase() === 'armando') {
-        <div class="bloque">
-          <label for="busqueda">Buscar producto (código de barras o nombre)</label>
-          <input
-            id="busqueda"
-            #inputBusqueda
-            type="text"
-            [ngModel]="textoBusqueda()"
-            (ngModelChange)="textoBusqueda.set($event)"
-            (keydown)="onBusquedaKeydown($event)"
-            [disabled]="reservaCargada() !== null"
-            placeholder="Escaneá o escribí y presioná Enter"
-            autocomplete="off"
-          />
+        <div class="bloque-busqueda">
+          <label class="busqueda-grande" for="busqueda">
+            <fs-icono nombre="codigo-barras" [tam]="32" />
+            <input
+              id="busqueda"
+              #inputBusqueda
+              type="text"
+              [ngModel]="textoBusqueda()"
+              (ngModelChange)="textoBusqueda.set($event)"
+              (keydown)="onBusquedaKeydown($event)"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="lista-resultados"
+              [attr.aria-expanded]="resultados().length > 0"
+              [attr.aria-activedescendant]="resultados().length > 0 ? 'resultado-' + indiceResaltado() : null"
+              [disabled]="reservaCargada() !== null"
+              placeholder="Buscar producto (código de barras o nombre)"
+              aria-label="Buscar producto (código de barras o nombre)"
+              autocomplete="off"
+            />
+          </label>
 
           @if (resultados().length > 0) {
-            <ul class="resultados-busqueda">
+            <ul id="lista-resultados" class="resultados-busqueda" role="listbox" aria-label="Resultados de la búsqueda">
               @for (resultado of resultados(); track resultado.variante_id; let i = $index) {
-                <li [class.resaltado]="i === indiceResaltado()" (click)="seleccionarResultado(i)">
+                <li
+                  role="option"
+                  [id]="'resultado-' + i"
+                  [attr.aria-selected]="i === indiceResaltado()"
+                  [class.resaltado]="i === indiceResaltado()"
+                  (click)="seleccionarResultado(i)"
+                >
                   <span class="resultado-nombre"
                     >{{ resultado.producto_nombre }} · {{ resultado.talla_codigo }} · {{ resultado.color_nombre }}</span
                   >
-                  <span class="resultado-precio">{{ resultado.precio_efectivo | number: '1.2-2' }}</span>
+                  <span class="resultado-precio fs-num">{{ resultado.precio_efectivo | number: '1.2-2' }}</span>
                 </li>
               }
             </ul>
           }
 
-          <label for="reserva">O cargar una reserva ya atendida</label>
           <div class="fila-reserva">
-            <input
-              id="reserva"
-              #inputReserva
-              type="text"
-              [ngModel]="codigoReserva()"
-              (ngModelChange)="codigoReserva.set($event)"
-              (keydown.enter)="cargarReserva()"
-              placeholder="Código de reserva (F2)"
-              autocomplete="off"
-            />
-            <p-button
-              icon="pi pi-search"
-              label="Cargar"
-              [loading]="buscandoReserva()"
-              [disabled]="codigoReserva().trim().length === 0"
-              (onClick)="cargarReserva()"
-            />
+            <label class="campo-reserva" for="reserva">
+              <fs-icono nombre="calendario" [tam]="24" />
+              <input
+                id="reserva"
+                #inputReserva
+                type="text"
+                [ngModel]="codigoReserva()"
+                (ngModelChange)="codigoReserva.set($event)"
+                (keydown.enter)="cargarReserva()"
+                placeholder="Código de reserva atendida (F2)"
+                aria-label="Código de reserva atendida"
+                autocomplete="off"
+              />
+            </label>
+            <button
+              type="button"
+              class="fs-btn fs-btn--secundario btn-reserva"
+              [disabled]="codigoReserva().trim().length === 0 || buscandoReserva()"
+              (click)="cargarReserva()"
+            >
+              <fs-icono [nombre]="buscandoReserva() ? 'refrescar' : 'calendario'" [tam]="24" [class.giro]="buscandoReserva()" />
+              Cargar reserva
+            </button>
           </div>
         </div>
       }
 
       @if (reservaCargada(); as reserva) {
-        <div class="bloque bloque-reserva">
-          <div class="reserva-cabecera">
-            <span
-              ><strong>Reserva {{ reserva.codigo }}</strong> — {{ reserva.detalle.length }} línea(s)
-              seleccionada(s)</span
-            >
+        <section class="panel panel-reserva" aria-label="Reserva cargada">
+          <div class="panel__titulo">
+            <h2>Reserva {{ reserva.codigo }}</h2>
+            <span class="conteo">{{ reserva.detalle.length }} línea(s) seleccionada(s)</span>
             @if (fase() === 'armando') {
-              <p-button icon="pi pi-times" [text]="true" severity="danger" pTooltip="Quitar" (onClick)="quitarReserva()" />
+              <button type="button" class="btn-icono btn-icono--peligro" aria-label="Quitar reserva" (click)="quitarReserva()">
+                <fs-icono nombre="cerrar" [tam]="24" />
+              </button>
             }
           </div>
           <ul class="checklist">
@@ -111,126 +154,182 @@
               }
             }
           </ul>
-          <p class="ayuda">El precio y el descuento se calculan al cobrar.</p>
-        </div>
+          <p class="panel__aviso">El precio y el descuento se calculan al cobrar.</p>
+        </section>
       } @else {
-        <div class="bloque">
-          <h3>Carrito</h3>
+        <section class="panel panel-carrito" aria-label="Carrito">
+          <div class="panel__titulo">
+            <h2>Carrito</h2>
+            <span class="conteo">{{ lineas().length }} {{ lineas().length === 1 ? 'producto' : 'productos' }}</span>
+          </div>
           @if (lineas().length === 0) {
-            <p class="ayuda">Sin productos todavía. Escaneá o buscá uno arriba.</p>
+            <p class="vacio">Sin productos todavía. Escanea o busca uno arriba.</p>
           } @else {
-            <table class="tabla-carrito">
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Cantidad</th>
-                  <th>Precio</th>
-                  <th>Subtotal</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (linea of lineas(); track linea.variante_id) {
+            <div class="panel__scroll">
+              <table class="tabla-carrito">
+                <thead>
                   <tr>
-                    <td>{{ linea.descripcion }}</td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        [disabled]="fase() === 'cobrando'"
-                        [ngModel]="linea.cantidad"
-                        (ngModelChange)="actualizarCantidad(linea.variante_id, $event)"
-                        class="input-cantidad"
-                      />
-                    </td>
-                    <td>{{ linea.precio_efectivo | number: '1.2-2' }}</td>
-                    <td>{{ linea.precio_efectivo * linea.cantidad | number: '1.2-2' }}</td>
-                    <td>
-                      @if (fase() === 'armando') {
-                        <p-button
-                          icon="pi pi-trash"
-                          [text]="true"
-                          severity="danger"
-                          size="small"
-                          (onClick)="quitarLinea(linea.variante_id)"
-                        />
-                      }
-                    </td>
+                    <th>Producto</th>
+                    <th class="centro">Cantidad</th>
+                    <th class="num">Precio</th>
+                    <th class="num">Subtotal</th>
+                    <th><span class="sr-only">Quitar</span></th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (linea of lineas(); track linea.variante_id) {
+                    <tr>
+                      <td>
+                        <div class="linea-nombre">{{ linea.nombre }}</div>
+                        <div class="linea-variante">{{ linea.detalleVariante }}</div>
+                      </td>
+                      <td>
+                        <div class="cantidad">
+                          <button
+                            type="button"
+                            class="btn-icono btn-icono--contorno"
+                            aria-label="Disminuir cantidad"
+                            [disabled]="fase() === 'cobrando' || linea.cantidad <= 1"
+                            (click)="actualizarCantidad(linea.variante_id, linea.cantidad - 1)"
+                          >
+                            <fs-icono nombre="menos" [tam]="24" />
+                          </button>
+                          <input
+                            type="number"
+                            inputmode="numeric"
+                            min="1"
+                            step="1"
+                            class="cantidad__valor fs-num"
+                            aria-label="Cantidad de {{ linea.nombre }}"
+                            [value]="linea.cantidad"
+                            [disabled]="fase() === 'cobrando'"
+                            (change)="fijarCantidad(linea.variante_id, $event)"
+                          />
+                          <button
+                            type="button"
+                            class="btn-icono btn-icono--contorno"
+                            aria-label="Aumentar cantidad"
+                            [disabled]="fase() === 'cobrando'"
+                            (click)="actualizarCantidad(linea.variante_id, linea.cantidad + 1)"
+                          >
+                            <fs-icono nombre="mas" [tam]="24" />
+                          </button>
+                        </div>
+                      </td>
+                      <td class="num">{{ linea.precio_efectivo | number: '1.2-2' }}</td>
+                      <td class="num fuerte">{{ linea.precio_efectivo * linea.cantidad | number: '1.2-2' }}</td>
+                      <td class="num">
+                        @if (fase() === 'armando') {
+                          <button
+                            type="button"
+                            class="btn-icono"
+                            aria-label="Quitar producto"
+                            (click)="quitarLinea(linea.variante_id)"
+                          >
+                            <fs-icono nombre="basura" [tam]="24" />
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="panel__aviso">El total final, con promociones vigentes, se calcula al cobrar.</p>
           }
-        </div>
+        </section>
       }
     </section>
 
     <!-- ================= Columna derecha: totales y cobro ================= -->
-    <section class="columna-cobro">
-      <div class="bloque">
+    <aside class="columna-cobro">
+      <div class="total-panel fs-zona-oscura">
         @if (fase() === 'armando') {
-          <p class="total-estimado">Estimado: {{ subtotalEstimado() | number: '1.2-2' }}</p>
-          <p class="ayuda">El total final (con promociones vigentes) se calcula al cobrar.</p>
-          <p-button
-            label="Cobrar (F9)"
-            icon="pi pi-dollar"
-            styleClass="w-full"
-            [loading]="registrandoVenta()"
-            [disabled]="!hayVentaEnCurso()"
-            (onClick)="cobrar()"
-          />
+          <span class="total-panel__etiqueta">Total estimado</span>
+          <span class="total-panel__valor fs-num">Bs {{ subtotalEstimado() | number: '1.2-2' }}</span>
+          <span class="total-panel__nota">El total final (con promociones vigentes) se calcula al cobrar.</span>
         } @else if (ventaPendiente(); as venta) {
-          <h3>Venta {{ venta.codigo }}</h3>
+          <span class="total-panel__etiqueta">Total a cobrar · Venta {{ venta.codigo }}</span>
+          <span class="total-panel__valor fs-num">Bs {{ venta.total | number: '1.2-2' }}</span>
           <dl class="resumen-venta">
             <dt>Subtotal</dt>
-            <dd>{{ venta.subtotal | number: '1.2-2' }}</dd>
-            <dt>Descuento</dt>
-            <dd>{{ venta.descuento | number: '1.2-2' }}</dd>
-            <dt class="total">Total</dt>
-            <dd class="total">{{ venta.total | number: '1.2-2' }}</dd>
+            <dd class="fs-num">Bs {{ venta.subtotal | number: '1.2-2' }}</dd>
+            <dt>Descuento aplicado</dt>
+            <dd class="fs-num">Bs {{ venta.descuento | number: '1.2-2' }}</dd>
           </dl>
-
-          <label for="metodo-pago">Método de pago</label>
-          <p-selectbutton
-            inputId="metodo-pago"
-            [options]="opcionesMetodoPago"
-            optionLabel="label"
-            optionValue="value"
-            [ngModel]="metodoPago()"
-            (ngModelChange)="seleccionarMetodoPago($event)"
-          />
-
-          @if (metodoPago() === 'efectivo') {
-            <label for="monto-recibido">Monto recibido</label>
-            <input
-              id="monto-recibido"
-              #inputMontoRecibido
-              type="number"
-              min="0"
-              step="0.01"
-              [ngModel]="montoRecibido()"
-              (ngModelChange)="montoRecibido.set($event)"
-              (keydown.enter)="confirmarPago()"
-            />
-            @if (cambioEstimado() !== null) {
-              <p class="cambio">Cambio: {{ cambioEstimado() | number: '1.2-2' }}</p>
-            }
-          }
-
-          <p-button
-            label="Confirmar pago (F9)"
-            icon="pi pi-check"
-            styleClass="w-full"
-            [loading]="registrandoPago()"
-            (onClick)="confirmarPago()"
-          />
         }
       </div>
 
-      <div class="bloque acciones-secundarias">
-        <p-button label="Historial de hoy" icon="pi pi-history" [text]="true" (onClick)="abrirHistorial()" />
-      </div>
-    </section>
+      @if (fase() === 'cobrando') {
+        <div class="pago-panel">
+          <span class="pago-panel__titulo" id="titulo-metodo">Método de pago</span>
+          <div class="metodos" role="radiogroup" aria-labelledby="titulo-metodo">
+            @for (opcion of opcionesMetodoPago; track opcion.value; let i = $index) {
+              <button
+                type="button"
+                class="metodo"
+                role="radio"
+                [attr.aria-checked]="metodoPago() === opcion.value"
+                [attr.tabindex]="metodoPago() === opcion.value ? 0 : -1"
+                [class.metodo--activo]="metodoPago() === opcion.value"
+                (click)="seleccionarMetodoPago(opcion.value)"
+                (keydown)="onMetodoKeydown($event, i)"
+              >
+                <fs-icono [nombre]="opcion.icono" [tam]="30" />
+                {{ opcion.label }}
+              </button>
+            }
+          </div>
+
+          @if (metodoPago() === 'efectivo') {
+            <label class="campo-monto" for="monto-recibido">
+              Monto recibido
+              <input
+                id="monto-recibido"
+                #inputMontoRecibido
+                type="number"
+                min="0"
+                step="0.01"
+                [ngModel]="montoRecibido()"
+                (ngModelChange)="montoRecibido.set($event)"
+                (keydown.enter)="confirmarPago()"
+              />
+            </label>
+            <div class="cambio">
+              <span>Cambio</span>
+              <span class="cambio__valor fs-num">Bs {{ cambioEstimado() ?? 0 | number: '1.2-2' }}</span>
+            </div>
+          }
+        </div>
+      }
+
+      @if (fase() === 'armando') {
+        <button
+          type="button"
+          class="fs-btn fs-btn--acento btn-cobrar"
+          [disabled]="!hayVentaEnCurso() || registrandoVenta()"
+          (click)="cobrar()"
+        >
+          <fs-icono [nombre]="registrandoVenta() ? 'refrescar' : 'check'" [tam]="30" [class.giro]="registrandoVenta()" />
+          Cobrar (F9)
+        </button>
+      } @else {
+        <button
+          type="button"
+          class="fs-btn fs-btn--acento btn-cobrar"
+          [disabled]="registrandoPago()"
+          (click)="confirmarPago()"
+        >
+          <fs-icono [nombre]="registrandoPago() ? 'refrescar' : 'check'" [tam]="30" [class.giro]="registrandoPago()" />
+          Confirmar pago (F9)
+        </button>
+      }
+
+      <button type="button" class="btn-texto btn-historial" (click)="abrirHistorial()">
+        <fs-icono nombre="historial" [tam]="24" />
+        Historial de hoy
+      </button>
+    </aside>
   </div>
 }
 
@@ -240,12 +339,12 @@
   [(visible)]="comprobanteVisible"
   [modal]="true"
   [closable]="false"
-  [style]="{ width: '380px' }"
+  [style]="{ width: '400px', maxWidth: '96vw' }"
   styleClass="comprobante-dialog"
 >
   @if (ventaConfirmada(); as venta) {
     <div id="area-imprimible" class="comprobante">
-      <h2>FashionStore</h2>
+      <h2>{{ nombreEmpresa() }}</h2>
       <p>Venta {{ venta.codigo }}</p>
       <p>{{ venta.fecha | date: 'short' }}</p>
       <hr />
@@ -253,7 +352,7 @@
         <tbody>
           @for (linea of venta.detalle; track linea.id) {
             <tr>
-              <td>Variante {{ linea.variante_id }} x{{ linea.cantidad }}</td>
+              <td>{{ nombreVariante(linea.variante_id) }} x{{ linea.cantidad }}</td>
               <td>{{ linea.subtotal | number: '1.2-2' }}</td>
             </tr>
           }
@@ -273,81 +372,111 @@
 
     <div class="comprobante-acciones">
       <p-button label="Nueva venta" icon="pi pi-plus" (onClick)="nuevaVenta()" />
-      <p-button label="Imprimir" icon="pi pi-print" [text]="true" (onClick)="imprimirComprobante()" />
+      <button type="button" class="btn-texto" (click)="imprimirComprobante()">
+        <fs-icono nombre="imprimir" [tam]="24" />
+        Imprimir
+      </button>
     </div>
   }
 </p-dialog>
 
 <!-- ================= Historial de hoy ================= -->
-<p-dialog header="Ventas de hoy" [(visible)]="historialVisible" [modal]="true" [style]="{ width: '640px' }">
-  <p-table [value]="historialHoy()" [loading]="cargandoHistorial()" styleClass="p-datatable-sm">
-    <ng-template #header>
-      <tr>
-        <th>Código</th>
-        <th>Hora</th>
-        <th>Estado</th>
-        <th>Total</th>
-        <th></th>
-      </tr>
-    </ng-template>
-    <ng-template #body let-venta>
-      <tr>
-        <td>{{ venta.codigo }}</td>
-        <td>{{ venta.fecha | date: 'shortTime' }}</td>
-        <td><p-tag [value]="venta.estado" /></td>
-        <td>{{ venta.total | number: '1.2-2' }}</td>
-        <td>
-          @if (venta.estado === 'pagada' || venta.estado === 'entregada') {
-            <p-button label="Devolución" [text]="true" size="small" (onClick)="abrirDevolucion(venta)" />
-          }
-        </td>
-      </tr>
-    </ng-template>
-    <ng-template #emptymessage>
-      <tr>
-        <td colspan="5">Sin ventas hoy todavía.</td>
-      </tr>
-    </ng-template>
-  </p-table>
+<p-dialog
+  header="Ventas de hoy"
+  [(visible)]="historialVisible"
+  [modal]="true"
+  [style]="{ width: '680px', maxWidth: '96vw' }"
+>
+  <div class="panel__scroll">
+    <p-table
+      [value]="historialHoy()"
+      [loading]="cargandoHistorial()"
+      styleClass="p-datatable-sm"
+      [tableStyle]="{ 'min-width': '520px' }"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Código</th>
+          <th>Hora</th>
+          <th>Estado</th>
+          <th class="num">Total</th>
+          <th></th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-venta>
+        <tr>
+          <td class="fuerte">{{ venta.codigo }}</td>
+          <td class="fs-num">{{ venta.fecha | date: 'shortTime' }}</td>
+          <td>
+            <span [class]="'fs-chip ' + claseEstadoVenta(venta.estado)">{{ venta.estado }}</span>
+          </td>
+          <td class="num">{{ venta.total | number: '1.2-2' }}</td>
+          <td class="num">
+            @if (venta.estado === 'pagada' || venta.estado === 'entregada') {
+              <button type="button" class="btn-texto" (click)="abrirDevolucion(venta)">
+                <fs-icono nombre="deshacer" [tam]="24" />
+                Devolución
+              </button>
+            }
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="5"><div class="vacio">Sin ventas hoy todavía.</div></td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
 </p-dialog>
 
 <!-- ================= Devolución ================= -->
-<p-dialog header="Registrar devolución" [(visible)]="devolucionVisible" [modal]="true" [style]="{ width: '480px' }">
+<p-dialog
+  header="Registrar devolución"
+  [(visible)]="devolucionVisible"
+  [modal]="true"
+  [style]="{ width: '520px', maxWidth: '96vw' }"
+>
   @if (ventaParaDevolucion(); as venta) {
-    <p class="ayuda">Venta {{ venta.codigo }} — indicá cuánto se devuelve de cada línea.</p>
-    <table class="tabla-carrito">
-      <thead>
-        <tr>
-          <th>Variante</th>
-          <th>Vendido</th>
-          <th>A devolver</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (linea of venta.detalle; track linea.id) {
+    <p class="ayuda">Venta {{ venta.codigo }} — indica cuánto se devuelve de cada línea.</p>
+    <div class="panel__scroll">
+      <table class="tabla-carrito">
+        <thead>
           <tr>
-            <td>{{ linea.variante_id }}</td>
-            <td>{{ linea.cantidad }}</td>
-            <td>
-              <input
-                type="number"
-                min="0"
-                [max]="linea.cantidad"
-                [ngModel]="cantidadesDevolucion()[linea.id]"
-                (ngModelChange)="actualizarCantidadDevolucion(linea.id, $event)"
-                class="input-cantidad"
-              />
-            </td>
+            <th>Variante</th>
+            <th class="num">Vendido</th>
+            <th class="num">A devolver</th>
           </tr>
-        }
-      </tbody>
-    </table>
-    <p-button
-      label="Confirmar devolución"
-      icon="pi pi-undo"
-      styleClass="w-full"
-      [loading]="registrandoDevolucion()"
-      (onClick)="confirmarDevolucion()"
-    />
+        </thead>
+        <tbody>
+          @for (linea of venta.detalle; track linea.id) {
+            <tr>
+              <td class="fuerte">{{ nombreVariante(linea.variante_id) }}</td>
+              <td class="num">{{ linea.cantidad }}</td>
+              <td class="num">
+                <input
+                  type="number"
+                  min="0"
+                  [max]="linea.cantidad"
+                  [ngModel]="cantidadesDevolucion()[linea.id]"
+                  (ngModelChange)="actualizarCantidadDevolucion(linea.id, $event)"
+                  class="input-cantidad"
+                  aria-label="Cantidad a devolver"
+                />
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <div class="dialogo-acciones">
+      <p-button label="Cancelar" [outlined]="true" (onClick)="devolucionVisible.set(false)" />
+      <p-button
+        label="Confirmar devolución"
+        icon="pi pi-undo"
+        [loading]="registrandoDevolucion()"
+        (onClick)="confirmarDevolucion()"
+      />
+    </div>
   }
 </p-dialog>

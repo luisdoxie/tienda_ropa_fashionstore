@@ -1,0 +1,50 @@
+<div class="acceso" [class.acceso--personal]="esPersonal()" [class.fs-zona-oscura]="esPersonal()">
+  @if (!esPersonal()) {
+    <header class="acceso__cabecera">
+      <div class="acceso__cabecera-interior">
+        <a class="acceso__marca" [routerLink]="rutaInicio()">
+          <fs-marca [nombre]="nombreMarca()" [logoUrl]="logoMarca()" variante="claro" />
+        </a>
+        <a class="acceso__volver" [routerLink]="rutaInicio()">
+          <fs-icono nombre="flecha-izquierda" [tam]="24" />
+          {{ textoVolver() }}
+        </a>
+      </div>
+    </header>
+  }
+
+  <main class="acceso__cuerpo">
+    <section class="acceso__foto">
+      <img class="acceso__foto-img" [src]="srcFoto()" [alt]="altFoto()" />
+      <div class="acceso__foto-capa" aria-hidden="true"></div>
+      @if (esPersonal()) {
+        <a class="acceso__foto-marca" routerLink="/">
+          <fs-marca nombre="FashionStore" variante="oscuro" />
+        </a>
+      }
+      <div class="acceso__foto-contenido">
+        @if (esPersonal()) {
+          <!-- Decorativo: el h1 de la pantalla es el del formulario. -->
+          <div class="acceso-foto-titular" aria-hidden="true">Tu negocio,<br /><em>bajo control</em></div>
+          <p class="acceso-foto-texto">
+            Inventario, ventas, reservas y reportes de tu empresa, con el stock al día en cada sucursal.
+          </p>
+          <div class="acceso-foto-nota">
+            <fs-icono nombre="inventario" [tam]="40" />
+            <span>Controla, vende<br />y analiza tu tienda.</span>
+          </div>
+        } @else {
+          <ng-content select="[panelImagen]" />
+        }
+      </div>
+    </section>
+
+    <section class="acceso__panel">
+      <ng-content />
+    </section>
+  </main>
+
+  @if (!esPersonal()) {
+    <footer class="acceso__pie">Con la tecnología de FashionStore</footer>
+  }
+</div>

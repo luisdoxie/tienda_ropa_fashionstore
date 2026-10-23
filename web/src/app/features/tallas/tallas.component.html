@@ -1,18 +1,30 @@
-<h1>Tallas</h1>
+<app-tabla-generica
+  endpoint="/tallas"
+  titulo="Tallas"
+  eyebrow="Catálogo"
+  etiquetaNuevo="Nueva talla"
+  placeholderBusqueda="Buscar talla"
+  [columnas]="columnas"
+  (crear)="abrirCrear()"
+  (editar)="abrirEditar($event)"
+/>
 
-<app-tabla-generica endpoint="/tallas" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
-
-<p-dialog header="Talla" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '360px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar talla' : 'Nueva talla'"
+  formId="form-talla"
+  ancho="440px"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-talla" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="codigo">Código</label>
-    <input id="codigo" pInputText formControlName="codigo" placeholder="M, XL, 42..." />
+    <input id="codigo" pInputText formControlName="codigo" appAriaError="err-codigo" placeholder="M, XL, 42..." />
+    <app-error-campo id="err-codigo" [control]="formulario.controls.codigo">Ingresa el código.</app-error-campo>
 
     <label for="descripcion">Descripción</label>
     <input id="descripcion" pInputText formControlName="descripcion" />
 
     <label for="orden">Orden</label>
     <p-inputnumber inputId="orden" formControlName="orden" [useGrouping]="false" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

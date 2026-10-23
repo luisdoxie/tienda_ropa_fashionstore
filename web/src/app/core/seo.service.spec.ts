@@ -37,7 +37,7 @@ describe('SeoService', () => {
     seo.fijarPlataforma();
 
     expect(title.getTitle()).toBe('FashionStore | Tiendas de ropa');
-    expect(contenido("name='description'")).toBe('Elegí tu tienda de ropa en FashionStore.');
+    expect(contenido("name='description'")).toBe('Elige tu tienda de ropa en FashionStore.');
     expect(meta.getTag("property='og:title'")).toBeNull();
     expect(meta.getTag("property='og:description'")).toBeNull();
     expect(meta.getTag("property='og:image'")).toBeNull();

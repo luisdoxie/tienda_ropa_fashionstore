@@ -1,11 +1,10 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe, NgTemplateOutlet, PercentPipe } from '@angular/common';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { ChartModule } from 'primeng/chart';
 import { DatePickerModule } from 'primeng/datepicker';
-import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TabsModule } from 'primeng/tabs';
@@ -21,8 +20,54 @@ import {
   ReporteVozRespuesta,
 } from '../../core/models/reportes.models';
 import { VozService } from '../../core/voz.service';
+import { IconoComponent } from '../../shared/icono/icono.component';
+import { NombreIcono } from '../../shared/icono/iconos';
 
 type PestaniaReportes = 'dashboard' | 'ventas' | 'inventario' | 'reservas';
+
+/** Tarjeta de indicador: el valor se formatea en la plantilla según su tipo. */
+interface Kpi {
+  etiqueta: string;
+  valor: number;
+  tipo: 'monto' | 'entero' | 'porcentaje';
+  icono: NombreIcono;
+  alerta?: boolean;
+}
+
+/**
+ * Los gráficos de Chart.js pintan en un canvas y no entienden `var(--fs-*)`:
+ * se leen los tokens del documento una vez, con el valor de styles.scss como
+ * respaldo (pruebas y renderizado sin estilos).
+ */
+function token(nombre: string, respaldo: string): string {
+  if (typeof document === 'undefined') return respaldo;
+  const valor = getComputedStyle(document.documentElement).getPropertyValue(nombre).trim();
+  return valor || respaldo;
+}
+
+/** Columnas de la exportación a CSV: p-table solo exporta lo que declara en `[columns]`. */
+const COLUMNAS_CSV_VENTAS = [
+  { field: 'fecha', header: 'Fecha' },
+  { field: 'codigo', header: 'Código' },
+  { field: 'canal', header: 'Canal' },
+  { field: 'sucursal', header: 'Sucursal' },
+  { field: 'producto', header: 'Producto' },
+  { field: 'categoria', header: 'Categoría' },
+  { field: 'cantidad', header: 'Cantidad' },
+  { field: 'subtotal', header: 'Subtotal' },
+  { field: 'margen', header: 'Margen' },
+];
+
+const COLUMNAS_CSV_INVENTARIO = [
+  { field: 'producto', header: 'Producto' },
+  { field: 'sku', header: 'SKU' },
+  { field: 'talla', header: 'Talla' },
+  { field: 'color', header: 'Color' },
+  { field: 'sucursal', header: 'Sucursal' },
+  { field: 'cantidad_disponible', header: 'Disponible' },
+  { field: 'stock_minimo', header: 'Mínimo' },
+  { field: 'valor_inventario', header: 'Valor' },
+];
 
 const OPCIONES_CANAL = [
   { label: 'Todos los canales', value: null },
@@ -36,14 +81,16 @@ const OPCIONES_CANAL = [
   imports: [
     DatePipe,
     DecimalPipe,
+    PercentPipe,
+    NgTemplateOutlet,
     FormsModule,
     ButtonModule,
     ChartModule,
     DatePickerModule,
-    InputTextModule,
     SelectModule,
     TableModule,
     TabsModule,
+    IconoComponent,
   ],
   templateUrl: './reportes.component.html',
   styleUrl: './reportes.component.scss',
@@ -53,6 +100,8 @@ export class ReportesComponent implements OnInit {
   private readonly voz = inject(VozService);
 
   protected readonly opcionesCanal = OPCIONES_CANAL;
+  protected readonly columnasCsvVentas = COLUMNAS_CSV_VENTAS;
+  protected readonly columnasCsvInventario = COLUMNAS_CSV_INVENTARIO;
 
   protected readonly pestania = signal<PestaniaReportes>('dashboard');
 
@@ -85,31 +134,108 @@ export class ReportesComponent implements OnInit {
   protected readonly reservas = signal<ReporteReservas | null>(null);
   protected readonly cargandoReservas = signal(false);
 
-  // ---- Gráficos (p-chart) --------------------------------------------------------------
-  // Colores fijos por entidad (canal, estado), nunca por posición: si un estado no
-  // tiene datos, los demás conservan su color. La paleta parte del terracota de la
-  // marca y pasó el validador de daltonismo y contraste (segmentos vecinos del anillo).
+  // ---- Indicadores y ranking ------------------------------------------------------------
 
-  private static readonly COLOR_CANAL: Record<string, string> = { digital: '#9A3E1F', presencial: '#1E6FA8' };
-  private static readonly COLOR_ESTADO_RESERVA: Record<string, string> = {
-    pendiente: '#D39A2C',
-    preparada: '#1E6FA8',
-    en_prueba: '#5B8A3C',
-    completada: '#8250A8',
-    cancelada: '#9A3E1F',
-    expirada: '#2AA0C0',
+  protected readonly kpisDashboard = computed<Kpi[]>(() => {
+    const d = this.dashboard();
+    if (d === null) return [];
+    return [
+      { etiqueta: 'Ventas del período', valor: d.ventas_del_periodo, tipo: 'monto', icono: 'dinero' },
+      { etiqueta: 'Transacciones', valor: d.transacciones, tipo: 'entero', icono: 'carrito' },
+      { etiqueta: 'Ticket promedio', valor: d.ticket_promedio, tipo: 'monto', icono: 'etiqueta' },
+      { etiqueta: 'Margen bruto', valor: d.margen_bruto, tipo: 'monto', icono: 'grafico' },
+      { etiqueta: 'Valor de inventario', valor: d.valor_inventario_total, tipo: 'monto', icono: 'inventario' },
+      {
+        etiqueta: 'Variantes bajo mínimo',
+        valor: d.variantes_bajo_minimo,
+        tipo: 'entero',
+        icono: 'advertencia',
+        alerta: d.variantes_bajo_minimo > 0,
+      },
+      {
+        etiqueta: 'Conversión reservas → ventas',
+        valor: d.tasa_conversion_reservas,
+        tipo: 'porcentaje',
+        icono: 'calendario',
+      },
+    ];
+  });
+
+  protected readonly kpisVentas = computed<Kpi[]>(() => {
+    const resumen = this.ventas()?.resumen;
+    if (!resumen) return [];
+    return [
+      { etiqueta: 'Transacciones', valor: resumen.transacciones, tipo: 'entero', icono: 'carrito' },
+      { etiqueta: 'Total ventas', valor: resumen.total_ventas, tipo: 'monto', icono: 'dinero' },
+      { etiqueta: 'Ticket promedio', valor: resumen.ticket_promedio, tipo: 'monto', icono: 'etiqueta' },
+      { etiqueta: 'Margen bruto', valor: resumen.margen_bruto, tipo: 'monto', icono: 'grafico' },
+    ];
+  });
+
+  protected readonly kpisReservas = computed<Kpi[]>(() => {
+    const reporte = this.reservas();
+    if (!reporte) return [];
+    return [
+      { etiqueta: 'Tasa de conversión a venta', valor: reporte.tasa_conversion, tipo: 'porcentaje', icono: 'calendario' },
+    ];
+  });
+
+  /** Productos más vendidos del dashboard con el ancho de su barra (el primero = 100 %). */
+  protected readonly topProductosDashboard = computed(() => {
+    const filas = this.dashboard()?.top_productos ?? [];
+    const maximo = Math.max(1, ...filas.map((f) => f.cantidad_vendida));
+    return filas.map((f) => ({ ...f, ancho: Math.round((f.cantidad_vendida / maximo) * 100) }));
+  });
+
+  protected claseEstadoProbador(estado: string): string {
+    if (estado === 'completado') return 'fs-chip--exito';
+    if (estado === 'fallido') return 'fs-chip--error';
+    return 'fs-chip--advertencia';
+  }
+
+  // ---- Gráficos (p-chart) --------------------------------------------------------------
+  // Paleta del sistema de diseño. Sobre fondo claro la serie principal va en oliva
+  // (la lima da ~2,4:1 contra blanco y se reserva para fondos oscuros; aquí solo
+  // aparece como un segmento más, con borde). Los estados se escalonan en luminosidad
+  // (tinta, oliva/advertencia, gris, lima, neutro) y la leyenda de texto con la cantidad
+  // no depende del color. Colores fijos por entidad, nunca por posición.
+
+  private static readonly PALETA = {
+    tinta: token('--fs-tinta', '#151515'),
+    lima: token('--fs-acento-oscuro', '#8fae5b'),
+    oliva: token('--fs-acento', '#5d6b34'),
+    neutro: token('--fs-campo-borde', '#c9c2b6'),
+    tenue: token('--fs-texto-tenue', '#6b645c'),
+    texto: token('--fs-texto', '#161412'),
+    advertencia: token('--fs-advertencia', '#a4480a'),
+    rejilla: token('--fs-fondo-alt', '#efebe4'),
+    superficie: token('--fs-superficie', '#ffffff'),
+    carbon: token('--fs-carbon', '#1b1916'),
   };
-  private static readonly TEXTO = '#1C1713';
-  private static readonly TEXTO_TENUE = '#6E6156';
-  private static readonly REJILLA = '#EFE9E1';
+
+  private static readonly COLOR_CANAL: Record<string, string> = {
+    digital: ReportesComponent.PALETA.oliva,
+    presencial: ReportesComponent.PALETA.tinta,
+  };
+  private static readonly COLOR_ESTADO_RESERVA: Record<string, string> = {
+    pendiente: ReportesComponent.PALETA.tenue,
+    preparada: ReportesComponent.PALETA.oliva,
+    en_prueba: ReportesComponent.PALETA.lima,
+    completada: ReportesComponent.PALETA.tinta,
+    cancelada: ReportesComponent.PALETA.neutro,
+    expirada: ReportesComponent.PALETA.advertencia,
+  };
+  private static readonly TEXTO = ReportesComponent.PALETA.texto;
+  private static readonly TEXTO_TENUE = ReportesComponent.PALETA.tenue;
+  private static readonly REJILLA = ReportesComponent.PALETA.rejilla;
   private static readonly FUENTE = { family: 'Public Sans, sans-serif', size: 12 };
 
   private static readonly TOOLTIP = {
-    backgroundColor: '#241C18',
+    backgroundColor: ReportesComponent.PALETA.carbon,
     titleFont: { family: 'Public Sans, sans-serif', size: 12, weight: 'bold' as const },
     bodyFont: { family: 'Public Sans, sans-serif', size: 12 },
     padding: 10,
-    cornerRadius: 6,
+    cornerRadius: 4,
     boxPadding: 4,
   };
 
@@ -159,8 +285,13 @@ export class ReportesComponent implements OnInit {
   protected readonly opcionesBarrasVerticales = ReportesComponent.opcionesBarras(false);
   protected readonly opcionesBarrasHorizontales = ReportesComponent.opcionesBarras(true);
 
-  private static readonly ESTILO_BARRA = { borderRadius: 4, borderSkipped: 'start' as const, maxBarThickness: 26 };
-  private static readonly ESTILO_ANILLO = { borderColor: '#FFFFFF', borderWidth: 2, hoverOffset: 6 };
+  private static readonly ESTILO_BARRA = { borderRadius: 2, borderSkipped: 'start' as const, maxBarThickness: 26 };
+  private static readonly ESTILO_ANILLO = {
+    // Borde blanco grueso: separa los segmentos aunque dos colores se parezcan.
+    borderColor: ReportesComponent.PALETA.superficie,
+    borderWidth: 3,
+    hoverOffset: 6,
+  };
 
   protected readonly chartVentasPorCanal = computed(() => {
     const filas = this.dashboard()?.ventas_por_canal ?? this.ventas()?.por_canal ?? [];
@@ -169,7 +300,7 @@ export class ReportesComponent implements OnInit {
       datasets: [
         {
           data: filas.map((f) => Number(f.total_ventas)),
-          backgroundColor: filas.map((f) => ReportesComponent.COLOR_CANAL[f.canal] ?? '#8250A8'),
+          backgroundColor: filas.map((f) => ReportesComponent.COLOR_CANAL[f.canal] ?? ReportesComponent.PALETA.neutro),
           ...ReportesComponent.ESTILO_ANILLO,
         },
       ],
@@ -184,7 +315,7 @@ export class ReportesComponent implements OnInit {
         {
           label: 'Ventas (Bs)',
           data: filas.map((f) => Number(f.total_ventas)),
-          backgroundColor: '#9A3E1F',
+          backgroundColor: ReportesComponent.PALETA.oliva,
           ...ReportesComponent.ESTILO_BARRA,
         },
       ],
@@ -199,7 +330,7 @@ export class ReportesComponent implements OnInit {
         {
           label: 'Cantidad vendida',
           data: filas.map((f) => f.cantidad_vendida),
-          backgroundColor: '#9A3E1F',
+          backgroundColor: ReportesComponent.PALETA.oliva,
           ...ReportesComponent.ESTILO_BARRA,
         },
       ],
@@ -213,7 +344,9 @@ export class ReportesComponent implements OnInit {
       datasets: [
         {
           data: filas.map((f) => f.cantidad),
-          backgroundColor: filas.map((f) => ReportesComponent.COLOR_ESTADO_RESERVA[f.codigo] ?? '#6E6156'),
+          backgroundColor: filas.map(
+            (f) => ReportesComponent.COLOR_ESTADO_RESERVA[f.codigo] ?? ReportesComponent.PALETA.tenue,
+          ),
           ...ReportesComponent.ESTILO_ANILLO,
         },
       ],
@@ -254,7 +387,7 @@ export class ReportesComponent implements OnInit {
 
   // ---- Preguntar a los reportes (CU-23) ---------------------------------------------------
   // Se dicta o se escribe una pregunta; el backend la interpreta, la responde en español y
-  // devuelve los filtros que aplicó. Acá se muestran esos filtros y la pestaña del reporte,
+  // devuelve los filtros que aplicó. Aquí se muestran esos filtros y la pestaña del reporte,
   // reutilizando las mismas búsquedas de siempre (no se dibuja `resultado` aparte).
 
   protected readonly vozDisponible = this.voz.disponible;
@@ -281,7 +414,7 @@ export class ReportesComponent implements OnInit {
       },
       complete: () => {
         this.escuchando.set(false);
-        if (!hayTexto) this.errorVoz.set('No se escuchó nada. Intentá de nuevo.');
+        if (!hayTexto) this.errorVoz.set('No se escuchó nada. Intenta de nuevo.');
       },
     });
   }

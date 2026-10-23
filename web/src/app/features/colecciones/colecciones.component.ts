@@ -1,29 +1,32 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
+import { finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Coleccion, ColeccionCrear, Temporada } from '../../core/models/catalogo.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Coleccion>[] = [
   { campo: 'nombre', encabezado: 'Nombre' },
   { campo: 'descripcion', encabezado: 'Descripción' },
-  { campo: 'activo', encabezado: 'Activo', tipo: 'booleano' },
+  { campo: 'activo', encabezado: 'Activa', tipo: 'booleano', femenino: true },
 ];
 
 @Component({
   selector: 'app-colecciones',
   standalone: true,
-  imports: [ReactiveFormsModule, ButtonModule, DialogModule, InputTextModule, SelectModule, TablaGenericaComponent],
+  imports: [ReactiveFormsModule, InputTextModule, SelectModule, TablaGenericaComponent, DialogoCrudComponent, ErrorCampoComponent, AriaErrorDirective],
   templateUrl: './colecciones.component.html',
 })
 export class ColeccionesComponent implements OnInit {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Coleccion | null>(null);
   protected readonly temporadas = signal<Temporada[]>([]);
 
@@ -78,7 +81,8 @@ export class ColeccionesComponent implements OnInit {
       ? this.http.put(`${environment.apiUrl}/colecciones/${coleccion.id}`, datos)
       : this.http.post(`${environment.apiUrl}/colecciones`, datos);
 
-    peticion.subscribe(() => {
+    this.guardando.set(true);
+    peticion.pipe(finalize(() => this.guardando.set(false))).subscribe(() => {
       this.dialogoVisible.set(false);
       this.tabla.recargar();
     });

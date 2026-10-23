@@ -5,6 +5,7 @@ import { filter } from 'rxjs';
 import { SeoService } from '../../core/seo.service';
 import { calcularPaletaAcento } from '../../core/utils/color';
 import { TiendaActualService } from './state/tienda-actual.service';
+import { PanelEstadoTiendaComponent } from './panel-estado-tienda.component';
 import { TiendaNoDisponibleComponent } from './tienda-no-disponible.component';
 
 /** Primer segmento después de /t/:codigo/ que no se indexa (carrito, cuenta, login...). */
@@ -29,7 +30,7 @@ const SEGMENTOS_PRIVADOS = [
 @Component({
   selector: 'app-tienda-raiz',
   standalone: true,
-  imports: [RouterOutlet, TiendaNoDisponibleComponent],
+  imports: [RouterOutlet, TiendaNoDisponibleComponent, PanelEstadoTiendaComponent],
   templateUrl: './tienda-raiz.component.html',
   styleUrl: './tienda-raiz.component.scss',
   host: { '[style]': 'estilosMarca()' },
@@ -64,7 +65,11 @@ export class TiendaRaizComponent implements OnDestroy {
       });
   }
 
-  /** Variables CSS de la marca; vacío si no hay color o no contrasta (queda el terracota base). */
+  /**
+   * Variables CSS de la marca; vacío si no hay color o no contrasta (queda el acento base:
+   * oliva sobre claro, lima sobre oscuro). Los controles (botón primario, campos) no toman el
+   * acento: son tinta. El acento va en detalles y en la variante sobre superficies oscuras.
+   */
   protected readonly estilosMarca = computed<Record<string, string>>(() => {
     const sinMarca: Record<string, string> = {};
     if (this.tienda.estado() !== 'lista') return sinMarca;
@@ -74,10 +79,9 @@ export class TiendaRaizComponent implements OnDestroy {
       '--fs-acento': paleta.acento,
       '--fs-acento-hover': paleta.acentoHover,
       '--fs-acento-suave': paleta.acentoSuave,
-      '--p-primary-color': paleta.acento,
-      '--p-primary-hover-color': paleta.acentoHover,
-      '--p-primary-active-color': paleta.acentoHover,
-      '--p-primary-contrast-color': paleta.textoSobreAcento,
+      '--fs-acento-oscuro': paleta.sobreOscuro.acento,
+      '--fs-acento-oscuro-hover': paleta.sobreOscuro.hover,
+      '--fs-sobre-acento-oscuro': paleta.sobreOscuro.textoSobreAcento,
     };
   });
 

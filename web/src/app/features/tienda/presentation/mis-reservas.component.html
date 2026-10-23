@@ -1,22 +1,44 @@
-<div class="compras">
-  <h1>Mis reservas</h1>
+<div class="cuenta">
+  <div class="encabezado">
+    <div>
+      <span class="fs-eyebrow">Mi cuenta</span>
+      <h1 class="fs-display">Mis reservas</h1>
+    </div>
+  </div>
+
+  <nav class="fs-tabs pestanas" aria-label="Mi cuenta">
+    <a class="fs-tab" [routerLink]="tienda.ruta('mis-compras')">Compras</a>
+    <a class="fs-tab fs-tab--activa" [routerLink]="tienda.ruta('mis-reservas')" aria-current="page">Reservas</a>
+  </nav>
 
   @if (cargando()) {
-    <p class="fs-caption">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
+  } @else if (error()) {
+    <div class="fs-aviso fs-aviso--error estado-error" role="alert">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span class="estado-error__texto">No se pudieron cargar tus reservas.</span>
+      <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="cargar()">Reintentar</button>
+    </div>
   } @else if (reservas().length === 0) {
     <div class="vacio">
-      <p class="fs-caption">Todavía no hiciste ninguna reserva.</p>
-      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
+      <span class="vacio__icono"><fs-icono nombre="calendario" [tam]="40" /></span>
+      <p>Todavía no has hecho ninguna reserva.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
     <div class="lista">
       @for (reserva of reservas(); track reserva.id) {
-        <a class="fs-card fila" [routerLink]="tienda.ruta('mis-reservas', '' + reserva.id)">
-          <div>
-            <strong>{{ reserva.codigo }}</strong>
-            <div class="fs-caption">{{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde.slice(0, 5) }} - {{ reserva.hora_visita_hasta.slice(0, 5) }}</div>
+        <a class="fila" [routerLink]="tienda.ruta('mis-reservas', '' + reserva.id)">
+          <span class="fila__icono"><fs-icono nombre="calendario" [tam]="30" /></span>
+          <div class="fila__datos">
+            <div class="fila__codigo fs-num">{{ reserva.codigo }}</div>
+            <div class="fila__fecha fs-num">
+              {{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde.slice(0, 5) }} -
+              {{ reserva.hora_visita_hasta.slice(0, 5) }}
+            </div>
           </div>
-          <span class="chip" [class]="'chip--' + reserva.estado">{{ etiquetaEstado(reserva.estado) }}</span>
+          <span [class]="'fs-chip ' + claseEstado(reserva.estado)">{{ etiquetaEstado(reserva.estado) }}</span>
+          <fs-icono class="fila__chevron" nombre="chevron-derecha" [tam]="28" />
         </a>
       }
     </div>

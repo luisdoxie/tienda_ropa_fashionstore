@@ -1,122 +1,120 @@
-.reserva {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--fs-espacio-6);
+@use './comun' as c;
+
+.cuenta {
+  @include c.pagina(1100px);
 }
 
 .encabezado {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-3);
+  @include c.encabezado;
+}
 
-  h1 {
-    margin: 0;
+.enlace-volver {
+  @include c.enlace-flecha;
+}
+
+.columnas {
+  @include c.columnas;
+
+  .columnas__principal {
+    gap: 24px;
   }
 }
 
-.chip {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-  background: var(--fs-muted);
-  color: var(--fs-texto);
+@include c.linea-prenda;
+
+.estado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
 }
 
-.chip--preparada,
-.chip--completada {
-  background: var(--fs-exito-suave);
-  color: var(--fs-exito);
+.estado__observacion {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fs-texto-tenue);
 }
 
-.chip--pendiente,
-.chip--en_prueba {
-  background: var(--fs-advertencia-suave);
-  color: var(--fs-advertencia);
-}
-
-.chip--cancelada,
-.chip--expirada {
-  background: rgba(220, 38, 38, 0.12);
-  color: var(--fs-error);
-}
-
-.lineas {
+.seccion {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-2);
-  margin-bottom: var(--fs-espacio-4);
+  gap: 16px;
+}
+
+.seccion__titulo {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.linea__foto {
+  width: 80px;
+  height: 100px;
 }
 
 .linea {
-  display: flex;
   align-items: center;
-  gap: var(--fs-espacio-3);
-  padding: var(--fs-espacio-3);
-}
-
-.linea-foto {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--fs-radio-sm);
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.linea-foto--vacia {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--fs-acento-suave);
-  color: var(--fs-acento);
-}
-
-.linea-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.linea-nombre {
-  font-weight: 600;
-}
-
-.disponible {
-  color: var(--fs-exito);
-  font-weight: 600;
 }
 
 .historial {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-2);
-  margin-bottom: var(--fs-espacio-4);
+  gap: 16px;
+  padding: 28px;
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
 }
 
-.fila-historial {
+.historial__lista {
   display: flex;
   flex-direction: column;
-  padding: var(--fs-espacio-2) 0;
-  border-bottom: 1px solid var(--fs-borde);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.boton-cancelar {
-  font-family: inherit;
+.historial__fila {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--fs-borde);
   font-size: 14px;
-  font-weight: 600;
-  padding: var(--fs-espacio-2) var(--fs-espacio-4);
-  border-radius: var(--fs-radio-sm);
-  border: 1px solid var(--fs-error);
-  background: transparent;
-  color: var(--fs-error);
-  cursor: pointer;
 
-  &:hover {
-    background: rgba(220, 38, 38, 0.08);
+  &:first-child {
+    padding-top: 0;
   }
+}
 
-  &:disabled {
-    opacity: 0.6;
-    cursor: default;
+.historial__fecha {
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+// "Cancelar" es una acción destructiva: contorno y texto en el rojo de error.
+.cancelar {
+  color: var(--fs-error);
+  border-color: var(--fs-error);
+
+  &:hover:not([disabled]) {
+    background: var(--fs-error-suave);
+  }
+}
+
+.fs-estado-vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  p {
+    margin: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .historial {
+    padding: 20px;
   }
 }

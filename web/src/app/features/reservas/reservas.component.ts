@@ -10,11 +10,11 @@ import { DialogModule } from 'primeng/dialog';
 import { SelectButtonModule } from 'primeng/selectbutton';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { environment } from '../../../environments/environment';
 import { EstadoReserva, Reserva, SeleccionActualizar } from '../../core/models/reservas.models';
 import { Sucursal } from '../../core/models/organizacion.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 
 const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
   pendiente: 'Pendiente',
@@ -25,13 +25,13 @@ const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
   expirada: 'Expirada',
 };
 
-const SEVERIDAD_ESTADO: Record<EstadoReserva, 'info' | 'warn' | 'success' | 'danger' | 'secondary'> = {
-  pendiente: 'info',
-  preparada: 'warn',
-  en_prueba: 'warn',
-  completada: 'success',
-  cancelada: 'danger',
-  expirada: 'secondary',
+const CLASE_ESTADO: Record<EstadoReserva, string> = {
+  pendiente: '',
+  preparada: 'fs-chip--advertencia',
+  en_prueba: 'fs-chip--advertencia',
+  completada: 'fs-chip--exito',
+  cancelada: 'fs-chip--error',
+  expirada: '',
 };
 
 const OPCIONES_ESTADO: { label: string; value: EstadoReserva | null }[] = [
@@ -62,8 +62,8 @@ const OPCIONES_COMPRA = [
     SelectButtonModule,
     SelectModule,
     TableModule,
-    TagModule,
     TooltipModule,
+    IconoComponent,
   ],
   templateUrl: './reservas.component.html',
   styleUrl: './reservas.component.scss',
@@ -79,8 +79,8 @@ export class ReservasComponent implements OnInit {
     return ETIQUETAS_ESTADO[estado];
   }
 
-  protected severidadEstado(estado: EstadoReserva): 'info' | 'warn' | 'success' | 'danger' | 'secondary' {
-    return SEVERIDAD_ESTADO[estado];
+  protected claseEstado(estado: EstadoReserva): string {
+    return CLASE_ESTADO[estado];
   }
 
   protected readonly sucursales = signal<Sucursal[]>([]);
