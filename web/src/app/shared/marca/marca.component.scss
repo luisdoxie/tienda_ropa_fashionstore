@@ -1,0 +1,80 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  color: var(--fs-texto);
+}
+
+.marca__monograma {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--marca-color, var(--fs-tinta));
+  border-radius: var(--fs-radio-md);
+  color: var(--marca-color, var(--fs-tinta));
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 17px;
+}
+
+.marca__nombre {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: inherit;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.marca__logo {
+  display: block;
+  max-height: 44px;
+  max-width: 200px;
+  width: auto;
+}
+
+// Sobre fondo oscuro el monograma lleva el acento (lima o el de la empresa).
+:host(.marca--oscuro) {
+  color: var(--fs-claro);
+  --marca-color: var(--fs-acento-oscuro);
+}
+
+:host(.marca--claro) {
+  --marca-color: var(--fs-tinta);
+}
+
+:host(.marca--envolver) .marca__nombre {
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.3;
+}
+
+:host(.marca--pequena) {
+  gap: 10px;
+
+  .marca__monograma {
+    width: 36px;
+    height: 36px;
+    font-size: 14px;
+  }
+
+  .marca__nombre {
+    font-size: 13px;
+    letter-spacing: 0.18em;
+  }
+
+  .marca__logo {
+    max-height: 36px;
+  }
+}

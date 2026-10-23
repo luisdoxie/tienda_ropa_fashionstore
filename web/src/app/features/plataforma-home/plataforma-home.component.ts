@@ -2,19 +2,20 @@ import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { IconFieldModule } from 'primeng/iconfield';
-import { InputIconModule } from 'primeng/inputicon';
-import { InputTextModule } from 'primeng/inputtext';
 import { Subscription } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { RUTA_LOGIN_PERSONAL } from '../../core/auth.service';
 import { SIN_TOAST_ERROR } from '../../core/http-contexts';
 import { EmpresaPublica, ResumenTienda } from '../../core/models/empresa.models';
 import { SeoService, esUrlHttp } from '../../core/seo.service';
 import { calcularPaletaAcento } from '../../core/utils/color';
+import { IconoComponent } from '../../shared/icono/icono.component';
+import { NombreIcono } from '../../shared/icono/iconos';
+import { MarcaComponent } from '../../shared/marca/marca.component';
 import { TiendaActualService } from '../tienda/state/tienda-actual.service';
 
-/** Acceso del personal (back office). E16 lo cambia a '/admin/login'. */
-export const RUTA_ACCESO_PERSONAL = '/login';
+/** Acceso del personal (back office). */
+export const RUTA_ACCESO_PERSONAL = RUTA_LOGIN_PERSONAL;
 
 // Misma demora que el buscador de catalogo-publico (allá la constante no se exporta).
 const DEMORA_BUSQUEDA_MS = 350;
@@ -27,11 +28,15 @@ interface TarjetaTienda {
   codigo: string;
   nombre: string;
   logo: string | null;
-  inicial: string;
-  /** Color de la franja y del fondo de la inicial; null = acento base de la app. */
+  /** Color de la franja y de las siglas; null = acento base de la app. */
   acento: string | null;
-  /** Color del texto sobre el acento; null = blanco. */
-  textoSobreAcento: string | null;
+}
+
+/** Un bloque de texto con ícono de la página (banda de confianza, servicios). */
+interface ContenidoPlataforma {
+  icono: NombreIcono;
+  titulo: string;
+  texto: string;
 }
 
 function aTarjeta(tienda: ResumenTienda): TarjetaTienda {
@@ -40,20 +45,18 @@ function aTarjeta(tienda: ResumenTienda): TarjetaTienda {
     codigo: tienda.codigo,
     nombre: tienda.nombre,
     logo: esUrlHttp(tienda.logo_url) ? tienda.logo_url.trim() : null,
-    inicial: (tienda.nombre.trim().charAt(0) || '?').toLocaleUpperCase('es'),
     acento: paleta?.acento ?? null,
-    textoSobreAcento: paleta?.textoSobreAcento ?? null,
   };
 }
 
 /**
- * Página de la plataforma ("/"): el comprador elige una tienda. No hereda el
+ * Página de la plataforma ("/"): presenta la plataforma y deja elegir una tienda. No hereda el
  * color de ninguna tienda (TiendaRaiz lo limita a su propio elemento).
  */
 @Component({
   selector: 'app-plataforma-home',
   standalone: true,
-  imports: [NgTemplateOutlet, RouterLink, IconFieldModule, InputIconModule, InputTextModule],
+  imports: [NgTemplateOutlet, RouterLink, IconoComponent, MarcaComponent],
   templateUrl: './plataforma-home.component.html',
   styleUrl: './plataforma-home.component.scss',
 })
@@ -65,6 +68,87 @@ export class PlataformaHomeComponent implements OnInit {
   protected readonly rutaAccesoPersonal = RUTA_ACCESO_PERSONAL;
   protected readonly esqueletos = [1, 2, 3, 4, 5, 6];
 
+  protected readonly confianza: readonly ContenidoPlataforma[] = [
+    { icono: 'tienda', titulo: 'Una tienda por empresa', texto: 'Cada una con su propia dirección' },
+    { icono: 'inventario', titulo: 'Stock por sucursal', texto: 'Siempre al día' },
+    { icono: 'tarjeta', titulo: 'Pagos en línea', texto: 'Con QR o PayPal' },
+    { icono: 'destellos', titulo: 'Funciones con IA', texto: 'Probador, voz y reportes' },
+  ];
+
+  protected readonly servicios: readonly ContenidoPlataforma[] = [
+    {
+      icono: 'tienda',
+      titulo: 'Tienda en línea propia',
+      texto:
+        'Catálogo, carrito, reservas y compras de tus clientes en la dirección de tu empresa, con tu logo y tu nombre.',
+    },
+    {
+      icono: 'telefono',
+      titulo: 'Probador virtual con IA',
+      texto: 'Tus clientes suben una foto desde la app y ven cómo les queda la prenda antes de decidir.',
+    },
+    {
+      icono: 'inventario',
+      titulo: 'Inventario por sucursal',
+      texto: 'Existencias, entradas y salidas por sucursal, con alertas de stock bajo.',
+    },
+    {
+      icono: 'dinero',
+      titulo: 'Caja y ventas',
+      texto: 'Registra ventas presenciales, controla devoluciones y emite el comprobante.',
+    },
+    {
+      icono: 'grafico',
+      titulo: 'Reportes con IA',
+      texto: 'Consulta indicadores y pide reportes hablando, sin armar tablas a mano.',
+    },
+    {
+      icono: 'tarjeta',
+      titulo: 'Pagos en línea',
+      texto: 'Cobra con QR o PayPal y concilia cada pago con su venta.',
+    },
+  ];
+
+  protected readonly pasos: readonly { numero: string; titulo: string; texto: string }[] = [
+    { numero: '01', titulo: 'Te damos de alta', texto: 'Creamos tu empresa, tu plan y tu primer administrador.' },
+    {
+      numero: '02',
+      titulo: 'Cargas tu catálogo',
+      texto: 'Productos, tallas, colores, fotos y existencias por sucursal.',
+    },
+    {
+      numero: '03',
+      titulo: 'Empiezas a vender',
+      texto: 'Tu tienda queda visible en línea y tu equipo trabaja desde el panel.',
+    },
+  ];
+
+  /** Los dos planes sembrados (sin precio: la plataforma no lo maneja). */
+  protected readonly planes: readonly { nombre: string; oscuro: boolean; items: readonly string[] }[] = [
+    {
+      nombre: 'Básico',
+      oscuro: false,
+      items: [
+        'Hasta 2 sucursales activas',
+        'Tienda en línea, inventario y reservas',
+        'Caja y ventas',
+        'Sin funciones de IA, analítica ni copias de seguridad',
+      ],
+    },
+    {
+      nombre: 'Profesional',
+      oscuro: true,
+      items: [
+        'Hasta 10 sucursales activas',
+        'Todo lo del plan Básico',
+        'Reportes con IA',
+        'Analítica con aprendizaje automático (próximamente)',
+        'Trabajo sin conexión (próximamente)',
+        'Copias de seguridad (próximamente)',
+      ],
+    },
+  ];
+
   protected readonly tiendas = signal<TarjetaTienda[]>([]);
   protected readonly cargando = signal(true);
   protected readonly cargandoMas = signal(false);
@@ -72,8 +156,6 @@ export class PlataformaHomeComponent implements OnInit {
   protected readonly hayMas = signal(false);
   /** "Volver a <nombre>": la última tienda visitada, si todavía carga bien. */
   protected readonly ultima = signal<TarjetaTienda | null>(null);
-  /** Códigos cuyo logo no cargó: se muestra la inicial. */
-  protected readonly logosFallidos = signal<ReadonlySet<string>>(new Set());
 
   private texto = '';
   private pagina = 1;
@@ -137,14 +219,6 @@ export class PlataformaHomeComponent implements OnInit {
       // Falló "una página más": la grilla que ya se veía queda y el botón sirve para reintentar.
       error: () => this.cargandoMas.set(false),
     });
-  }
-
-  protected mostrarLogo(tarjeta: TarjetaTienda): boolean {
-    return tarjeta.logo !== null && !this.logosFallidos().has(tarjeta.codigo);
-  }
-
-  protected logoFallo(codigo: string): void {
-    this.logosFallidos.update((actuales) => new Set(actuales).add(codigo));
   }
 
   private pedirPagina(pagina: number, sinToast: boolean) {

@@ -1,92 +1,283 @@
-.seccion-anidada {
-  margin-top: var(--fs-espacio-6);
-  padding-top: var(--fs-espacio-4);
-  border-top: 1px solid var(--fs-borde);
+@use '../../shared/estilos/patron-bo' as *;
 
-  h3 {
-    margin-top: 0;
+@include bo-base;
+@include bo-texto;
+@include bo-interruptor;
+@include bo-btn-icono;
+@include bo-btn-texto;
+@include bo-formulario;
+@include bo-dialogo-acciones;
+
+// ---- Estructura del diálogo (canvas "Editar producto") ---------------------
+.producto {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-6);
+  align-items: flex-start;
+}
+
+.producto__principal {
+  flex: 2 1 520px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+  min-width: 0;
+}
+
+.producto__lateral {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.producto__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+}
+
+.seccion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+  padding: var(--fs-espacio-6);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  &--tabla {
+    gap: var(--fs-espacio-2);
   }
+}
+
+.seccion__titulo {
+  margin: 0;
+  font-family: var(--fs-fuente-display);
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.seccion__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+}
+
+.fila {
+  display: grid;
+  gap: var(--fs-espacio-3);
+
+  &--codigo {
+    grid-template-columns: 1fr 2fr;
+  }
+
+  &--tres {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+:host ::ng-deep .campo input.ng-invalid.ng-touched {
+  border-color: var(--fs-error);
+}
+
+// ---- Probador virtual y otros interruptores ------------------------------------
+.probador {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-espacio-4);
+  padding-top: var(--fs-espacio-3);
+  border-top: 1px solid var(--fs-borde);
+}
+
+.probador__texto {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+// ---- Chips de tallas y colores ---------------------------------------------------
+.grupo-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grupo-chips__titulo {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fs-pill {
+  min-width: 56px;
+}
+
+.pill-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fs-texto);
+
+  // Seleccionado: fondo neutro con borde de tinta (como en el canvas).
+  &.activa {
+    background: var(--fs-neutro-suave);
+    border-color: var(--fs-tinta);
+    color: var(--fs-texto);
+  }
+}
+
+.muestra {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--fs-campo-borde);
+  flex: none;
+}
+
+// ---- Variantes ----------------------------------------------------------------
+.tabla-scroll {
+  overflow-x: auto;
 }
 
 .tabla-variantes {
   width: 100%;
+  min-width: 520px;
   border-collapse: collapse;
-  font-size: 13px;
-  margin-bottom: var(--fs-espacio-2);
 
   th {
+    padding: 12px 10px;
     text-align: left;
-    color: var(--fs-texto-tenue);
+    font-size: 12px;
     font-weight: 600;
-    padding: var(--fs-espacio-1) var(--fs-espacio-2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fs-texto-tenue);
+    border-bottom: 1px solid var(--fs-texto);
+
+    &.num {
+      text-align: right;
+    }
   }
 
   td {
-    padding: var(--fs-espacio-1) var(--fs-espacio-2);
-    border-top: 1px solid var(--fs-borde);
+    padding: 8px 10px;
+    font-size: 14px;
+    border-bottom: 1px solid var(--fs-fondo-alt);
   }
 }
 
+:host ::ng-deep .tabla-variantes .p-inputnumber-input {
+  width: 130px;
+  min-height: var(--fs-toque);
+  text-align: right;
+}
+
+.nota {
+  margin: var(--fs-espacio-2) 0 0;
+}
+
+// ---- Imágenes -------------------------------------------------------------------
 .grilla-imagenes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: var(--fs-espacio-2);
-  margin-bottom: var(--fs-espacio-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fs-espacio-3);
+}
+
+.sin-imagenes {
+  grid-column: 1 / -1;
+  padding: var(--fs-espacio-4) 0;
 }
 
 .tarjeta-imagen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-2);
+}
+
+.tarjeta-imagen__foto {
   position: relative;
-  border-radius: var(--fs-radio-sm);
+  aspect-ratio: 4 / 5;
   overflow: hidden;
-  border: 1px solid var(--fs-borde);
+  background: var(--fs-neutro-suave);
+  border: 2px solid transparent;
+  border-radius: var(--fs-radio-sm);
 
   img {
-    width: 100%;
-    height: 100px;
-    object-fit: cover;
     display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
+}
+
+.tarjeta-imagen--principal .tarjeta-imagen__foto {
+  border-color: var(--fs-tinta);
 }
 
 .badge-principal {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  background: var(--fs-acento);
-  color: var(--fs-superficie);
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 999px;
+  top: 8px;
+  left: 8px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fs-claro);
+  background: var(--fs-tinta);
+  border-radius: var(--fs-radio-md);
 }
 
 .acciones-imagen {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--fs-espacio-1);
-  background: var(--fs-superficie);
-
-  button {
-    font-family: inherit;
-    font-size: 11px;
-    border: none;
-    background: none;
-    color: var(--fs-texto-tenue);
-    cursor: pointer;
-    text-align: left;
-    padding: 2px 0;
-
-    &.eliminar {
-      color: var(--fs-error);
-    }
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
+  justify-content: space-between;
 }
 
 .formulario-imagen {
-  margin-top: var(--fs-espacio-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-3);
+  margin-top: var(--fs-espacio-4);
+}
+
+.subir {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  padding: 22px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  word-break: break-word;
+  color: var(--fs-tinta);
+  border: 1.5px dashed var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-within {
+    border-color: var(--fs-tinta);
+    background: var(--fs-neutro-suave);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .fila--codigo,
+  .fila--tres {
+    grid-template-columns: 1fr;
+  }
 }

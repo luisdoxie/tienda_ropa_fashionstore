@@ -1,44 +1,132 @@
-<div class="auth-pantalla">
-  <form class="auth-tarjeta" [formGroup]="formulario" (ngSubmit)="enviar()">
-    <span class="auth-marca">
-      @if (tienda.empresa(); as empresa) {
-        Ingresás a {{ empresa.nombre }}
-      } @else {
-        FashionStore
+<app-acceso-pantalla
+  modo="cliente"
+  foto="portada"
+  altFoto="Modelo con camisa verde oliva y camiseta blanca frente a un edificio oscuro"
+>
+  <ul class="acceso-ventajas" panelImagen>
+    <li>
+      <fs-icono nombre="carrito" [tam]="32" />
+      Compra y sigue tus pedidos
+    </li>
+    <li>
+      <fs-icono nombre="calendario" [tam]="32" />
+      Reserva y retira en tu sucursal
+    </li>
+    <li>
+      <fs-icono nombre="corazon" [tam]="32" />
+      Guarda tus prendas favoritas
+    </li>
+  </ul>
+
+  <form class="acceso-form acceso-form--ancho" [formGroup]="formulario" (ngSubmit)="enviar()">
+    <div class="acceso-titular">
+      <span class="acceso-eyebrow">Para comprar, reservar y guardar favoritos</span>
+      <h1 class="acceso-h1">Crea tu cuenta</h1>
+    </div>
+
+    <div class="acceso-grid-2">
+      <div class="fs-etiqueta-campo">
+        <label for="nombre">Nombre</label>
+        <input
+          id="nombre"
+          type="text"
+          class="fs-input"
+          formControlName="nombre"
+          autocomplete="given-name"
+          [attr.aria-invalid]="errorDe('nombre') ? true : null"
+          [attr.aria-describedby]="errorDe('nombre') ? 'error-nombre' : null"
+        />
+        @if (errorDe('nombre'); as mensaje) {
+          <p id="error-nombre" class="fs-error-texto" role="alert">{{ mensaje }}</p>
+        }
+      </div>
+      <div class="fs-etiqueta-campo">
+        <label for="apellido">Apellido</label>
+        <input
+          id="apellido"
+          type="text"
+          class="fs-input"
+          formControlName="apellido"
+          autocomplete="family-name"
+          [attr.aria-invalid]="errorDe('apellido') ? true : null"
+          [attr.aria-describedby]="errorDe('apellido') ? 'error-apellido' : null"
+        />
+        @if (errorDe('apellido'); as mensaje) {
+          <p id="error-apellido" class="fs-error-texto" role="alert">{{ mensaje }}</p>
+        }
+      </div>
+    </div>
+
+    <div class="fs-etiqueta-campo">
+      <label for="email">Correo electrónico</label>
+      <input
+        id="email"
+        type="email"
+        class="fs-input"
+        formControlName="email"
+        autocomplete="username"
+        [attr.aria-invalid]="errorDe('email') ? true : null"
+        [attr.aria-describedby]="errorDe('email') ? 'error-email' : null"
+      />
+      @if (errorDe('email'); as mensaje) {
+        <p id="error-email" class="fs-error-texto" role="alert">{{ mensaje }}</p>
       }
-    </span>
-    <h1 class="auth-titulo">Creá tu cuenta</h1>
-    <p class="auth-subtitulo">Para comprar, reservar y guardar favoritos.</p>
+    </div>
 
-    <label for="nombre">Nombre</label>
-    <input id="nombre" type="text" pInputText formControlName="nombre" autocomplete="given-name" />
+    <div class="acceso-grid-2">
+      <div class="fs-etiqueta-campo">
+        <label for="telefono">Teléfono <span class="acceso-ayuda">(opcional)</span></label>
+        <input id="telefono" type="tel" class="fs-input" formControlName="telefono" autocomplete="tel" />
+      </div>
+      <div class="fs-etiqueta-campo">
+        <label for="ciNit">CI / NIT <span class="acceso-ayuda">(opcional)</span></label>
+        <input id="ciNit" type="text" class="fs-input" formControlName="ciNit" />
+      </div>
+    </div>
 
-    <label for="apellido">Apellido</label>
-    <input id="apellido" type="text" pInputText formControlName="apellido" autocomplete="family-name" />
-
-    <label for="email">Email</label>
-    <input id="email" type="email" pInputText formControlName="email" autocomplete="username" />
-
-    <label for="telefono">Teléfono (opcional)</label>
-    <input id="telefono" type="tel" pInputText formControlName="telefono" autocomplete="tel" />
-
-    <label for="ciNit">CI / NIT (opcional)</label>
-    <input id="ciNit" type="text" pInputText formControlName="ciNit" />
-
-    <label for="password">Contraseña</label>
-    <p-password
-      inputId="password"
-      formControlName="password"
-      [feedback]="false"
-      [toggleMask]="true"
-      autocomplete="new-password"
-    />
+    <div class="fs-etiqueta-campo">
+      <label for="password">Contraseña</label>
+      <span class="fs-campo">
+        <input
+          id="password"
+          [type]="verClave() ? 'text' : 'password'"
+          class="fs-input fs-input--accion"
+          formControlName="password"
+          autocomplete="new-password"
+          [attr.aria-invalid]="errorDe('password') ? true : null"
+          [attr.aria-describedby]="errorDe('password') ? 'error-password ayuda-password' : 'ayuda-password'"
+        />
+        <button
+          type="button"
+          class="fs-campo__accion"
+          [attr.aria-label]="verClave() ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+          [attr.aria-pressed]="verClave()"
+          (click)="verClave.set(!verClave())"
+        >
+          <fs-icono [nombre]="verClave() ? 'ojo-tachado' : 'ojo'" [tam]="24" />
+        </button>
+      </span>
+      <span id="ayuda-password" class="acceso-ayuda">Mínimo 8 caracteres.</span>
+      @if (errorDe('password'); as mensaje) {
+        <p id="error-password" class="fs-error-texto" role="alert">{{ mensaje }}</p>
+      }
+    </div>
 
     @if (error()) {
-      <p class="auth-error">{{ error() }}</p>
+      <p class="acceso-error" role="alert">
+        <fs-icono nombre="alerta" [tam]="24" />
+        <span>{{ error() }}</span>
+      </p>
     }
 
-    <p-button type="submit" label="Crear cuenta" [loading]="cargando()" styleClass="w-full" />
-    <a class="auth-enlace" [routerLink]="rutaLogin()" [queryParams]="queryParamsLogin">¿Ya tenés cuenta? Iniciá sesión</a>
+    <button type="submit" class="fs-btn fs-btn--primario fs-btn--bloque" [disabled]="cargando()">
+      {{ cargando() ? 'Creando cuenta…' : 'Crear cuenta' }}
+      <fs-icono nombre="flecha-derecha" [tam]="24" />
+    </button>
+
+    <div class="acceso-pie">
+      ¿Ya tienes cuenta?
+      <a class="acceso-enlace" [routerLink]="rutaLogin()" [queryParams]="queryParamsLogin">Inicia sesión</a>
+    </div>
   </form>
-</div>
+</app-acceso-pantalla>

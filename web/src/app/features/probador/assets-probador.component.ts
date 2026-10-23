@@ -4,9 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
-import { TagModule } from 'primeng/tag';
 import { environment } from '../../../environments/environment';
 import { ActivoProbador, TipoActivoProbador } from '../../core/models/probador.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 
 const TIPOS: { label: string; value: TipoActivoProbador }[] = [
   { label: 'Imagen de la prenda (PNG con transparencia)', value: 'overlay_2d' },
@@ -23,7 +23,7 @@ const ETIQUETAS_TIPO: Record<TipoActivoProbador, string> = {
 @Component({
   selector: 'app-assets-probador',
   standalone: true,
-  imports: [FormsModule, ButtonModule, InputTextModule, SelectModule, TagModule],
+  imports: [FormsModule, ButtonModule, IconoComponent, InputTextModule, SelectModule],
   templateUrl: './assets-probador.component.html',
   styleUrl: './assets-probador.component.scss',
 })
@@ -41,6 +41,12 @@ export class AssetsProbadorComponent {
 
   protected etiquetaTipo(tipo: TipoActivoProbador): string {
     return ETIQUETAS_TIPO[tipo] ?? tipo;
+  }
+
+  protected claseEstado(estado: string): string {
+    if (estado === 'validado') return 'fs-chip--exito';
+    if (estado === 'rechazado') return 'fs-chip--error';
+    return 'fs-chip--advertencia';
   }
 
   // ---- Carga de assets -------------------------------------------------

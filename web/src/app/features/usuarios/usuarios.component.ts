@@ -1,14 +1,15 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
-import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { MultiSelectModule } from 'primeng/multiselect';
 import { PasswordModule } from 'primeng/password';
+import { finalize, switchMap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Rol, Usuario } from '../../core/models/seguridad.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Usuario>[] = [
@@ -24,19 +25,21 @@ const COLUMNAS: ColumnaTabla<Usuario>[] = [
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    ButtonModule,
-    DialogModule,
     InputTextModule,
     PasswordModule,
     CheckboxModule,
     MultiSelectModule,
     TablaGenericaComponent,
+    DialogoCrudComponent,
+    ErrorCampoComponent, AriaErrorDirective,
   ],
   templateUrl: './usuarios.component.html',
 })
 export class UsuariosComponent implements OnInit {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Usuario | null>(null);
   protected readonly roles = signal<Rol[]>([]);
 
@@ -118,11 +121,17 @@ export class UsuariosComponent implements OnInit {
           password: this.formulario.controls.password.value,
         });
 
-    peticion.subscribe((guardado) => {
-      this.http.put(`${environment.apiUrl}/usuarios/${guardado.id}/roles`, { nombres_rol: nombresRol }).subscribe(() => {
+    this.guardando.set(true);
+    peticion
+      .pipe(
+        switchMap((guardado) =>
+          this.http.put(`${environment.apiUrl}/usuarios/${guardado.id}/roles`, { nombres_rol: nombresRol }),
+        ),
+        finalize(() => this.guardando.set(false)),
+      )
+      .subscribe(() => {
         this.dialogoVisible.set(false);
         this.tabla.recargar();
       });
-    });
   }
 }

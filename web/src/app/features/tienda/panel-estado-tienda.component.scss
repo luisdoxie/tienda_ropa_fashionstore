@@ -1,0 +1,100 @@
+:host {
+  display: block;
+}
+
+.pagina {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--fs-fondo);
+}
+
+// La cabecera es plana (sin el halo de .fs-zona-oscura): solo la marca.
+.pagina__cab {
+  background: var(--fs-carbon);
+}
+
+.pagina__cab-interior {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 20px 32px;
+  box-sizing: border-box;
+}
+
+.pagina__principal {
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px 64px;
+}
+
+.panel {
+  width: 100%;
+  max-width: 520px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 44px 36px;
+  text-align: center;
+  background: var(--fs-carbon);
+  border-radius: var(--fs-radio-md);
+}
+
+.panel__icono {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--fs-carbon-panel);
+  border: 1px solid var(--fs-carbon-borde);
+  color: var(--fs-acento);
+}
+
+.panel__titulo {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.panel__texto {
+  margin: 0;
+  max-width: 340px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--fs-texto-tenue);
+}
+
+// La acción proyectada (enlace o botón) queda separada del texto.
+.panel__accion {
+  margin-top: 8px;
+}
+
+.pagina__pie {
+  padding: 28px 32px;
+  background: var(--fs-pie);
+  border-top: 1px solid var(--fs-borde-fuerte);
+  color: var(--fs-neutro-texto);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .pagina__cab-interior {
+    padding: 14px 16px;
+  }
+
+  .pagina__principal {
+    padding: 24px 16px 40px;
+  }
+
+  .panel {
+    padding: 32px 20px;
+  }
+}

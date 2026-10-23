@@ -5,12 +5,14 @@ import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DatePickerModule } from 'primeng/datepicker';
-import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
+import { finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Promocion, PromocionActualizar, PromocionCrear, TipoPromocion } from '../../core/models/ventas.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 type TipoAlcance = 'producto' | 'categoria' | 'temporada';
@@ -21,7 +23,7 @@ const COLUMNAS: ColumnaTabla<Promocion>[] = [
   { campo: 'valor', encabezado: 'Valor' },
   { campo: 'fecha_inicio', encabezado: 'Desde', tipo: 'fecha' },
   { campo: 'fecha_fin', encabezado: 'Hasta', tipo: 'fecha' },
-  { campo: 'activo', encabezado: 'Activo', tipo: 'booleano' },
+  { campo: 'activo', encabezado: 'Activa', tipo: 'booleano', femenino: true },
 ];
 
 const OPCIONES_TIPO: { label: string; value: TipoPromocion }[] = [
@@ -59,11 +61,12 @@ function aFechaLocal(fechaIso: string): Date {
     ButtonModule,
     CheckboxModule,
     DatePickerModule,
-    DialogModule,
     InputNumberModule,
     InputTextModule,
     SelectModule,
     TablaGenericaComponent,
+    DialogoCrudComponent,
+    ErrorCampoComponent, AriaErrorDirective,
   ],
   templateUrl: './promociones.component.html',
   styleUrl: './promociones.component.scss',
@@ -73,6 +76,8 @@ export class PromocionesComponent {
   protected readonly opcionesTipo = OPCIONES_TIPO;
   protected readonly opcionesAlcance = OPCIONES_ALCANCE;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Promocion | null>(null);
 
   @ViewChild(TablaGenericaComponent) private tabla!: TablaGenericaComponent<Promocion>;
@@ -165,7 +170,11 @@ export class PromocionesComponent {
         fecha_fin: aFechaIso(valores.fecha_fin!),
         activo: valores.activo,
       };
-      this.http.put(`${environment.apiUrl}/promociones/${promocion.id}`, payload).subscribe(() => {
+      this.guardando.set(true);
+      this.http
+        .put(`${environment.apiUrl}/promociones/${promocion.id}`, payload)
+        .pipe(finalize(() => this.guardando.set(false)))
+        .subscribe(() => {
         this.dialogoVisible.set(false);
         this.tabla.recargar();
       });
@@ -184,7 +193,11 @@ export class PromocionesComponent {
         temporada_id: linea.tipo === 'temporada' ? linea.id! : undefined,
       })),
     };
-    this.http.post(`${environment.apiUrl}/promociones`, payload).subscribe(() => {
+    this.guardando.set(true);
+    this.http
+      .post(`${environment.apiUrl}/promociones`, payload)
+      .pipe(finalize(() => this.guardando.set(false)))
+      .subscribe(() => {
       this.messageService.add({ severity: 'success', summary: 'Promoción creada' });
       this.dialogoVisible.set(false);
       this.tabla.recargar();

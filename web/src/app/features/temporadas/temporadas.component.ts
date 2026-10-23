@@ -1,13 +1,14 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
 import { DatePickerModule } from 'primeng/datepicker';
-import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
+import { finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Temporada, TemporadaCrear } from '../../core/models/catalogo.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Temporada>[] = [
@@ -15,7 +16,7 @@ const COLUMNAS: ColumnaTabla<Temporada>[] = [
   { campo: 'anio', encabezado: 'Año' },
   { campo: 'fecha_inicio', encabezado: 'Desde', tipo: 'fecha' },
   { campo: 'fecha_fin', encabezado: 'Hasta', tipo: 'fecha' },
-  { campo: 'activo', encabezado: 'Activo', tipo: 'booleano' },
+  { campo: 'activo', encabezado: 'Activa', tipo: 'booleano', femenino: true },
 ];
 
 // `new Date("2026-08-31")` parsea la fecha-sin-hora como medianoche UTC:
@@ -37,12 +38,14 @@ function aFechaLocal(fechaIso: string): Date {
 @Component({
   selector: 'app-temporadas',
   standalone: true,
-  imports: [ReactiveFormsModule, ButtonModule, DatePickerModule, DialogModule, InputNumberModule, InputTextModule, TablaGenericaComponent],
+  imports: [ReactiveFormsModule, DatePickerModule, InputNumberModule, InputTextModule, TablaGenericaComponent, DialogoCrudComponent, ErrorCampoComponent, AriaErrorDirective],
   templateUrl: './temporadas.component.html',
 })
 export class TemporadasComponent {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Temporada | null>(null);
 
   @ViewChild(TablaGenericaComponent) private tabla!: TablaGenericaComponent<Temporada>;
@@ -93,7 +96,8 @@ export class TemporadasComponent {
       ? this.http.put(`${environment.apiUrl}/temporadas/${temporada.id}`, datos)
       : this.http.post(`${environment.apiUrl}/temporadas`, datos);
 
-    peticion.subscribe(() => {
+    this.guardando.set(true);
+    peticion.pipe(finalize(() => this.guardando.set(false))).subscribe(() => {
       this.dialogoVisible.set(false);
       this.tabla.recargar();
     });

@@ -1,0 +1,283 @@
+@if (cargando()) {
+  <div class="me-carga" role="status" aria-live="polite">
+    <p class="fs-etiqueta">Cargando los datos de tu empresa…</p>
+    <div class="me-esqueleto me-esqueleto--titulo"></div>
+    <div class="me-esqueleto"></div>
+    <div class="me-esqueleto"></div>
+  </div>
+} @else if (hayError()) {
+  <div class="me-error fs-card" role="alert">
+    <fs-icono class="me-error__icono" nombre="advertencia" [tam]="28" />
+    <div>
+      <h2>No pudimos cargar los datos de tu empresa</h2>
+      <p class="fs-etiqueta">Revisa tu conexión y prueba de nuevo.</p>
+    </div>
+    <p-button label="Reintentar" icon="pi pi-refresh" severity="secondary" (onClick)="cargar()" />
+  </div>
+} @else if (listo()) {
+  @let emp = empresa()!;
+  @let vp = vistaPlan()!;
+  @let lim = vistaLimite()!;
+
+  <!-- 1. Cabecera -->
+  <header class="me-cabecera fs-pagina-encabezado">
+    <div class="me-cabecera__identidad">
+      <fs-marca [nombre]="emp.nombre" [logoUrl]="logoCabecera()" variante="claro" [soloMonograma]="true" />
+      <div>
+        <h1 class="me-nombre">{{ emp.nombre }}</h1>
+        <p class="me-codigo fs-etiqueta">
+          Código: <span class="me-codigo__valor">{{ emp.codigo }}</span>
+        </p>
+      </div>
+    </div>
+    <a class="me-tienda" [routerLink]="['/t', emp.codigo]">
+      <fs-icono nombre="enlace-externo" [tam]="24" />
+      Ver mi tienda
+    </a>
+  </header>
+
+  <div class="me-fila">
+    <!-- 2. Plan, suscripción y límites -->
+    <section class="me-seccion fs-card" aria-labelledby="me-plan-titulo">
+      <div class="me-seccion__cabecera">
+        <h2 id="me-plan-titulo">Plan y suscripción</h2>
+        <span class="fs-chip me-estado" [class]="vp.estado.clase">{{ vp.estado.texto }}</span>
+      </div>
+
+      @if (vp.explicacion) {
+        <p class="me-bloqueo" role="alert">
+          <fs-icono nombre="candado" [tam]="24" />
+          <span>{{ vp.explicacion }} Avisa al administrador de la plataforma.</span>
+        </p>
+      }
+
+      <dl class="me-datos">
+        <div class="me-dato">
+          <dt>Plan</dt>
+          <dd class="me-plan-nombre">{{ vp.nombre }}</dd>
+        </div>
+        <div class="me-dato">
+          <dt>Inicio</dt>
+          <dd class="fs-num">{{ vp.inicio ?? '—' }}</dd>
+        </div>
+        <div class="me-dato">
+          <dt>Vencimiento</dt>
+          <dd class="fs-num">{{ vp.vencimiento ?? '—' }}</dd>
+        </div>
+      </dl>
+
+      @if (vp.textoDias) {
+        <p class="me-dias me-dias--{{ vp.tonoDias }}">
+          <fs-icono [nombre]="vp.tonoDias === 'rojo' ? 'alerta' : 'reloj'" [tam]="24" />
+          {{ vp.textoDias }}
+        </p>
+      }
+
+      <div class="me-limite" aria-labelledby="me-limites-titulo" role="group">
+        <h3 id="me-limites-titulo" class="me-limite__titulo">Límites y uso</h3>
+        @if (lim.maximo !== null) {
+          <p class="me-limite__texto">
+            Sucursales activas: <strong class="fs-num">{{ lim.activas }} de {{ lim.maximo }}</strong>
+          </p>
+          <p-progressbar
+            class="me-barra"
+            [class.me-barra--lleno]="lim.lleno"
+            [class.me-barra--casi]="!lim.lleno && lim.casiLleno"
+            [value]="lim.porcentaje"
+            [showValue]="false"
+            aria-label="Sucursales activas del plan"
+          />
+          @if (lim.lleno) {
+            <p class="me-limite__aviso fs-aviso" role="status">
+              <fs-icono nombre="advertencia" [tam]="24" />
+              Llegaste al límite de tu plan
+            </p>
+          }
+        } @else {
+          <p class="me-limite__texto">
+            Sucursales activas: <strong class="fs-num">{{ lim.activas }}</strong>
+            <span class="fs-etiqueta"> (tu plan no define un máximo)</span>
+          </p>
+        }
+      </div>
+    </section>
+
+    <!-- 3. Funcionalidades -->
+    <section #seccionFunciones id="funcionalidades" class="me-seccion fs-card" aria-labelledby="me-funciones-titulo">
+      <div class="me-seccion__cabecera">
+        <h2 id="me-funciones-titulo">Funcionalidades</h2>
+        <p-button
+          label="¿Cómo cambio de plan?"
+          icon="pi pi-question-circle"
+          severity="secondary"
+          [outlined]="true"
+          size="small"
+          (onClick)="abrirDialogoPlan()"
+        />
+      </div>
+
+      <ul class="me-funciones">
+        @for (funcion of funciones(); track funcion.id) {
+          @if (funcion.incluida) {
+            <li class="me-funcion" [attr.data-funcion]="funcion.id">
+              <fs-icono class="me-funcion__icono me-funcion__icono--ok" nombre="check" [tam]="26" />
+              <span class="me-sr">Incluida: </span>
+              <div>
+                <p class="me-funcion__nombre">
+                  {{ funcion.etiqueta }}
+                  @if (funcion.proximamente) {
+                    <span class="fs-chip me-proximamente">Próximamente</span>
+                  }
+                </p>
+                <p class="me-funcion__detalle">{{ funcion.descripcion }}</p>
+              </div>
+            </li>
+          } @else {
+            <li class="me-funcion me-funcion--bloqueada" [attr.data-funcion]="funcion.id">
+              <fs-icono class="me-funcion__icono me-funcion__icono--no" nombre="candado" [tam]="26" />
+              <span class="me-sr">No incluida: </span>
+              <div>
+                <p class="me-funcion__nombre">
+                  {{ funcion.etiqueta }}
+                  @if (funcion.proximamente) {
+                    <span class="fs-chip me-proximamente">Próximamente</span>
+                  }
+                </p>
+                <p class="me-funcion__detalle">{{ textoNoIncluido() }}. {{ dondeConseguir() }}.</p>
+              </div>
+            </li>
+          }
+        }
+      </ul>
+    </section>
+  </div>
+
+  <!-- 4. Identidad de la tienda -->
+  <section class="me-seccion fs-card" aria-labelledby="me-identidad-titulo">
+    <h2 id="me-identidad-titulo">Identidad de la tienda</h2>
+    <p class="fs-etiqueta me-ayuda">Así se ve tu tienda para tus clientes: nombre, logo y color de acento.</p>
+
+    <div class="me-identidad">
+      <form [formGroup]="formulario" (ngSubmit)="guardar()" class="me-form" novalidate>
+        <div class="fs-etiqueta-campo">
+          <label for="me-nombre">Nombre</label>
+          <input id="me-nombre" class="fs-input" formControlName="nombre" autocomplete="off" maxlength="120" />
+          @if (errorDe('nombre'); as mensaje) {
+            <small class="me-campo-error fs-error-texto" role="alert">{{ mensaje }}</small>
+          }
+        </div>
+
+        <div class="fs-etiqueta-campo">
+          <label for="me-logo">Logo <span class="me-opcional">(dirección de la imagen)</span></label>
+          <input
+            id="me-logo"
+            class="fs-input"
+            formControlName="logo_url"
+            placeholder="https://…"
+            autocomplete="off"
+          />
+          @if (errorDe('logo_url'); as mensaje) {
+            <small class="me-campo-error fs-error-texto" role="alert">{{ mensaje }}</small>
+          }
+        </div>
+
+        <div class="fs-etiqueta-campo">
+          <label for="me-color">Color de acento</label>
+          <div class="me-color">
+            <input
+              type="color"
+              class="me-color__selector"
+              aria-label="Elegir el color de acento"
+              [value]="colorSelector()"
+              (input)="alElegirColor($any($event.target).value)"
+            />
+            <input
+              id="me-color"
+              class="fs-input me-color__hex"
+              formControlName="color_acento"
+              placeholder="#9A3E1F"
+              autocomplete="off"
+              maxlength="7"
+            />
+            @if (formulario.controls.color_acento.value) {
+              <p-button label="Quitar" severity="secondary" [text]="true" (onClick)="quitarColor()" />
+            }
+          </div>
+          @if (errorDe('color_acento'); as mensaje) {
+            <small class="me-campo-error fs-error-texto" role="alert">{{ mensaje }}</small>
+          }
+        </div>
+        @if (colorPocoContraste()) {
+          <p class="me-campo-aviso fs-aviso" role="status">
+            <fs-icono nombre="alerta" [tam]="24" />
+            <span>
+              Este color contrasta poco con el blanco, así que tu tienda va a seguir usando el color base de
+              FashionStore. Puedes guardarlo igual.
+            </span>
+          </p>
+        }
+
+        @if (errorGuardar(); as mensaje) {
+          <p class="me-campo-error fs-error-texto" role="alert">{{ mensaje }}</p>
+        }
+        @if (guardadoOk()) {
+          <p class="me-exito fs-aviso fs-aviso--exito" role="status">
+            <fs-icono nombre="check" [tam]="24" />
+            Guardamos los cambios de tu tienda.
+          </p>
+        }
+
+        <div class="me-form__pie">
+          <p-button type="submit" label="Guardar cambios" icon="pi pi-check" [loading]="guardando()" />
+        </div>
+      </form>
+
+      <aside class="me-vista" aria-label="Vista previa">
+        <p class="fs-etiqueta">Vista previa</p>
+        <div class="me-muestra">
+          <div
+            class="me-muestra__portada fs-zona-oscura"
+            [style.--fs-acento-oscuro]="acentoVista()?.acento ?? null"
+            [style.--fs-acento-oscuro-hover]="acentoVista()?.hover ?? null"
+            [style.--fs-sobre-acento-oscuro]="acentoVista()?.textoSobreAcento ?? null"
+          >
+            <div class="me-chip">
+              <span
+                class="me-chip__marca"
+                [class.me-chip__marca--color]="chipFondo() !== null"
+                [style.background]="chipFondo()"
+                [style.color]="chipTexto()"
+              >
+                @if (chipLogo(); as logo) {
+                  <img [src]="logo" alt="" (error)="logoNoCargo()" />
+                } @else {
+                  <span class="me-chip__inicial">{{ chipInicial() }}</span>
+                }
+              </span>
+              <span class="me-chip__nombre">{{ formulario.controls.nombre.value || 'Tu tienda' }}</span>
+            </div>
+            <span class="me-muestra__titular">Tu estilo,<br /><em>en tus manos</em></span>
+            <span class="me-muestra__boton">Explorar colección</span>
+          </div>
+          <div class="me-muestra__pie">
+            <span class="me-muestra__carrito">Agregar al carrito</span>
+            <span class="fs-caption">Los botones de compra siempre usan el color base.</span>
+          </div>
+        </div>
+        @if (colorPocoContraste()) {
+          <p class="fs-caption me-vista__nota">Con el color base, por contraste insuficiente.</p>
+        }
+      </aside>
+    </div>
+  </section>
+
+  <p-dialog header="Cambiar de plan" [(visible)]="dialogoPlan" [modal]="true" [style]="{ width: '420px', maxWidth: '96vw' }">
+    <p class="me-dialogo__texto">
+      El cambio de plan lo realiza el administrador de la plataforma. Pídeselo indicando el nombre de tu empresa y el
+      plan que quieres.
+    </p>
+    <div class="me-dialogo__pie">
+      <p-button label="Entendido" (onClick)="dialogoPlan.set(false)" />
+    </div>
+  </p-dialog>
+}

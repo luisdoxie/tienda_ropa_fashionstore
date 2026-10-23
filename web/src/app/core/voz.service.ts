@@ -18,12 +18,12 @@ interface ReconocimientoVoz {
 
 type ConstructorReconocimiento = new () => ReconocimientoVoz;
 
-const MENSAJE_SIN_PERMISO = 'El navegador no tiene permiso para usar el micrófono. Permitilo e intentá de nuevo.';
+const MENSAJE_SIN_PERMISO = 'El navegador no tiene permiso para usar el micrófono. Permítelo e inténtalo de nuevo.';
 
 const MENSAJES_ERROR: Record<string, string> = {
   'not-allowed': MENSAJE_SIN_PERMISO,
   'service-not-allowed': MENSAJE_SIN_PERMISO,
-  'no-speech': 'No se escuchó nada. Intentá de nuevo.',
+  'no-speech': 'No se escuchó nada. Inténtalo de nuevo.',
   'audio-capture': 'No se encontró un micrófono.',
   network: 'El reconocimiento de voz necesita conexión a internet.',
 };
@@ -49,7 +49,7 @@ export class VozService {
   escuchar(): Observable<string> {
     return new Observable<string>((suscriptor) => {
       if (this.reconocimiento === null) {
-        suscriptor.error(new Error('Tu navegador no permite dictar. Escribí la pregunta.'));
+        suscriptor.error(new Error('Tu navegador no permite dictar. Escribe la pregunta.'));
         return undefined;
       }
 

@@ -1,13 +1,26 @@
-<h1>Colecciones</h1>
+<app-tabla-generica
+  endpoint="/colecciones"
+  titulo="Colecciones"
+  eyebrow="Catálogo"
+  etiquetaNuevo="Nueva colección"
+  placeholderBusqueda="Buscar colección"
+  [columnas]="columnas"
+  (crear)="abrirCrear()"
+  (editar)="abrirEditar($event)"
+/>
 
-<app-tabla-generica endpoint="/colecciones" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
-
-<p-dialog header="Colección" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar colección' : 'Nueva colección'"
+  formId="form-coleccion"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-coleccion" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
-    <label for="descripcion">Descripción</label>
+    <label for="descripcion">Descripción <span class="fs-caption">(opcional)</span></label>
     <input id="descripcion" pInputText formControlName="descripcion" />
 
     <label for="temporada">Temporada (opcional)</label>
@@ -20,7 +33,5 @@
       [showClear]="true"
       placeholder="Ninguna"
     />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

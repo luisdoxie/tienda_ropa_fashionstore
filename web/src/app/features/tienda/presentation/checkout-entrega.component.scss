@@ -1,70 +1,187 @@
+@use './comun' as c;
+
 .checkout {
-  max-width: 640px;
-  margin: 0 auto;
-  padding: var(--fs-espacio-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--fs-espacio-2);
+  @include c.pagina;
 }
 
-.seccion {
-  margin-top: var(--fs-espacio-4);
+.checkout__pasos {
+  margin-bottom: 36px;
+}
+
+.columnas {
+  @include c.columnas;
+}
+
+.titulo {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.bloque {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-2);
+  gap: 14px;
+
+  p {
+    margin: 0;
+  }
+}
+
+.bloque__titulo {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+// Retiro o envío: dos tarjetas grandes con ícono.
+.tipos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tipo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  text-align: left;
+  font-family: inherit;
+  color: var(--fs-texto);
+  background: var(--fs-superficie);
+  border: 1.5px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+}
+
+.tipo__icono {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fs-neutro-suave);
+  border-radius: var(--fs-radio-md);
+  color: var(--fs-tinta);
+}
+
+.tipo__titulo,
+.tipo__texto {
+  display: block;
+}
+
+.tipo__titulo {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tipo__texto {
+  margin-top: 2px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.tipo--elegido {
+  color: var(--fs-fondo);
+  background: var(--fs-tinta);
+  border-color: var(--fs-tinta);
+
+  .tipo__icono {
+    background: var(--fs-carbon-campo);
+    color: var(--fs-acento-oscuro);
+  }
 }
 
 .direcciones {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fs-espacio-2);
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.direccion-tarjeta {
-  width: 100%;
-  text-align: left;
-  padding: var(--fs-espacio-3);
+.direccion {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  cursor: pointer;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  text-align: left;
   font-family: inherit;
+  color: var(--fs-texto);
+  background: var(--fs-superficie);
+  border: 1.5px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
 
-  &.seleccionada {
-    border-color: var(--fs-acento);
-    background: var(--fs-acento-suave);
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
   }
+}
 
-  span {
-    font-size: 13px;
-    color: var(--fs-texto-tenue);
-  }
+.direccion__alias,
+.direccion__texto {
+  display: block;
+}
+
+.direccion__alias {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.direccion__texto {
+  margin-top: 2px;
+  font-size: 14px;
+  color: var(--fs-texto-tenue);
+}
+
+.direccion--elegida {
+  border-color: var(--fs-tinta);
+}
+
+.direccion--nueva {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 80px;
+  font-size: 15px;
+  font-weight: 500;
+  background: transparent;
+  border: 1.5px dashed var(--fs-muted);
 }
 
 .costo-envio {
-  font-weight: 600;
-  color: var(--fs-acento);
+  font-size: 14px;
+  color: var(--fs-texto-tenue);
+
+  strong {
+    color: var(--fs-texto);
+  }
 }
 
-.boton-continuar {
-  margin-top: var(--fs-espacio-6);
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  padding: var(--fs-espacio-3);
-  border-radius: var(--fs-radio-sm);
-  border: none;
-  background: var(--fs-acento);
-  color: var(--fs-superficie);
-  cursor: pointer;
+.continuar {
+  margin-top: 8px;
+}
 
-  &:hover {
-    background: var(--fs-acento-hover);
+@media (max-width: 760px) {
+  .checkout__pasos {
+    margin-bottom: 24px;
   }
 
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
+  .titulo {
+    font-size: 26px;
+  }
+
+  .tipos,
+  .direcciones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tipo {
+    padding: 16px;
   }
 }

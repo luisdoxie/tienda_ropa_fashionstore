@@ -1,104 +1,168 @@
-<div class="saludo-fila">
+<header class="fs-pagina-encabezado">
   <div>
-    <p class="saludo">Hola, {{ usuario()?.nombre }}</p>
-    <p class="saludo-sub">{{ sucursalNombre() ?? 'Sin sucursal asignada' }}</p>
+    <span class="fs-eyebrow">Resumen</span>
+    <h1>{{ usuario()?.nombre ? 'Hola, ' + usuario()?.nombre : 'Hola' }}</h1>
   </div>
-  <div class="saludo-fecha">{{ fechaHoy }}</div>
-</div>
+  <div class="dash-contexto">
+    <span class="dash-sucursal">{{ sucursalNombre() ?? 'Sin sucursal asignada' }}</span>
+    <span class="fs-caption">{{ fechaHoy }}</span>
+  </div>
+</header>
 
 @if (!cargando() && sucursalId() === null && !vistaGlobal()) {
-  <p class="aviso">
-    No tenés una sucursal asignada. Pedile a un administrador que te asigne una para ver los indicadores.
+  <p class="fs-aviso" role="status">
+    <fs-icono nombre="alerta" [tam]="28" />
+    No tienes una sucursal asignada. Pídele a un administrador que te asigne una para ver los indicadores.
   </p>
 }
 
 @if (mostrarIndicadores()) {
-  <div class="stat-fila">
+  <div class="dash-kpis">
     @if (puedeVentas()) {
-      <div class="fs-card stat-tarjeta">
-        <div class="stat-etiqueta">Ventas de hoy · {{ ticketsHoy() }} tickets</div>
-        <div class="stat-valor fs-num">{{ totalVentasHoy() | number: '1.2-2' }}</div>
+      <div class="fs-card dash-kpi">
+        <div class="dash-kpi__cabecera">
+          <span class="dash-kpi__etiqueta">Ventas de hoy</span>
+          <span class="dash-kpi__icono"><fs-icono nombre="dinero" [tam]="30" /></span>
+        </div>
+        <span class="dash-kpi__valor fs-num">Bs {{ totalVentasHoy() | number: '1.2-2' }}</span>
+        <span class="dash-kpi__nota fs-num">{{ ticketsHoy() }} {{ ticketsHoy() === 1 ? 'ticket' : 'tickets' }}</span>
       </div>
     }
     @if (puedeInventario()) {
-      <div class="fs-card stat-tarjeta">
-        <div class="stat-etiqueta">Alertas de stock bajo</div>
-        <div class="stat-valor fs-num">{{ alertasStock().length }}</div>
+      <div class="fs-card dash-kpi">
+        <div class="dash-kpi__cabecera">
+          <span class="dash-kpi__etiqueta">Alertas de stock bajo</span>
+          <span class="dash-kpi__icono"><fs-icono nombre="inventario" [tam]="30" /></span>
+        </div>
+        <span class="dash-kpi__valor fs-num">{{ totalAlertasStock() }}</span>
+        <span class="dash-kpi__nota">Prendas por debajo de su mínimo</span>
       </div>
     }
     @if (puedeReservas()) {
-      <div class="fs-card stat-tarjeta">
-        <div class="stat-etiqueta">Reservas de hoy</div>
-        <div class="stat-valor fs-num">{{ totalReservasHoy() }}</div>
+      <div class="fs-card dash-kpi">
+        <div class="dash-kpi__cabecera">
+          <span class="dash-kpi__etiqueta">Reservas de hoy</span>
+          <span class="dash-kpi__icono"><fs-icono nombre="calendario" [tam]="30" /></span>
+        </div>
+        <span class="dash-kpi__valor fs-num">{{ totalReservasHoy() }}</span>
+        <span class="dash-kpi__nota">Visitas programadas para hoy</span>
       </div>
     }
   </div>
 
-  @if (puedeVentas() && vendidosHoy().length) {
-    <section class="seccion">
-      <h2>Se vendió hoy</h2>
-      <div class="tarjeta-fila">
-        @for (item of vendidosHoy(); track item.variante_id) {
-          <div class="fs-card producto-tarjeta">
-            <div class="producto-foto">
-              @if (item.imagen) {
-                <img [src]="item.imagen" [alt]="item.nombre" />
-              } @else {
-                <span class="pi pi-image"></span>
-              }
-            </div>
-            <div class="producto-cuerpo">
-              <div class="producto-nombre">{{ item.nombre }}</div>
-              <div class="producto-meta">
-                <span class="fs-caption">vendidas</span>
-                <span class="fs-num">×{{ item.cantidad }}</span>
-              </div>
-            </div>
+  @if ((puedeVentas() && vendidosHoy().length) || (puedeInventario() && alertasStock().length)) {
+    <div class="dash-fila">
+      @if (puedeVentas() && vendidosHoy().length) {
+        <section class="fs-card dash-panel dash-panel--grafico">
+          <div class="dash-panel__cabecera">
+            <h2>Se vendió hoy</h2>
+            <span class="fs-caption">Unidades por prenda</span>
           </div>
-        }
-      </div>
-    </section>
+          <div class="dash-barras" aria-hidden="true">
+            @for (item of vendidosHoy(); track item.variante_id) {
+              <div class="dash-barra">
+                <span class="dash-barra__valor fs-num">{{ item.cantidad }}</span>
+                <span class="dash-barra__pista">
+                  <span
+                    class="dash-barra__relleno"
+                    [class.dash-barra__relleno--max]="item.cantidad === maxVendido()"
+                    [style.height.%]="(item.cantidad / maxVendido()) * 100"
+                  ></span>
+                </span>
+                <span class="dash-barra__nombre">{{ item.nombre }}</span>
+              </div>
+            }
+          </div>
+          <ul class="sr-solo" aria-label="Unidades vendidas hoy por prenda">
+            @for (item of vendidosHoy(); track item.variante_id) {
+              <li>{{ item.nombre }}: {{ item.cantidad }}</li>
+            }
+          </ul>
+        </section>
+      }
+
+      @if (puedeInventario() && alertasStock().length) {
+        <section class="fs-card dash-panel dash-panel--lista">
+          <div class="dash-panel__cabecera">
+            <h2>Stock bajo</h2>
+          </div>
+          <ul class="dash-lista">
+            @for (fila of alertasStock(); track fila.variante_id) {
+              <li class="dash-lista__fila">
+                <span class="dash-lista__foto">
+                  @if (fila.imagen) {
+                    <img [src]="fila.imagen" [alt]="fila.producto" />
+                  } @else {
+                    <fs-icono nombre="imagen" [tam]="24" />
+                  }
+                </span>
+                <span class="dash-lista__texto">
+                  <span class="dash-lista__nombre">{{ fila.producto }}</span>
+                  <span class="fs-caption fs-num">mín. {{ fila.stock_minimo }}</span>
+                </span>
+                <span class="dash-lista__cantidad fs-num">{{ fila.cantidad_disponible }} u.</span>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    </div>
   }
 
-  @if (puedeInventario() && alertasStock().length) {
-    <section class="seccion">
-      <h2>Stock bajo</h2>
-      <div class="tarjeta-fila">
-        @for (fila of alertasStock(); track fila.variante_id) {
-          <div class="fs-card producto-tarjeta">
-            <div class="producto-foto">
-              @if (fila.imagen) {
-                <img [src]="fila.imagen" [alt]="fila.producto" />
-              } @else {
-                <span class="pi pi-image"></span>
-              }
-            </div>
-            <div class="producto-cuerpo">
-              <div class="producto-nombre">{{ fila.producto }}</div>
-              <div class="producto-meta">
-                <span class="fs-caption">quedan {{ fila.cantidad_disponible }}</span>
-                <span class="fs-caption">mín. {{ fila.stock_minimo }}</span>
-              </div>
-            </div>
-          </div>
-        }
+  @if (puedeVentas()) {
+    <section class="fs-card dash-panel dash-tabla">
+      <div class="dash-panel__cabecera">
+        <h2>Últimas ventas</h2>
+        <span class="fs-caption">De hoy</span>
       </div>
+      @if (ventasRecientes().length) {
+        <div class="dash-tabla__scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Hora</th>
+                <th class="derecha">Total</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (venta of ventasRecientes(); track venta.id) {
+                <tr>
+                  <td class="fs-num dash-tabla__codigo">{{ venta.codigo }}</td>
+                  <td class="fs-num">{{ horaDe(venta.fecha) }}</td>
+                  <td class="fs-num derecha">Bs {{ venta.total | number: '1.2-2' }}</td>
+                  <td>
+                    <span class="fs-chip" [class]="estadoVenta(venta.estado).chip">
+                      {{ estadoVenta(venta.estado).etiqueta }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p class="fs-estado-vacio">Todavía no hay ventas hoy.</p>
+      }
     </section>
   }
 
   @if (puedeReservas()) {
-    <section class="seccion">
-      <h2>Reservas de hoy</h2>
-      <div class="pills-fila">
+    <section class="fs-card dash-panel">
+      <div class="dash-panel__cabecera">
+        <h2>Reservas de hoy</h2>
+      </div>
+      <div class="dash-pills">
         @for (r of resumenReservas(); track r.estado) {
-          <span class="pill">
-            <span class="pill-punto" [style.background]="r.color"></span>
+          <span class="dash-pill">
+            <span class="dash-pill__punto" [style.background]="r.color"></span>
             {{ r.etiqueta }} <span class="fs-num">{{ r.cantidad }}</span>
           </span>
         }
       </div>
       @if (totalReservasHoy()) {
-        <div class="barra-apilada">
+        <div class="dash-apilada" aria-hidden="true">
           @for (r of resumenReservas(); track r.estado) {
             <span [style.width.%]="(r.cantidad / totalReservasHoy()) * 100" [style.background]="r.color"></span>
           }

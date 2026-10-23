@@ -1,56 +1,30 @@
-.compras {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--fs-espacio-6);
+@use './comun' as c;
+
+.cuenta {
+  @include c.pagina(1100px);
 }
 
-.vacio {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--fs-espacio-2);
+.encabezado {
+  @include c.encabezado;
+
+  margin-bottom: 24px;
 }
 
-.lista {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fs-espacio-2);
+.pestanas {
+  margin-bottom: 24px;
 }
 
-.fila {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fs-espacio-3);
-  padding: var(--fs-espacio-3);
-  text-decoration: none;
-  color: inherit;
+@include c.fila-lista;
+@include c.vacio-punteado;
+
+.fs-estado-vacio {
+  padding-block: 32px;
 }
 
-.chip {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
-  white-space: nowrap;
-  background: var(--fs-muted);
-  color: var(--fs-texto);
+.estado-error {
+  flex-wrap: wrap;
 }
 
-.chip--preparada,
-.chip--completada {
-  background: var(--fs-exito-suave);
-  color: var(--fs-exito);
-}
-
-.chip--pendiente,
-.chip--en_prueba {
-  background: var(--fs-advertencia-suave);
-  color: var(--fs-advertencia);
-}
-
-.chip--cancelada,
-.chip--expirada {
-  background: rgba(220, 38, 38, 0.12);
-  color: var(--fs-error);
+.estado-error__texto {
+  flex: 1 1 auto;
 }

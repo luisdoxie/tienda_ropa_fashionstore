@@ -11,8 +11,8 @@ import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { TabsModule } from 'primeng/tabs';
-import { TagModule } from 'primeng/tag';
 import { TextareaModule } from 'primeng/textarea';
+import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { TooltipModule } from 'primeng/tooltip';
 import { forkJoin } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -29,6 +29,7 @@ import {
   TransferenciaCrear,
 } from '../../core/models/inventario.models';
 import { Sucursal } from '../../core/models/organizacion.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 
 type PestaniaInventario =
   | 'consolidado'
@@ -52,11 +53,11 @@ const ETIQUETAS_ESTADO_TRANSFERENCIA: Record<EstadoTransferencia, string> = {
   anulada: 'Anulada',
 };
 
-const SEVERIDAD_ESTADO_TRANSFERENCIA: Record<EstadoTransferencia, 'info' | 'warn' | 'success' | 'danger'> = {
-  pendiente: 'info',
-  en_transito: 'warn',
-  recibida: 'success',
-  anulada: 'danger',
+const CLASE_ESTADO_TRANSFERENCIA: Record<EstadoTransferencia, string> = {
+  pendiente: '',
+  en_transito: 'fs-chip--advertencia',
+  recibida: 'fs-chip--exito',
+  anulada: 'fs-chip--error',
 };
 
 @Component({
@@ -75,9 +76,10 @@ const SEVERIDAD_ESTADO_TRANSFERENCIA: Record<EstadoTransferencia, 'info' | 'warn
     SelectModule,
     TableModule,
     TabsModule,
-    TagModule,
     TextareaModule,
+    ToggleSwitchModule,
     TooltipModule,
+    IconoComponent,
   ],
   providers: [ConfirmationService],
   templateUrl: './inventario.component.html',
@@ -94,8 +96,12 @@ export class InventarioComponent implements OnInit {
     return ETIQUETAS_ESTADO_TRANSFERENCIA[estado];
   }
 
-  protected severidadEstado(estado: EstadoTransferencia): 'info' | 'warn' | 'success' | 'danger' {
-    return SEVERIDAD_ESTADO_TRANSFERENCIA[estado];
+  protected claseEstado(estado: EstadoTransferencia): string {
+    return CLASE_ESTADO_TRANSFERENCIA[estado];
+  }
+
+  protected esBajoMinimo(fila: FilaConsolidado): boolean {
+    return fila.cantidad_disponible <= fila.stock_minimo;
   }
 
   protected readonly puedeGestionarInventario = computed(() =>
@@ -115,6 +121,25 @@ export class InventarioComponent implements OnInit {
   protected readonly filtroProductoConsolidado = signal<number | null>(null);
   protected readonly filasConsolidado = signal<FilaConsolidado[]>([]);
   protected readonly cargandoConsolidado = signal(false);
+  // Búsqueda y "solo bajo mínimo" se aplican sobre las filas ya cargadas.
+  protected readonly textoConsolidado = signal('');
+  protected readonly soloBajoMinimo = signal(false);
+  protected readonly filasConsolidadoVisibles = computed(() => {
+    const texto = this.textoConsolidado().trim().toLowerCase();
+    const soloBajo = this.soloBajoMinimo();
+    return this.filasConsolidado().filter((fila) => {
+      if (soloBajo && !this.esBajoMinimo(fila)) return false;
+      if (texto === '') return true;
+      return [fila.producto, fila.sku, fila.talla, fila.color, fila.sucursal].some((campo) =>
+        String(campo ?? '')
+          .toLowerCase()
+          .includes(texto),
+      );
+    });
+  });
+  protected readonly valorConsolidadoVisible = computed(() =>
+    this.filasConsolidadoVisibles().reduce((acumulado, fila) => acumulado + Number(fila.valor_inventario), 0),
+  );
 
   // ---- Kardex ---------------------------------------------------------------
 

@@ -1,6 +1,14 @@
 <p-confirmdialog />
 
-<h1>Inventario</h1>
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Catálogo</span>
+    <h1>Inventario</h1>
+  </div>
+  @if (puedeGestionarAbastecimiento()) {
+    <p-button label="Registrar recepción" icon="pi pi-download" (onClick)="cambiarPestania('recepcion')" />
+  }
+</div>
 
 <p-tabs [value]="pestania()" (valueChange)="cambiarPestania($any($event))">
   <p-tablist>
@@ -27,68 +35,122 @@
           optionValue="id"
           placeholder="Todas las sucursales"
           [showClear]="true"
+          ariaLabel="Sucursal"
           [ngModel]="filtroSucursalConsolidado()"
           (ngModelChange)="filtroSucursalConsolidado.set($event); buscarConsolidado()"
         />
+        <label class="buscador">
+          <fs-icono nombre="busqueda" [tam]="24" />
+          <input
+            type="text"
+            placeholder="Buscar producto, SKU, talla o color"
+            aria-label="Buscar"
+            [ngModel]="textoConsolidado()"
+            (ngModelChange)="textoConsolidado.set($event)"
+          />
+        </label>
         <p-inputnumber
           placeholder="ID de producto"
+          ariaLabel="ID de producto"
           [useGrouping]="false"
           [ngModel]="filtroProductoConsolidado()"
           (ngModelChange)="filtroProductoConsolidado.set($event); buscarConsolidado()"
         />
-        <p-button icon="pi pi-refresh" [text]="true" (onClick)="buscarConsolidado()" />
+        <button type="button" class="btn-icono btn-icono--contorno" aria-label="Actualizar" (click)="buscarConsolidado()">
+          <fs-icono nombre="refrescar" [tam]="24" />
+        </button>
+        <span class="filtros__fin">
+          <label for="solo-bajo-minimo">Solo bajo mínimo</label>
+          <p-toggleswitch
+            class="interruptor"
+            inputId="solo-bajo-minimo"
+            [ngModel]="soloBajoMinimo()"
+            (ngModelChange)="soloBajoMinimo.set($event)"
+          />
+        </span>
       </div>
 
-      <p-table [value]="filasConsolidado()" [loading]="cargandoConsolidado()" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Producto</th>
-            <th>SKU</th>
-            <th>Talla</th>
-            <th>Color</th>
-            <th>Sucursal</th>
-            <th>Físico</th>
-            <th>Reservado</th>
-            <th>Disponible</th>
-            <th>Mínimo</th>
-            <th>Costo prom.</th>
-            <th>Valor</th>
-            <th style="width: 8rem">Acciones</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-fila>
-          <tr [class.fila-alerta]="fila.cantidad_disponible <= fila.stock_minimo">
-            <td>{{ fila.producto }}</td>
-            <td>{{ fila.sku }}</td>
-            <td>{{ fila.talla }}</td>
-            <td>{{ fila.color }}</td>
-            <td>{{ fila.sucursal }}</td>
-            <td>{{ fila.cantidad_fisica }}</td>
-            <td>{{ fila.cantidad_reservada }}</td>
-            <td>{{ fila.cantidad_disponible }}</td>
-            <td>{{ fila.stock_minimo }}</td>
-            <td>{{ fila.costo_promedio | number: '1.4-4' }}</td>
-            <td>{{ fila.valor_inventario | number: '1.2-2' }}</td>
-            <td>
-              <p-button icon="pi pi-list" [text]="true" size="small" pTooltip="Ver kardex" (onClick)="verKardex(fila)" />
-              @if (puedeGestionarInventario()) {
-                <p-button
-                  icon="pi pi-sliders-h"
-                  [text]="true"
-                  size="small"
-                  pTooltip="Ajustar stock"
-                  (onClick)="abrirAjuste(fila)"
-                />
-              }
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="12">Sin registros.</td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <section class="panel">
+        <div class="panel__scroll">
+          <p-table
+            [value]="filasConsolidadoVisibles()"
+            [loading]="cargandoConsolidado()"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '1100px' }"
+          >
+            <ng-template #header>
+              <tr>
+                <th>Producto</th>
+                <th>SKU</th>
+                <th>Talla</th>
+                <th>Color</th>
+                <th>Sucursal</th>
+                <th class="num">Físico</th>
+                <th class="num">Reservado</th>
+                <th class="num">Disponible</th>
+                <th class="num">Mínimo</th>
+                <th class="num">Costo prom.</th>
+                <th class="num">Valor</th>
+                <th class="num">Acciones</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-fila>
+              <tr [class.fila-alerta]="esBajoMinimo(fila)">
+                <td class="fuerte">{{ fila.producto }}</td>
+                <td class="tenue">{{ fila.sku }}</td>
+                <td>{{ fila.talla }}</td>
+                <td class="tenue">{{ fila.color }}</td>
+                <td>{{ fila.sucursal }}</td>
+                <td class="num">{{ fila.cantidad_fisica }}</td>
+                <td class="num tenue">{{ fila.cantidad_reservada }}</td>
+                <td class="num fuerte" [class.dato-alerta]="esBajoMinimo(fila)">{{ fila.cantidad_disponible }}</td>
+                <td class="num tenue">{{ fila.stock_minimo }}</td>
+                <td class="num">{{ fila.costo_promedio | number: '1.4-4' }}</td>
+                <td class="num">{{ fila.valor_inventario | number: '1.2-2' }}</td>
+                <td>
+                  <div class="acciones">
+                    @if (esBajoMinimo(fila)) {
+                      <span class="fs-chip fs-chip--advertencia">Bajo mínimo</span>
+                    }
+                    <button
+                      type="button"
+                      class="btn-icono"
+                      aria-label="Ver kardex"
+                      pTooltip="Ver kardex"
+                      (click)="verKardex(fila)"
+                    >
+                      <fs-icono nombre="historial" [tam]="24" />
+                    </button>
+                    @if (puedeGestionarInventario()) {
+                      <button
+                        type="button"
+                        class="btn-icono"
+                        aria-label="Ajustar stock"
+                        pTooltip="Ajustar stock"
+                        (click)="abrirAjuste(fila)"
+                      >
+                        <fs-icono nombre="filtros" [tam]="24" />
+                      </button>
+                    }
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="12"><div class="vacio">Sin registros.</div></td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+        <div class="panel__pie">
+          <span class="fs-num">{{ filasConsolidadoVisibles().length }} de {{ filasConsolidado().length }} variantes</span>
+          <span class="panel__total">
+            Valor de inventario
+            <strong>Bs {{ valorConsolidadoVisible() | number: '1.2-2' }}</strong>
+          </span>
+        </div>
+      </section>
     </p-tabpanel>
 
     <!-- ============================================================ -->
@@ -103,6 +165,7 @@
       <div class="filtros">
         <p-inputnumber
           placeholder="ID de variante"
+          ariaLabel="ID de variante"
           [useGrouping]="false"
           [ngModel]="kardexVarianteId()"
           (ngModelChange)="kardexVarianteId.set($event)"
@@ -112,45 +175,59 @@
           optionLabel="nombre"
           optionValue="id"
           placeholder="Sucursal"
+          ariaLabel="Sucursal"
           [ngModel]="kardexSucursalId()"
           (ngModelChange)="kardexSucursalId.set($event)"
         />
-        <p-button label="Consultar" icon="pi pi-search" size="small" (onClick)="buscarKardex()" />
+        <p-button label="Consultar" icon="pi pi-search" (onClick)="buscarKardex()" />
       </div>
 
-      <p-table [value]="filasKardex()" [loading]="cargandoKardex()" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Fecha</th>
-            <th>Tipo</th>
-            <th>Cantidad</th>
-            <th>Saldo</th>
-            <th>Costo unitario</th>
-            <th>Costo prom. post</th>
-            <th>Observación</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-movimiento>
-          <tr>
-            <td>{{ movimiento.creado_en | date: 'short' }}</td>
-            <td>{{ movimiento.tipo_movimiento_codigo }}</td>
-            <td [class.cantidad-negativa]="movimiento.cantidad < 0">{{ movimiento.cantidad }}</td>
-            <td>{{ movimiento.saldo_post }}</td>
-            <td>{{ movimiento.costo_unitario !== null ? (movimiento.costo_unitario | number: '1.4-4') : '—' }}</td>
-            <td>
-              <strong>{{
-                movimiento.costo_promedio_post !== null ? (movimiento.costo_promedio_post | number: '1.4-4') : '—'
-              }}</strong>
-            </td>
-            <td>{{ movimiento.observacion ?? '—' }}</td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="7">{{ kardexConsultado() ? 'Sin movimientos.' : 'Elegí variante y sucursal.' }}</td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <section class="panel">
+        <div class="panel__scroll">
+          <p-table
+            [value]="filasKardex()"
+            [loading]="cargandoKardex()"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '860px' }"
+          >
+            <ng-template #header>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th class="num">Cantidad</th>
+                <th class="num">Saldo</th>
+                <th class="num">Costo unitario</th>
+                <th class="num">Costo prom. post</th>
+                <th>Observación</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-movimiento>
+              <tr>
+                <td>{{ movimiento.creado_en | date: 'short' }}</td>
+                <td>{{ movimiento.tipo_movimiento_codigo }}</td>
+                <td class="num" [class.cantidad-negativa]="movimiento.cantidad < 0">{{ movimiento.cantidad }}</td>
+                <td class="num">{{ movimiento.saldo_post }}</td>
+                <td class="num">
+                  {{ movimiento.costo_unitario !== null ? (movimiento.costo_unitario | number: '1.4-4') : '—' }}
+                </td>
+                <td class="num">
+                  <strong>{{
+                    movimiento.costo_promedio_post !== null ? (movimiento.costo_promedio_post | number: '1.4-4') : '—'
+                  }}</strong>
+                </td>
+                <td class="tenue">{{ movimiento.observacion ?? '—' }}</td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="7">
+                  <div class="vacio">{{ kardexConsultado() ? 'Sin movimientos.' : 'Elige variante y sucursal.' }}</div>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
     </p-tabpanel>
 
     <!-- ============================================================ -->
@@ -159,107 +236,131 @@
     @if (puedeGestionarAbastecimiento()) {
       <p-tabpanel value="recepcion">
         <form [formGroup]="formularioRecepcion" (ngSubmit)="registrarRecepcion()" class="formulario-recepcion">
-          <div class="formulario-fila">
-            <div class="campo">
-              <label for="rec-codigo">Código</label>
-              <input id="rec-codigo" pInputText formControlName="codigo" />
+          <section class="panel tarjeta-formulario">
+            <h2>Datos de la recepción</h2>
+            <div class="campo-fila">
+              <div class="campo">
+                <label for="rec-codigo">Código</label>
+                <input id="rec-codigo" pInputText formControlName="codigo" />
+              </div>
+              <div class="campo">
+                <label for="rec-proveedor">Proveedor</label>
+                <p-select
+                  inputId="rec-proveedor"
+                  formControlName="proveedor_id"
+                  [options]="proveedores()"
+                  optionLabel="nombre"
+                  optionValue="id"
+                  placeholder="Elige un proveedor"
+                />
+              </div>
+              <div class="campo">
+                <label for="rec-sucursal">Sucursal</label>
+                <p-select
+                  inputId="rec-sucursal"
+                  formControlName="sucursal_id"
+                  [options]="sucursales()"
+                  optionLabel="nombre"
+                  optionValue="id"
+                  placeholder="Elige una sucursal"
+                />
+              </div>
+              <div class="campo">
+                <label for="rec-orden">Orden de compra (opcional)</label>
+                <p-inputnumber inputId="rec-orden" formControlName="orden_compra_id" [useGrouping]="false" />
+              </div>
             </div>
-            <div class="campo">
-              <label for="rec-proveedor">Proveedor</label>
-              <p-select
-                inputId="rec-proveedor"
-                formControlName="proveedor_id"
-                [options]="proveedores()"
-                optionLabel="nombre"
-                optionValue="id"
-                placeholder="Seleccioná un proveedor"
-              />
-            </div>
-            <div class="campo">
-              <label for="rec-sucursal">Sucursal</label>
-              <p-select
-                inputId="rec-sucursal"
-                formControlName="sucursal_id"
-                [options]="sucursales()"
-                optionLabel="nombre"
-                optionValue="id"
-                placeholder="Seleccioná una sucursal"
-              />
-            </div>
-            <div class="campo">
-              <label for="rec-orden">Orden de compra (opcional)</label>
-              <p-inputnumber inputId="rec-orden" formControlName="orden_compra_id" [useGrouping]="false" />
-            </div>
-          </div>
 
-          <div class="campo">
-            <label for="rec-observacion">Observación</label>
-            <textarea id="rec-observacion" pTextarea formControlName="observacion" rows="2"></textarea>
-          </div>
+            <div class="campo">
+              <label for="rec-observacion">Observación</label>
+              <textarea id="rec-observacion" pTextarea formControlName="observacion" rows="2"></textarea>
+            </div>
+          </section>
 
-          <h3>Líneas</h3>
-          <table class="tabla-lineas" formArrayName="detalle">
-            <thead>
-              <tr>
-                <th>Variante ID</th>
-                <th>Cantidad</th>
-                <th>Costo unitario</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (linea of lineasRecepcion.controls; track $index; let i = $index) {
-                <tr [formGroupName]="i">
-                  <td><input type="number" pInputText formControlName="variante_id" /></td>
-                  <td><input type="number" pInputText min="1" formControlName="cantidad" /></td>
-                  <td><input type="number" pInputText step="0.01" min="0" formControlName="costo_unitario" /></td>
-                  <td>
-                    <p-button
-                      icon="pi pi-trash"
-                      [text]="true"
-                      size="small"
-                      severity="danger"
-                      [disabled]="lineasRecepcion.length === 1"
-                      (onClick)="quitarLineaRecepcion(i)"
-                    />
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-          <p-button icon="pi pi-plus" label="Agregar línea" [text]="true" size="small" (onClick)="agregarLineaRecepcion()" />
+          <section class="panel tarjeta-formulario">
+            <h2>Líneas</h2>
+            <div class="panel__scroll">
+              <table class="tabla-lineas" formArrayName="detalle">
+                <thead>
+                  <tr>
+                    <th>Variante ID</th>
+                    <th>Cantidad</th>
+                    <th>Costo unitario</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (linea of lineasRecepcion.controls; track $index; let i = $index) {
+                    <tr [formGroupName]="i">
+                      <td><input type="number" pInputText formControlName="variante_id" aria-label="Variante ID" /></td>
+                      <td><input type="number" pInputText min="1" formControlName="cantidad" aria-label="Cantidad" /></td>
+                      <td>
+                        <input
+                          type="number"
+                          pInputText
+                          step="0.01"
+                          min="0"
+                          formControlName="costo_unitario"
+                          aria-label="Costo unitario"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn-icono btn-icono--peligro"
+                          aria-label="Quitar línea"
+                          [disabled]="lineasRecepcion.length === 1"
+                          (click)="quitarLineaRecepcion(i)"
+                        >
+                          <fs-icono nombre="basura" [tam]="24" />
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <button type="button" class="btn-texto" (click)="agregarLineaRecepcion()">
+              <fs-icono nombre="mas" [tam]="24" />
+              Agregar línea
+            </button>
+          </section>
 
-          <div class="formulario-acciones">
+          <div class="dialogo-acciones sin-borde">
             <p-button type="submit" label="Registrar recepción" icon="pi pi-check" />
           </div>
         </form>
 
-        <h3>Últimas recepciones</h3>
-        <p-table [value]="recepcionesRecientes()" styleClass="p-datatable-sm">
-          <ng-template #header>
-            <tr>
-              <th>Código</th>
-              <th>Proveedor</th>
-              <th>Sucursal</th>
-              <th>Fecha</th>
-              <th>Líneas</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-recepcion>
-            <tr>
-              <td>{{ recepcion.codigo }}</td>
-              <td>{{ recepcion.proveedor_id }}</td>
-              <td>{{ recepcion.sucursal_id }}</td>
-              <td>{{ recepcion.fecha | date: 'short' }}</td>
-              <td>{{ recepcion.detalle.length }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="5">Todavía no hay recepciones.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <div class="panel__titulo"><h3>Últimas recepciones</h3></div>
+          <div class="panel__scroll">
+            <p-table [value]="recepcionesRecientes()" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '620px' }">
+              <ng-template #header>
+                <tr>
+                  <th>Código</th>
+                  <th>Proveedor</th>
+                  <th>Sucursal</th>
+                  <th>Fecha</th>
+                  <th class="num">Líneas</th>
+                </tr>
+              </ng-template>
+              <ng-template #body let-recepcion>
+                <tr>
+                  <td class="fuerte">{{ recepcion.codigo }}</td>
+                  <td>{{ recepcion.proveedor_id }}</td>
+                  <td>{{ recepcion.sucursal_id }}</td>
+                  <td>{{ recepcion.fecha | date: 'short' }}</td>
+                  <td class="num">{{ recepcion.detalle.length }}</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage>
+                <tr>
+                  <td colspan="5"><div class="vacio">Todavía no hay recepciones.</div></td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
       </p-tabpanel>
     }
 
@@ -272,7 +373,8 @@
           [options]="sucursales()"
           optionLabel="nombre"
           optionValue="id"
-          placeholder="Elegí una sucursal"
+          placeholder="Elige una sucursal"
+          ariaLabel="Sucursal"
           [ngModel]="filtroSucursalLimites()"
           (ngModelChange)="filtroSucursalLimites.set($event); buscarLimites()"
         />
@@ -280,7 +382,6 @@
           <p-button
             label="Guardar cambios"
             icon="pi pi-save"
-            size="small"
             [loading]="guardandoLimites()"
             (onClick)="guardarLimites()"
           />
@@ -288,34 +389,50 @@
       </div>
 
       @if (filasLimites().length > 0) {
-        <table class="tabla-lineas">
-          <thead>
-            <tr>
-              <th>Variante</th>
-              <th>Físico</th>
-              <th>Disponible</th>
-              <th>Mínimo</th>
-              <th>Máximo</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (fila of filasLimites(); track fila.stock.id) {
-              <tr>
-                <td>{{ fila.stock.variante_id }}</td>
-                <td>{{ fila.stock.cantidad_fisica }}</td>
-                <td>{{ fila.stock.cantidad_disponible }}</td>
-                <td>
-                  <p-inputnumber [(ngModel)]="fila.minimo" [useGrouping]="false" [min]="0" [disabled]="!puedeGestionarInventario()" />
-                </td>
-                <td>
-                  <p-inputnumber [(ngModel)]="fila.maximo" [useGrouping]="false" [min]="0" [disabled]="!puedeGestionarInventario()" />
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
+        <section class="panel">
+          <div class="panel__scroll">
+            <table class="tabla-lineas tabla-limites">
+              <thead>
+                <tr>
+                  <th>Variante</th>
+                  <th class="num">Físico</th>
+                  <th class="num">Disponible</th>
+                  <th>Mínimo</th>
+                  <th>Máximo</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of filasLimites(); track fila.stock.id) {
+                  <tr>
+                    <td class="fuerte">{{ fila.stock.variante_id }}</td>
+                    <td class="num">{{ fila.stock.cantidad_fisica }}</td>
+                    <td class="num">{{ fila.stock.cantidad_disponible }}</td>
+                    <td>
+                      <p-inputnumber
+                        [(ngModel)]="fila.minimo"
+                        ariaLabel="Mínimo"
+                        [useGrouping]="false"
+                        [min]="0"
+                        [disabled]="!puedeGestionarInventario()"
+                      />
+                    </td>
+                    <td>
+                      <p-inputnumber
+                        [(ngModel)]="fila.maximo"
+                        ariaLabel="Máximo"
+                        [useGrouping]="false"
+                        [min]="0"
+                        [disabled]="!puedeGestionarInventario()"
+                      />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
       } @else if (!cargandoLimites()) {
-        <p class="ayuda">Elegí una sucursal para ver y editar sus límites de stock.</p>
+        <p class="vacio">Elige una sucursal para ver y editar sus límites de stock.</p>
       }
     </p-tabpanel>
 
@@ -330,41 +447,53 @@
           optionValue="id"
           placeholder="Todas las sucursales"
           [showClear]="true"
+          ariaLabel="Sucursal"
           [ngModel]="filtroSucursalAlertas()"
           (ngModelChange)="filtroSucursalAlertas.set($event); buscarAlertas()"
         />
-        <p-button icon="pi pi-refresh" [text]="true" (onClick)="buscarAlertas()" />
+        <button type="button" class="btn-icono btn-icono--contorno" aria-label="Actualizar" (click)="buscarAlertas()">
+          <fs-icono nombre="refrescar" [tam]="24" />
+        </button>
       </div>
 
-      <p-table [value]="filasAlertas()" [loading]="cargandoAlertas()" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Producto</th>
-            <th>SKU</th>
-            <th>Talla</th>
-            <th>Color</th>
-            <th>Sucursal</th>
-            <th>Disponible</th>
-            <th>Mínimo</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-fila>
-          <tr class="fila-alerta">
-            <td>{{ fila.producto }}</td>
-            <td>{{ fila.sku }}</td>
-            <td>{{ fila.talla }}</td>
-            <td>{{ fila.color }}</td>
-            <td>{{ fila.sucursal }}</td>
-            <td>{{ fila.cantidad_disponible }}</td>
-            <td>{{ fila.stock_minimo }}</td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="7">Sin alertas de reposición 🎉</td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <section class="panel">
+        <div class="panel__scroll">
+          <p-table
+            [value]="filasAlertas()"
+            [loading]="cargandoAlertas()"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '760px' }"
+          >
+            <ng-template #header>
+              <tr>
+                <th>Producto</th>
+                <th>SKU</th>
+                <th>Talla</th>
+                <th>Color</th>
+                <th>Sucursal</th>
+                <th class="num">Disponible</th>
+                <th class="num">Mínimo</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-fila>
+              <tr class="fila-alerta">
+                <td class="fuerte">{{ fila.producto }}</td>
+                <td class="tenue">{{ fila.sku }}</td>
+                <td>{{ fila.talla }}</td>
+                <td class="tenue">{{ fila.color }}</td>
+                <td>{{ fila.sucursal }}</td>
+                <td class="num fuerte dato-alerta">{{ fila.cantidad_disponible }}</td>
+                <td class="num tenue">{{ fila.stock_minimo }}</td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="7"><div class="vacio">Sin alertas de reposición.</div></td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
     </p-tabpanel>
 
     <!-- ============================================================ -->
@@ -378,34 +507,45 @@
           optionValue="id"
           placeholder="Todas las sucursales"
           [showClear]="true"
+          ariaLabel="Sucursal"
           [ngModel]="filtroSucursalValuacion()"
           (ngModelChange)="filtroSucursalValuacion.set($event); buscarValuacion()"
         />
-        <p-button icon="pi pi-refresh" [text]="true" (onClick)="buscarValuacion()" />
+        <button type="button" class="btn-icono btn-icono--contorno" aria-label="Actualizar" (click)="buscarValuacion()">
+          <fs-icono nombre="refrescar" [tam]="24" />
+        </button>
       </div>
 
-      <p-table [value]="filasValuacion()" [loading]="cargandoValuacion()" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Sucursal</th>
-            <th>Valor total</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-fila>
-          <tr>
-            <td>{{ fila.sucursal }}</td>
-            <td>{{ fila.valor_total | number: '1.2-2' }}</td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="2">Sin datos.</td>
-          </tr>
-        </ng-template>
-      </p-table>
-      @if (filasValuacion().length > 1) {
-        <p class="total-valuacion">Total: {{ valuacionTotal() | number: '1.2-2' }}</p>
-      }
+      <section class="panel">
+        <p-table [value]="filasValuacion()" [loading]="cargandoValuacion()" styleClass="p-datatable-sm">
+          <ng-template #header>
+            <tr>
+              <th>Sucursal</th>
+              <th class="num">Valor total</th>
+            </tr>
+          </ng-template>
+          <ng-template #body let-fila>
+            <tr>
+              <td class="fuerte">{{ fila.sucursal }}</td>
+              <td class="num">{{ fila.valor_total | number: '1.2-2' }}</td>
+            </tr>
+          </ng-template>
+          <ng-template #emptymessage>
+            <tr>
+              <td colspan="2"><div class="vacio">Sin datos.</div></td>
+            </tr>
+          </ng-template>
+        </p-table>
+        @if (filasValuacion().length > 1) {
+          <div class="panel__pie">
+            <span></span>
+            <span class="panel__total total-valuacion">
+              Total
+              <strong>Bs {{ valuacionTotal() | number: '1.2-2' }}</strong>
+            </span>
+          </div>
+        }
+      </section>
     </p-tabpanel>
 
     <!-- ============================================================ -->
@@ -419,129 +559,201 @@
           optionValue="id"
           placeholder="Todas las sucursales"
           [showClear]="true"
+          ariaLabel="Sucursal"
           [ngModel]="filtroSucursalTransferencias()"
           (ngModelChange)="filtroSucursalTransferencias.set($event); buscarTransferencias()"
         />
         @if (puedeGestionarInventario()) {
-          <p-button label="Nueva transferencia" icon="pi pi-plus" size="small" (onClick)="abrirNuevaTransferencia()" />
+          <span class="filtros__fin">
+            <p-button label="Nueva transferencia" icon="pi pi-plus" (onClick)="abrirNuevaTransferencia()" />
+          </span>
         }
       </div>
 
-      <p-table [value]="filasTransferencias()" [loading]="cargandoTransferencias()" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Código</th>
-            <th>Origen</th>
-            <th>Destino</th>
-            <th>Estado</th>
-            <th>Enviada</th>
-            <th>Recibida</th>
-            <th style="width: 10rem">Acciones</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-transferencia>
-          <tr>
-            <td>{{ transferencia.codigo }}</td>
-            <td>{{ transferencia.sucursal_origen_id }}</td>
-            <td>{{ transferencia.sucursal_destino_id }}</td>
-            <td><p-tag [value]="etiquetaEstado(transferencia.estado)" [severity]="severidadEstado(transferencia.estado)" /></td>
-            <td>{{ transferencia.fecha_envio ? (transferencia.fecha_envio | date: 'short') : '—' }}</td>
-            <td>{{ transferencia.fecha_recepcion ? (transferencia.fecha_recepcion | date: 'short') : '—' }}</td>
-            <td>
-              @if (puedeGestionarInventario()) {
-                @if (transferencia.estado === 'pendiente') {
-                  <p-button icon="pi pi-send" [text]="true" size="small" pTooltip="Enviar" (onClick)="enviarTransferencia(transferencia)" />
-                  <p-button icon="pi pi-times" [text]="true" size="small" severity="danger" pTooltip="Anular" (onClick)="confirmarAnularTransferencia(transferencia)" />
-                }
-                @if (transferencia.estado === 'en_transito') {
-                  <p-button icon="pi pi-inbox" [text]="true" size="small" pTooltip="Recibir" (onClick)="recibirTransferencia(transferencia)" />
-                }
-              }
-            </td>
-          </tr>
-        </ng-template>
-        <ng-template #emptymessage>
-          <tr>
-            <td colspan="7">Sin transferencias.</td>
-          </tr>
-        </ng-template>
-      </p-table>
+      <section class="panel">
+        <div class="panel__scroll">
+          <p-table
+            [value]="filasTransferencias()"
+            [loading]="cargandoTransferencias()"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '860px' }"
+          >
+            <ng-template #header>
+              <tr>
+                <th>Código</th>
+                <th>Origen</th>
+                <th>Destino</th>
+                <th>Estado</th>
+                <th>Enviada</th>
+                <th>Recibida</th>
+                <th class="num">Acciones</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-transferencia>
+              <tr>
+                <td class="fuerte">{{ transferencia.codigo }}</td>
+                <td>{{ transferencia.sucursal_origen_id }}</td>
+                <td>{{ transferencia.sucursal_destino_id }}</td>
+                <td>
+                  <span [class]="'fs-chip ' + claseEstado(transferencia.estado)">{{
+                    etiquetaEstado(transferencia.estado)
+                  }}</span>
+                </td>
+                <td>{{ transferencia.fecha_envio ? (transferencia.fecha_envio | date: 'short') : '—' }}</td>
+                <td>{{ transferencia.fecha_recepcion ? (transferencia.fecha_recepcion | date: 'short') : '—' }}</td>
+                <td>
+                  <div class="acciones">
+                    @if (puedeGestionarInventario()) {
+                      @if (transferencia.estado === 'pendiente') {
+                        <button
+                          type="button"
+                          class="btn-icono"
+                          aria-label="Enviar"
+                          pTooltip="Enviar"
+                          (click)="enviarTransferencia(transferencia)"
+                        >
+                          <fs-icono nombre="enviar" [tam]="24" />
+                        </button>
+                        <button
+                          type="button"
+                          class="btn-icono btn-icono--peligro"
+                          aria-label="Anular"
+                          pTooltip="Anular"
+                          (click)="confirmarAnularTransferencia(transferencia)"
+                        >
+                          <fs-icono nombre="cerrar" [tam]="24" />
+                        </button>
+                      }
+                      @if (transferencia.estado === 'en_transito') {
+                        <button
+                          type="button"
+                          class="btn-icono"
+                          aria-label="Recibir"
+                          pTooltip="Recibir"
+                          (click)="recibirTransferencia(transferencia)"
+                        >
+                          <fs-icono nombre="bandeja" [tam]="24" />
+                        </button>
+                      }
+                    }
+                  </div>
+                </td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="7"><div class="vacio">Sin transferencias.</div></td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      </section>
     </p-tabpanel>
   </p-tabpanels>
 </p-tabs>
 
 <!-- Diálogo: ajustar stock -->
-<p-dialog header="Ajustar stock" [(visible)]="dialogoAjusteVisible" [modal]="true" [style]="{ width: '380px' }">
+<p-dialog header="Ajustar stock" [(visible)]="dialogoAjusteVisible" [modal]="true" [style]="{ width: '440px', maxWidth: '96vw' }">
   @if (filaAjustando(); as fila) {
-    <p class="ayuda">{{ fila.producto }} — {{ fila.sku }} en {{ fila.sucursal }} (disponible: {{ fila.cantidad_disponible }})</p>
-    <form [formGroup]="formularioAjuste" (ngSubmit)="guardarAjuste()" class="formulario">
-      <label for="ajuste-cantidad">Cantidad (positivo = sobrante, negativo = faltante)</label>
-      <p-inputnumber inputId="ajuste-cantidad" formControlName="cantidad" [useGrouping]="false" />
+    <p class="ayuda">
+      {{ fila.producto }} — {{ fila.sku }} en {{ fila.sucursal }} (disponible: {{ fila.cantidad_disponible }})
+    </p>
+    <form [formGroup]="formularioAjuste" (ngSubmit)="guardarAjuste()" class="formulario-dialogo">
+      <div class="campo">
+        <label for="ajuste-cantidad">Cantidad (positivo = sobrante, negativo = faltante)</label>
+        <p-inputnumber inputId="ajuste-cantidad" formControlName="cantidad" [useGrouping]="false" />
+      </div>
 
-      <label for="ajuste-observacion">Observación</label>
-      <textarea id="ajuste-observacion" pTextarea formControlName="observacion" rows="2"></textarea>
+      <div class="campo">
+        <label for="ajuste-observacion">Observación</label>
+        <textarea id="ajuste-observacion" pTextarea formControlName="observacion" rows="2"></textarea>
+      </div>
 
-      <p-button type="submit" label="Guardar" styleClass="w-full" />
+      <div class="dialogo-acciones">
+        <p-button label="Cancelar" [outlined]="true" (onClick)="dialogoAjusteVisible.set(false)" />
+        <p-button type="submit" label="Guardar" icon="pi pi-check" />
+      </div>
     </form>
   }
 </p-dialog>
 
 <!-- Diálogo: nueva transferencia -->
-<p-dialog header="Nueva transferencia" [(visible)]="dialogoTransferenciaVisible" [modal]="true" [style]="{ width: '480px' }">
-  <form [formGroup]="formularioTransferencia" (ngSubmit)="crearTransferencia()" class="formulario">
-    <label for="tr-codigo">Código</label>
-    <input id="tr-codigo" pInputText formControlName="codigo" />
+<p-dialog
+  header="Nueva transferencia"
+  [(visible)]="dialogoTransferenciaVisible"
+  [modal]="true"
+  [style]="{ width: '560px', maxWidth: '96vw' }"
+>
+  <form [formGroup]="formularioTransferencia" (ngSubmit)="crearTransferencia()" class="formulario-dialogo">
+    <div class="campo">
+      <label for="tr-codigo">Código</label>
+      <input id="tr-codigo" pInputText formControlName="codigo" />
+    </div>
 
-    <label for="tr-origen">Sucursal origen</label>
-    <p-select
-      inputId="tr-origen"
-      formControlName="sucursal_origen_id"
-      [options]="sucursales()"
-      optionLabel="nombre"
-      optionValue="id"
-      placeholder="Sucursal origen"
-    />
-
-    <label for="tr-destino">Sucursal destino</label>
-    <p-select
-      inputId="tr-destino"
-      formControlName="sucursal_destino_id"
-      [options]="sucursales()"
-      optionLabel="nombre"
-      optionValue="id"
-      placeholder="Sucursal destino"
-    />
+    <div class="campo-fila">
+      <div class="campo">
+        <label for="tr-origen">Sucursal origen</label>
+        <p-select
+          inputId="tr-origen"
+          formControlName="sucursal_origen_id"
+          [options]="sucursales()"
+          optionLabel="nombre"
+          optionValue="id"
+          placeholder="Sucursal origen"
+        />
+      </div>
+      <div class="campo">
+        <label for="tr-destino">Sucursal destino</label>
+        <p-select
+          inputId="tr-destino"
+          formControlName="sucursal_destino_id"
+          [options]="sucursales()"
+          optionLabel="nombre"
+          optionValue="id"
+          placeholder="Sucursal destino"
+        />
+      </div>
+    </div>
 
     <h3>Líneas</h3>
-    <table class="tabla-lineas" formArrayName="detalle">
-      <thead>
-        <tr>
-          <th>Variante ID</th>
-          <th>Cantidad</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (linea of lineasTransferencia.controls; track $index; let i = $index) {
-          <tr [formGroupName]="i">
-            <td><input type="number" pInputText formControlName="variante_id" /></td>
-            <td><input type="number" pInputText min="1" formControlName="cantidad" /></td>
-            <td>
-              <p-button
-                icon="pi pi-trash"
-                [text]="true"
-                size="small"
-                severity="danger"
-                [disabled]="lineasTransferencia.length === 1"
-                (onClick)="quitarLineaTransferencia(i)"
-              />
-            </td>
+    <div class="panel__scroll">
+      <table class="tabla-lineas" formArrayName="detalle">
+        <thead>
+          <tr>
+            <th>Variante ID</th>
+            <th>Cantidad</th>
+            <th></th>
           </tr>
-        }
-      </tbody>
-    </table>
-    <p-button icon="pi pi-plus" label="Agregar línea" [text]="true" size="small" (onClick)="agregarLineaTransferencia()" />
+        </thead>
+        <tbody>
+          @for (linea of lineasTransferencia.controls; track $index; let i = $index) {
+            <tr [formGroupName]="i">
+              <td><input type="number" pInputText formControlName="variante_id" aria-label="Variante ID" /></td>
+              <td><input type="number" pInputText min="1" formControlName="cantidad" aria-label="Cantidad" /></td>
+              <td>
+                <button
+                  type="button"
+                  class="btn-icono btn-icono--peligro"
+                  aria-label="Quitar línea"
+                  [disabled]="lineasTransferencia.length === 1"
+                  (click)="quitarLineaTransferencia(i)"
+                >
+                  <fs-icono nombre="basura" [tam]="24" />
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <button type="button" class="btn-texto" (click)="agregarLineaTransferencia()">
+      <fs-icono nombre="mas" [tam]="24" />
+      Agregar línea
+    </button>
 
-    <p-button type="submit" label="Crear transferencia" styleClass="w-full" />
+    <div class="dialogo-acciones">
+      <p-button label="Cancelar" [outlined]="true" (onClick)="dialogoTransferenciaVisible.set(false)" />
+      <p-button type="submit" label="Crear transferencia" icon="pi pi-check" />
+    </div>
   </form>
 </p-dialog>

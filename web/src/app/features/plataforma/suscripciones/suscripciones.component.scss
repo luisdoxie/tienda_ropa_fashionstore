@@ -1,0 +1,75 @@
+.filtros {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+
+  &__nota {
+    margin: var(--fs-espacio-2) 0 var(--fs-espacio-4);
+  }
+}
+
+.numero {
+  font-variant-numeric: tabular-nums;
+}
+
+.restante--vencida {
+  color: var(--fs-error);
+}
+
+.acciones {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--fs-espacio-1);
+}
+
+.paginacion {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--fs-espacio-2);
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.nota {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.nuevo-vencimiento {
+  margin: var(--fs-espacio-2) 0 0;
+  font-size: 14px;
+}
+
+.dos-columnas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fs-espacio-3);
+
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fs-espacio-1);
+    min-width: 0;
+  }
+}
+
+
+.simulacion {
+  margin: var(--fs-espacio-2) 0 0;
+  padding: var(--fs-espacio-2) var(--fs-espacio-3);
+  border-radius: var(--fs-radio-sm);
+  background: var(--fs-advertencia-suave);
+  color: var(--fs-advertencia);
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .dos-columnas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

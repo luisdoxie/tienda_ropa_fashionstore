@@ -1,14 +1,15 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ButtonModule } from 'primeng/button';
-import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
+import { finalize } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ZonaEnvio, ZonaEnvioCrear } from '../../core/models/entregas.models';
 import { Ciudad } from '../../core/models/organizacion.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<ZonaEnvio>[] = [
@@ -16,7 +17,7 @@ const COLUMNAS: ColumnaTabla<ZonaEnvio>[] = [
   { campo: 'anillo_desde', encabezado: 'Anillo desde' },
   { campo: 'anillo_hasta', encabezado: 'Anillo hasta' },
   { campo: 'tarifa_base', encabezado: 'Tarifa base' },
-  { campo: 'activo', encabezado: 'Activo', tipo: 'booleano' },
+  { campo: 'activo', encabezado: 'Activa', tipo: 'booleano', femenino: true },
 ];
 
 @Component({
@@ -24,18 +25,20 @@ const COLUMNAS: ColumnaTabla<ZonaEnvio>[] = [
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    ButtonModule,
-    DialogModule,
     InputNumberModule,
     InputTextModule,
     SelectModule,
     TablaGenericaComponent,
+    DialogoCrudComponent,
+    ErrorCampoComponent, AriaErrorDirective,
   ],
   templateUrl: './zonas-envio.component.html',
 })
 export class ZonasEnvioComponent implements OnInit {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<ZonaEnvio | null>(null);
   protected readonly ciudades = signal<Ciudad[]>([]);
 
@@ -100,7 +103,8 @@ export class ZonasEnvioComponent implements OnInit {
           tarifa_base: valores.tarifa_base,
         });
 
-    peticion.subscribe(() => {
+    this.guardando.set(true);
+    peticion.pipe(finalize(() => this.guardando.set(false))).subscribe(() => {
       this.dialogoVisible.set(false);
       this.tabla.recargar();
     });

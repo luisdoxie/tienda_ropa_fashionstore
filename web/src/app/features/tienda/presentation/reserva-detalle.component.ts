@@ -6,17 +6,10 @@ import { switchMap } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { ProductoImagenLookupItem } from '../../../core/models/catalogo.models';
 import { EstadoReserva, Reserva, ReservaDetalle } from '../../../core/models/reservas.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { ReservasClienteService } from '../data/reservas.service';
 import { TiendaActualService } from '../state/tienda-actual.service';
-
-const ETIQUETAS_ESTADO: Record<EstadoReserva, string> = {
-  pendiente: 'Pendiente',
-  preparada: 'Preparada',
-  en_prueba: 'En prueba',
-  completada: 'Completada',
-  cancelada: 'Cancelada',
-  expirada: 'Expirada',
-};
+import { CLASES_ESTADO_RESERVA, ETIQUETAS_ESTADO_RESERVA } from './estados-reserva';
 
 interface LineaReserva extends ReservaDetalle {
   productoNombre?: string;
@@ -28,7 +21,7 @@ interface LineaReserva extends ReservaDetalle {
 @Component({
   selector: 'app-reserva-detalle',
   standalone: true,
-  imports: [RouterLink, DatePipe],
+  imports: [RouterLink, DatePipe, IconoComponent],
   templateUrl: './reserva-detalle.component.html',
   styleUrl: './reserva-detalle.component.scss',
 })
@@ -88,7 +81,11 @@ export class ReservaDetalleComponent implements OnInit {
   }
 
   etiquetaEstado(estado: EstadoReserva): string {
-    return ETIQUETAS_ESTADO[estado];
+    return ETIQUETAS_ESTADO_RESERVA[estado];
+  }
+
+  claseEstado(estado: EstadoReserva): string {
+    return CLASES_ESTADO_RESERVA[estado];
   }
 
   cancelar(): void {

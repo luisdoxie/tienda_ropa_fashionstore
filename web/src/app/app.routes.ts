@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, permisoGuard, staffGuard, tiendaSesionGuard } from './core/guards';
+import { authGuard, permisoGuard, staffGuard, superadminGuard, tiendaSesionGuard } from './core/guards';
 import { tiendaResolver } from './features/tienda/tienda.resolver';
 import { RUTAS_LEGACY } from './features/tienda/rutas-legacy';
 
@@ -15,9 +15,20 @@ export const routes: Routes = [
       import('./features/plataforma-home/plataforma-home.component').then((m) => m.PlataformaHomeComponent),
   },
   {
-    // Login del personal (provisional hasta E16, que lo reemplaza por /admin/login).
-    path: 'login',
+    // Login del personal: empresa + correo + clave (o administrador de la plataforma).
+    path: 'admin/login',
+    data: { modo: 'personal' },
     loadComponent: () => import('./features/login/login.component').then((m) => m.LoginComponent),
+  },
+  // Dirección de antes: el returnTo y demás parámetros se conservan en la redirección.
+  { path: 'login', pathMatch: 'full', redirectTo: 'admin/login' },
+  {
+    // Recuperar la contraseña del personal (pide también la empresa).
+    path: 'admin/recuperar',
+    loadComponent: () =>
+      import('./features/recuperar-password/solicitar-recuperacion.component').then(
+        (m) => m.SolicitarRecuperacionComponent,
+      ),
   },
   {
     // Compatibilidad: el enlace del correo de recuperación trae el token, que
@@ -284,6 +295,38 @@ export const routes: Routes = [
         canActivate: [permisoGuard('entregas.gestionar')],
         loadComponent: () =>
           import('./features/zonas-envio/zonas-envio.component').then((m) => m.ZonasEnvioComponent),
+      },
+      {
+        // Panel del superadministrador de la plataforma (sin empresa).
+        path: 'plataforma',
+        canActivate: [superadminGuard],
+        children: [
+          { path: '', pathMatch: 'full', redirectTo: 'empresas' },
+          {
+            path: 'empresas',
+            loadComponent: () =>
+              import('./features/plataforma/empresas/empresas.component').then((m) => m.EmpresasComponent),
+          },
+          {
+            path: 'planes',
+            loadComponent: () =>
+              import('./features/plataforma/planes/planes.component').then((m) => m.PlanesComponent),
+          },
+          {
+            path: 'suscripciones',
+            loadComponent: () =>
+              import('./features/plataforma/suscripciones/suscripciones.component').then(
+                (m) => m.SuscripcionesComponent,
+              ),
+          },
+        ],
+      },
+      {
+        // Plan, límites y funcionalidades de la empresa (solo su administrador).
+        path: 'mi-empresa',
+        canActivate: [permisoGuard('empresa.gestionar')],
+        loadComponent: () =>
+          import('./features/mi-empresa/mi-empresa.component').then((m) => m.MiEmpresaComponent),
       },
     ],
   },

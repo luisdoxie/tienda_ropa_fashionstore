@@ -5,24 +5,38 @@ import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
-import { SelectModule } from 'primeng/select';import { DireccionCliente, ZonaEnvio } from '../../../core/models/entregas.models';
+import { SelectModule } from 'primeng/select';
+import { DireccionCliente, ZonaEnvio } from '../../../core/models/entregas.models';
 import { Sucursal } from '../../../core/models/organizacion.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { CarritoService } from '../data/carrito.service';
 import { DireccionesService } from '../data/direcciones.service';
 import { DisponibilidadService } from '../data/disponibilidad.service';
 import { CheckoutService, TipoEntrega } from '../state/checkout.service';
 import { TiendaActualService } from '../state/tienda-actual.service';
+import { PasosCompraComponent } from './pasos-compra.component';
+import { ResumenCompraComponent } from './resumen-compra.component';
 
 @Component({
   selector: 'app-checkout-entrega',
   standalone: true,
-  imports: [ReactiveFormsModule, ButtonModule, DialogModule, InputTextModule, SelectModule, DecimalPipe],
+  imports: [
+    ReactiveFormsModule,
+    ButtonModule,
+    DialogModule,
+    InputTextModule,
+    SelectModule,
+    DecimalPipe,
+    IconoComponent,
+    PasosCompraComponent,
+    ResumenCompraComponent,
+  ],
   templateUrl: './checkout-entrega.component.html',
   styleUrl: './checkout-entrega.component.scss',
 })
 export class CheckoutEntregaComponent implements OnInit {
   protected readonly checkoutService = inject(CheckoutService);
-  private readonly carritoService = inject(CarritoService);
+  protected readonly carritoService = inject(CarritoService);
   private readonly disponibilidadService = inject(DisponibilidadService);
   private readonly direccionesService = inject(DireccionesService);
   private readonly fb = inject(FormBuilder);
@@ -43,6 +57,17 @@ export class CheckoutEntregaComponent implements OnInit {
   protected readonly cotizando = signal(false);
   protected readonly dialogoVisible = signal(false);
 
+  /** Retiro: sin costo. Domicilio: el de la dirección elegida, cuando ya está cotizado. Sin tipo, no se muestra. */
+  protected readonly envioResumen = computed<number | null>(() => {
+    const tipo = this.checkoutService.tipoEntrega();
+    if (tipo === 'retiro') return 0;
+    return tipo === 'domicilio' && this.checkoutService.cotizacion() ? this.checkoutService.costoEnvio() : null;
+  });
+  protected readonly totalResumen = computed<number | null>(() => {
+    const resumen = this.carritoService.resumen();
+    return resumen === null ? null : resumen.total + (this.envioResumen() ?? 0);
+  });
+
   protected readonly formulario = this.fb.nonNullable.group({
     zonaEnvioId: this.fb.control<number | null>(null),
     alias: [''],
@@ -56,6 +81,7 @@ export class CheckoutEntregaComponent implements OnInit {
       return;
     }
     this.cargarSucursales();
+    this.carritoService.refrescarResumen();
   }
 
   elegirTipoEntrega(tipo: TipoEntrega): void {

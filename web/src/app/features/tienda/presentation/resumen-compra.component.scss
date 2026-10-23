@@ -1,0 +1,67 @@
+:host {
+  display: block;
+}
+
+.resumen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px;
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.resumen__titulo {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.resumen__calculando {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fs-texto-tenue);
+}
+
+.resumen__fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.resumen__etiqueta {
+  color: var(--fs-texto-tenue);
+}
+
+.resumen__descuento {
+  color: var(--fs-exito);
+}
+
+.resumen__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--fs-tinta);
+}
+
+.resumen__total-etiqueta {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.resumen__total-importe {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 28px;
+}
+
+@media (max-width: 760px) {
+  .resumen {
+    padding: 20px;
+  }
+}

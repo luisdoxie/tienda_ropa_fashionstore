@@ -1,64 +1,115 @@
-<div class="layout">
-  <aside class="layout__menu">
-    <div class="layout__marca">FashionStore</div>
-    <nav>
-      @for (item of itemsInicio(); track item.ruta) {
-        <a [routerLink]="item.ruta" routerLinkActive="activo" class="layout__enlace">
-          <i [class]="item.icono"></i>
-          <span>{{ item.etiqueta }}</span>
-        </a>
+<div class="layout" [class.layout--menu-abierto]="menuAbierto()">
+  <aside
+    #menu
+    class="layout__menu fs-zona-oscura"
+    id="menu-principal"
+    [attr.role]="cajonActivo() ? 'dialog' : null"
+    [attr.aria-modal]="cajonActivo() ? 'true' : null"
+    [attr.aria-label]="cajonActivo() ? 'Menú' : null"
+  >
+    <div class="layout__marca">
+      <fs-marca [nombre]="nombreMarca()" [logoUrl]="logoMarca()" variante="oscuro" tam="sm" [envolver]="true" />
+      @if (esSuperadmin()) {
+        <span class="layout__marca-sub">Modo plataforma</span>
       }
+    </div>
 
-      @for (grupo of gruposMenu(); track grupo.id) {
-        <button type="button" class="layout__grupo-titulo" (click)="toggleGrupo(grupo.id)">
-          <i [class]="grupo.icono"></i>
-          <span>{{ grupo.etiqueta }}</span>
-          <i class="pi pi-chevron-down layout__grupo-chevron" [class.girado]="estaAbierto(grupo.id)"></i>
-        </button>
-        @if (estaAbierto(grupo.id)) {
-          @for (item of grupo.items; track item.ruta) {
-            <a [routerLink]="item.ruta" routerLinkActive="activo" class="layout__enlace layout__enlace--sub">
-              <i [class]="item.icono"></i>
-              <span>{{ item.etiqueta }}</span>
-            </a>
+    <nav class="layout__nav" aria-label="Menú principal">
+      <span id="menu-motivo-plan" class="sr-solo">{{ ayudaDeshabilitado() }}</span>
+      @for (seccion of secciones(); track seccion.id) {
+        <div class="layout__seccion">
+          @if (seccion.plegable) {
+            <button
+              type="button"
+              class="layout__rotulo layout__rotulo--boton"
+              [attr.aria-expanded]="estaAbierto(seccion.id)"
+              [attr.aria-controls]="'menu-seccion-' + seccion.id"
+              (click)="toggleGrupo(seccion.id)"
+            >
+              <span>{{ seccion.etiqueta }}</span>
+              <span class="layout__chevron" [class.girado]="estaAbierto(seccion.id)">
+                <fs-icono nombre="chevron-abajo" [tam]="20" />
+              </span>
+            </button>
+          } @else {
+            <div class="layout__rotulo">{{ seccion.etiqueta }}</div>
           }
-        }
-      }
 
-      @for (item of itemsFin(); track item.ruta) {
-        <a [routerLink]="item.ruta" routerLinkActive="activo" class="layout__enlace">
-          <i [class]="item.icono"></i>
-          <span>{{ item.etiqueta }}</span>
-        </a>
+          <div class="layout__items" [id]="'menu-seccion-' + seccion.id" [attr.hidden]="estaAbierto(seccion.id) ? null : ''">
+            @for (item of seccion.items; track item.ruta) {
+              @if (item.deshabilitado) {
+                <a
+                  [routerLink]="rutaExplicacionPlan"
+                  [queryParams]="paramsExplicacionPlan"
+                  class="layout__enlace layout__enlace--deshabilitado"
+                  aria-disabled="true"
+                  aria-describedby="menu-motivo-plan"
+                  [attr.title]="ayudaDeshabilitado()"
+                >
+                  <fs-icono [nombre]="item.icono" [tam]="24" />
+                  <span>{{ item.etiqueta }}</span>
+                  <span class="layout__candado"><fs-icono nombre="candado" [tam]="20" /></span>
+                </a>
+              } @else {
+                <a [routerLink]="item.ruta" routerLinkActive="activo" ariaCurrentWhenActive="page" class="layout__enlace">
+                  <fs-icono [nombre]="item.icono" [tam]="24" />
+                  <span>{{ item.etiqueta }}</span>
+                </a>
+              }
+            }
+          </div>
+        </div>
       }
     </nav>
+
+    <div class="layout__usuario">
+      <div class="layout__usuario-nombre">{{ usuario()?.nombre }} {{ usuario()?.apellido }}</div>
+      <div class="layout__usuario-rol">{{ rolesTexto() }}</div>
+    </div>
   </aside>
 
-  <div class="layout__contenido">
+  <button type="button" class="layout__fondo" aria-label="Cerrar el menú" tabindex="-1" (click)="cerrarMenu(true)"></button>
+
+  <div class="layout__contenido" [attr.inert]="cajonActivo() ? '' : null">
     <header class="layout__barra">
-      <span>{{ usuario()?.nombre }} {{ usuario()?.apellido }}</span>
+      <button
+        #botonMenu
+        type="button"
+        class="layout__boton-icono layout__hamburguesa"
+        aria-label="Abrir el menú"
+        aria-controls="menu-principal"
+        [attr.aria-expanded]="menuAbierto()"
+        (click)="alternarMenu()"
+      >
+        <fs-icono nombre="menu" [tam]="24" />
+      </button>
 
       <div class="layout__barra-acciones">
-        <button
-          type="button"
-          class="layout__campana"
-          aria-label="Notificaciones"
-          (click)="popoverNotificaciones.toggle($event)"
-        >
-          <i class="pi pi-bell"></i>
-          @if (notificacionesService.noLeidas() > 0) {
-            <span class="layout__campana-badge">{{ notificacionesService.noLeidas() }}</span>
-          }
-        </button>
+        @if (!esSuperadmin()) {
+          <button
+            type="button"
+            class="layout__boton-icono layout__campana"
+            [attr.aria-label]="etiquetaCampana()"
+            (click)="popoverNotificaciones.toggle($event)"
+          >
+            <fs-icono nombre="campana" [tam]="24" />
+            @if (notificacionesService.noLeidas() > 0) {
+              <span class="layout__campana-badge">{{ notificacionesService.noLeidas() }}</span>
+            }
+          </button>
+        }
 
-        <p-button label="Salir" icon="pi pi-sign-out" size="small" severity="secondary" (onClick)="cerrarSesion()" />
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="cerrarSesion()">
+          <fs-icono nombre="salir" [tam]="24" />
+          Salir
+        </button>
       </div>
     </header>
 
     <p-popover #popoverNotificaciones>
       <div class="layout__notificaciones">
         @if (notificacionesService.notificaciones().length === 0) {
-          <p class="fs-caption">No tenés notificaciones.</p>
+          <p class="fs-caption">No tienes notificaciones.</p>
         } @else {
           @for (n of notificacionesService.notificaciones(); track n.id) {
             <div class="layout__notificacion" [class.no-leida]="!n.leida">
@@ -76,6 +127,10 @@
         }
       </div>
     </p-popover>
+
+    @if (!esSuperadmin()) {
+      <app-aviso-suscripcion />
+    }
 
     <main class="layout__panel">
       <router-outlet />

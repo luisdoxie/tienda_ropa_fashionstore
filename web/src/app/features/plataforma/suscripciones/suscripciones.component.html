@@ -1,0 +1,241 @@
+<p-confirmdialog />
+
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Plataforma</span>
+    <h1>Suscripciones</h1>
+  </div>
+</div>
+
+<div class="filtros">
+  <p-select
+    [options]="opcionesEmpresa()"
+    optionLabel="label"
+    optionValue="value"
+    [filter]="true"
+    filterBy="label"
+    ariaLabel="Empresa"
+    [ngModel]="filtroEmpresa()"
+    (ngModelChange)="cambiarFiltroEmpresa($event)"
+  />
+  <p-select
+    [options]="opcionesEstado"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Estado"
+    [ngModel]="filtroEstado()"
+    (ngModelChange)="cambiarFiltroEstado($event)"
+  />
+  <p-select
+    [options]="opcionesPlanFiltro()"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Plan"
+    [ngModel]="filtroPlan()"
+    (ngModelChange)="filtroPlan.set($event)"
+  />
+  <p-button icon="pi pi-refresh" [text]="true" ariaLabel="Recargar" (onClick)="cargar()" />
+</div>
+<p class="fs-caption filtros__nota">El filtro de plan se aplica a las suscripciones de esta página.</p>
+
+<p-table [value]="filas()" [loading]="cargando()" styleClass="p-datatable-sm">
+  <ng-template #header>
+    <tr>
+      <th>Empresa</th>
+      <th>Plan</th>
+      <th>Estado</th>
+      <th>Inicio</th>
+      <th>Vence</th>
+      <th>Restan</th>
+      <th>Acciones</th>
+    </tr>
+  </ng-template>
+  <ng-template #body let-fila>
+    <tr>
+      <td>
+        <strong>{{ fila.empresa }}</strong>
+      </td>
+      <td>{{ fila.suscripcion.plan_nombre }}</td>
+      <td>
+        <span [class]="claseChip(fila.suscripcion.estado_efectivo)">{{ etiquetaEstado(fila.suscripcion.estado_efectivo) }}</span>
+      </td>
+      <td class="numero">{{ fecha(fila.suscripcion.fecha_inicio) | date: 'dd/MM/yyyy' }}</td>
+      <td class="numero">{{ fila.vence | date: 'dd/MM/yyyy' }}</td>
+      <td class="numero" [class.restante--vencida]="fila.suscripcion.estado_efectivo === 'vencida'">{{ fila.restante }}</td>
+      <td>
+        <div class="acciones">
+          @if (fila.acciones.cambiarPlan) {
+            <p-button label="Cambiar plan" icon="pi pi-sync" [text]="true" [disabled]="trabajando()" (onClick)="abrirCambiarPlan(fila.suscripcion)" />
+          }
+          @if (fila.acciones.renovar) {
+            <p-button label="Renovar" icon="pi pi-calendar-plus" [text]="true" [disabled]="trabajando()" (onClick)="abrirRenovar(fila.suscripcion)" />
+          }
+          @if (fila.acciones.reactivar) {
+            <p-button label="Reactivar" icon="pi pi-play" [text]="true" [disabled]="trabajando()" (onClick)="reactivar(fila.suscripcion)" />
+          }
+          @if (fila.acciones.suspender) {
+            <p-button label="Suspender" icon="pi pi-pause" severity="warn" [text]="true" [disabled]="trabajando()" (onClick)="pedirSuspender(fila.suscripcion)" />
+          }
+          @if (fila.acciones.cancelar) {
+            <p-button label="Cancelar" icon="pi pi-times" severity="danger" [text]="true" [disabled]="trabajando()" (onClick)="pedirCancelar(fila.suscripcion)" />
+          }
+          @if (fila.acciones.asignarPlan) {
+            <p-button label="Asignar plan" icon="pi pi-plus" [text]="true" [disabled]="trabajando()" (onClick)="abrirAsignarPlan(fila.suscripcion)" />
+          }
+          <p-button label="Historial" icon="pi pi-history" severity="secondary" [text]="true" (onClick)="abrirHistorial(fila.suscripcion)" />
+        </div>
+      </td>
+    </tr>
+  </ng-template>
+  <ng-template #emptymessage>
+    <tr>
+      <td colspan="7" class="fs-estado-vacio">Sin suscripciones.</td>
+    </tr>
+  </ng-template>
+</p-table>
+
+<div class="paginacion">
+  <p-button icon="pi pi-chevron-left" [text]="true" ariaLabel="Página anterior" [disabled]="pagina() === 1" (onClick)="irAPaginaAnterior()" />
+  <span>Página {{ pagina() }}</span>
+  <p-button icon="pi pi-chevron-right" [text]="true" ariaLabel="Página siguiente" [disabled]="!hayPaginaSiguiente()" (onClick)="irAPaginaSiguiente()" />
+</div>
+
+<!-- Historial de una empresa: todas sus suscripciones, las cerradas incluidas. -->
+<p-dialog
+  [header]="'Historial de ' + historialEmpresa()"
+  [(visible)]="dialogoHistorialVisible"
+  [modal]="true"
+  [style]="{ width: '620px', maxWidth: '96vw' }"
+>
+  @if (cargandoHistorial()) {
+    <p class="fs-caption">Cargando historial…</p>
+  } @else {
+    <p-table [value]="historial()" styleClass="p-datatable-sm">
+      <ng-template #header>
+        <tr>
+          <th>Plan</th>
+          <th>Estado</th>
+          <th>Inicio</th>
+          <th>Vence</th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-s>
+        <tr>
+          <td>{{ s.plan_nombre }}</td>
+          <td><span [class]="claseChip(s.estado_efectivo)">{{ etiquetaEstado(s.estado_efectivo) }}</span></td>
+          <td class="numero">{{ fecha(s.fecha_inicio) | date: 'dd/MM/yyyy' }}</td>
+          <td class="numero">{{ fecha(s.fecha_vencimiento) | date: 'dd/MM/yyyy' }}</td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="4" class="fs-estado-vacio">Sin suscripciones.</td>
+        </tr>
+      </ng-template>
+    </p-table>
+  }
+</p-dialog>
+
+<!-- Cambiar de plan (sobre una vigente) o asignar un plan (sobre una cancelada). -->
+<p-dialog
+  [header]="(tipoDialogoPlan() === 'cambiar' ? 'Cambiar plan de ' : 'Asignar plan a ') + (objetivo() ? nombreEmpresa(objetivo()!.empresa_id) : '')"
+  [(visible)]="dialogoPlanVisible"
+  [modal]="true"
+  [style]="{ width: '440px', maxWidth: '96vw' }"
+>
+  <form [formGroup]="formularioPlan" (ngSubmit)="guardarPlan()" class="formulario">
+    @if (tipoDialogoPlan() === 'cambiar') {
+      <p class="nota">
+        Plan actual: <strong>{{ objetivo()?.plan_nombre }}</strong>. Al cambiar, la suscripción actual se cierra (queda en el
+        historial) y se crea una nueva.
+      </p>
+    } @else {
+      <p class="nota">Se crea una suscripción nueva para esta empresa.</p>
+    }
+
+    <label for="sus-plan">Plan</label>
+    <p-select
+      inputId="sus-plan"
+      formControlName="plan_codigo"
+      [options]="opcionesPlanDialogo()"
+      optionLabel="label"
+      optionValue="value"
+      placeholder="Elige un plan"
+      appendTo="body"
+    />
+    @if (formularioPlan.controls.plan_codigo.invalid && formularioPlan.controls.plan_codigo.touched) {
+      <small class="fs-error-texto">Elige un plan.</small>
+    }
+
+    <div class="dos-columnas">
+      <div class="campo">
+        <label for="sus-inicio">Inicio</label>
+        <p-datepicker inputId="sus-inicio" formControlName="fecha_inicio" dateFormat="dd/mm/yy" [showIcon]="true" appendTo="body" />
+      </div>
+      <div class="campo">
+        <label for="sus-vence">Vence</label>
+        <p-datepicker inputId="sus-vence" formControlName="fecha_vencimiento" dateFormat="dd/mm/yy" [showIcon]="true" [minDate]="manana" appendTo="body" />
+      </div>
+    </div>
+    @if (formularioPlan.controls.fecha_vencimiento.errors && formularioPlan.controls.fecha_vencimiento.touched) {
+      <small class="fs-error-texto">Elige un vencimiento posterior a hoy.</small>
+    }
+    @if (formularioPlan.errors?.['vencimientoAnterior'] && formularioPlan.controls.fecha_vencimiento.touched) {
+      <small class="fs-error-texto">El vencimiento no puede ser anterior al inicio.</small>
+    }
+
+    <p class="simulacion">Simulación de contratación: no se realiza ningún cobro.</p>
+    <p-button type="submit" [label]="tipoDialogoPlan() === 'cambiar' ? 'Cambiar plan' : 'Asignar plan'" styleClass="w-full" [loading]="trabajando()" />
+  </form>
+</p-dialog>
+
+<!-- Renovar (simulada). -->
+<p-dialog
+  [header]="'Renovar a ' + (objetivo() ? nombreEmpresa(objetivo()!.empresa_id) : '')"
+  [(visible)]="dialogoRenovarVisible"
+  [modal]="true"
+  [style]="{ width: '420px', maxWidth: '96vw' }"
+>
+  <div class="formulario">
+    @if (objetivo(); as s) {
+      <p class="nota">
+        Vence el <strong>{{ fecha(s.fecha_vencimiento) | date: 'dd/MM/yyyy' }}</strong>. La renovación se cuenta desde esa
+        fecha, o desde hoy si ya venció.
+      </p>
+    }
+
+    <label for="sus-renovar">Renovar por</label>
+    <p-select
+      inputId="sus-renovar"
+      [options]="opcionesRenovacion"
+      optionLabel="label"
+      optionValue="value"
+      appendTo="body"
+      [ngModel]="opcionRenovar()"
+      (ngModelChange)="opcionRenovar.set($event)"
+    />
+
+    @if (opcionRenovar() === 'libre') {
+      <label for="sus-libre">Nuevo vencimiento</label>
+      <p-datepicker
+        inputId="sus-libre"
+        dateFormat="dd/mm/yy"
+        [showIcon]="true"
+        [minDate]="manana"
+        appendTo="body"
+        [ngModel]="fechaLibre()"
+        (ngModelChange)="fechaLibre.set($event)"
+      />
+    }
+
+    @if (fechaRenovada(); as nueva) {
+      <p class="nuevo-vencimiento">Nuevo vencimiento: <strong>{{ nueva | date: 'dd/MM/yyyy' }}</strong></p>
+      @if (!renovacionValida()) {
+        <small class="fs-error-texto">Elige una fecha posterior a hoy.</small>
+      }
+    }
+
+    <p class="simulacion">Renovación simulada: no se cobra nada.</p>
+    <p-button label="Renovar" styleClass="w-full" [disabled]="!renovacionValida()" [loading]="trabajando()" (onClick)="guardarRenovacion()" />
+  </div>
+</p-dialog>

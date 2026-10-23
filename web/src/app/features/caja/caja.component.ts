@@ -5,10 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
-import { SelectButtonModule } from 'primeng/selectbutton';
 import { TableModule } from 'primeng/table';
-import { TagModule } from 'primeng/tag';
-import { TooltipModule } from 'primeng/tooltip';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth.service';
 import { fechaLocalIso } from '../../core/date-utils';
@@ -18,21 +15,26 @@ import { MetodoPagoCaja, Pago, PagoCajaRequest, PagoCajaRespuesta } from '../../
 import { FilaVentasPorSucursal, ReporteVentas } from '../../core/models/reportes.models';
 import { Reserva } from '../../core/models/reservas.models';
 import { DevolucionCrear, Venta, VentaPresencialCrear } from '../../core/models/ventas.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
+import { NombreIcono } from '../../shared/icono/iconos';
 
 interface LineaCarrito {
   variante_id: number;
   descripcion: string;
+  /** Nombre del producto y "talla · color": se muestran en dos renglones. */
+  nombre: string;
+  detalleVariante: string;
   precio_efectivo: number;
   cantidad: number;
 }
 
 type FaseVenta = 'armando' | 'cobrando';
 
-const OPCIONES_METODO_PAGO: { label: string; value: MetodoPagoCaja }[] = [
-  { label: 'Efectivo', value: 'efectivo' },
-  { label: 'QR', value: 'qr' },
-  { label: 'Tarjeta', value: 'tarjeta' },
-  { label: 'Transferencia', value: 'transferencia' },
+const OPCIONES_METODO_PAGO: { label: string; value: MetodoPagoCaja; icono: NombreIcono }[] = [
+  { label: 'Efectivo', value: 'efectivo', icono: 'dinero' },
+  { label: 'QR', value: 'qr', icono: 'qr' },
+  { label: 'Tarjeta', value: 'tarjeta', icono: 'tarjeta' },
+  { label: 'Transferencia', value: 'transferencia', icono: 'transferencia' },
 ];
 
 @Component({
@@ -44,10 +46,8 @@ const OPCIONES_METODO_PAGO: { label: string; value: MetodoPagoCaja }[] = [
     FormsModule,
     ButtonModule,
     DialogModule,
-    SelectButtonModule,
+    IconoComponent,
     TableModule,
-    TagModule,
-    TooltipModule,
   ],
   templateUrl: './caja.component.html',
   styleUrl: './caja.component.scss',
@@ -62,6 +62,26 @@ export class CajaComponent implements OnInit {
   @ViewChild('inputReserva') private inputReserva?: ElementRef<HTMLInputElement>;
 
   protected readonly opcionesMetodoPago = OPCIONES_METODO_PAGO;
+
+  /** Marca del comprobante: la empresa de la sesión; sin dato, un título neutro. */
+  protected readonly nombreEmpresa = computed(
+    () => this.authService.usuario()?.empresa_nombre?.trim() || 'Comprobante de venta',
+  );
+
+  /** Nombre de las prendas que se agregaron por búsqueda (variante_id -> "producto · talla · color"). */
+  private readonly nombresVariante: Record<number, string> = {};
+
+  protected nombreVariante(varianteId: number): string {
+    return this.nombresVariante[varianteId] ?? `Variante ${varianteId}`;
+  }
+
+  /** Color del chip de estado de una venta en el historial de hoy. */
+  protected claseEstadoVenta(estado: string): string {
+    if (estado === 'pagada' || estado === 'entregada') return 'fs-chip--exito';
+    if (estado === 'pendiente_pago') return 'fs-chip--advertencia';
+    if (estado === 'anulada') return 'fs-chip--error';
+    return '';
+  }
 
   protected readonly sucursalId = signal<number | null>(null);
   protected readonly cargandoSucursal = signal(true);
@@ -146,8 +166,8 @@ export class CajaComponent implements OnInit {
         if (empleado.sucursal_id === null) {
           this.messageService.add({
             severity: 'warn',
-            summary: 'No tenés una sucursal asignada',
-            detail: 'Pedile a un administrador que te asigne una sucursal para poder cobrar.',
+            summary: 'No tienes una sucursal asignada',
+            detail: 'Pide a un administrador que te asigne una sucursal para poder cobrar.',
           });
         } else {
           // #inputBusqueda recién existe en el DOM ahora: está detrás del
@@ -170,7 +190,7 @@ export class CajaComponent implements OnInit {
 
   /** `/reportes/ventas` ya agrega por sucursal del lado del servidor (CU-22)
    * y con alcance global trae todas en una sola consulta -- nada de pedir
-   * sucursal por sucursal y sumar acá. */
+   * sucursal por sucursal y sumar aquí. */
   private cargarResumenGlobal(): void {
     this.vistaResumenGlobal.set(true);
     this.cargandoResumen.set(true);
@@ -276,6 +296,8 @@ export class CajaComponent implements OnInit {
   }
 
   private agregarResultado(variante: VarianteBusqueda): void {
+    this.nombresVariante[variante.variante_id] =
+      `${variante.producto_nombre} · ${variante.talla_codigo} · ${variante.color_nombre}`;
     this.lineas.update((lineas) => {
       const existente = lineas.find((l) => l.variante_id === variante.variante_id);
       if (existente) {
@@ -288,6 +310,8 @@ export class CajaComponent implements OnInit {
         {
           variante_id: variante.variante_id,
           descripcion: `${variante.producto_nombre} · ${variante.talla_codigo} · ${variante.color_nombre}`,
+          nombre: variante.producto_nombre,
+          detalleVariante: `${variante.talla_codigo} · ${variante.color_nombre}`,
           precio_efectivo: variante.precio_efectivo,
           cantidad: 1,
         },
@@ -309,6 +333,24 @@ export class CajaComponent implements OnInit {
       return;
     }
     this.lineas.update((lineas) => lineas.map((l) => (l.variante_id === varianteId ? { ...l, cantidad } : l)));
+  }
+
+  /** Cantidad escrita a mano en el carrito: se aplica al salir del campo o con Enter.
+   * Vacía vuelve a la cantidad anterior; cero o negativa quita la línea (igual que
+   * antes del rediseño); los decimales se truncan. */
+  fijarCantidad(varianteId: number, evento: Event): void {
+    const campo = evento.target as HTMLInputElement;
+    if (campo.value.trim() === '') {
+      const actual = this.lineas().find((l) => l.variante_id === varianteId);
+      campo.value = String(actual?.cantidad ?? 1);
+      return;
+    }
+    const cantidad = Math.trunc(Number(campo.value));
+    if (Number.isNaN(cantidad)) {
+      return;
+    }
+    this.actualizarCantidad(varianteId, cantidad);
+    campo.value = String(this.lineas().find((l) => l.variante_id === varianteId)?.cantidad ?? cantidad);
   }
 
   quitarLinea(varianteId: number): void {
@@ -383,6 +425,18 @@ export class CajaComponent implements OnInit {
       },
       error: () => this.registrandoVenta.set(false),
     });
+  }
+
+  /** Grupo de opciones: las flechas mueven la selección entre los métodos de pago. */
+  onMetodoKeydown(evento: KeyboardEvent, indice: number): void {
+    const salto = ['ArrowRight', 'ArrowDown'].includes(evento.key) ? 1 : ['ArrowLeft', 'ArrowUp'].includes(evento.key) ? -1 : 0;
+    if (salto === 0) return;
+    evento.preventDefault();
+    const total = this.opcionesMetodoPago.length;
+    const siguiente = (indice + salto + total) % total;
+    this.metodoPago.set(this.opcionesMetodoPago[siguiente].value);
+    const botones = (evento.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLElement>('[role="radio"]');
+    botones?.[siguiente]?.focus();
   }
 
   seleccionarMetodoPago(metodo: MetodoPagoCaja): void {
@@ -480,7 +534,7 @@ export class CajaComponent implements OnInit {
       .filter(([, cantidad]) => cantidad > 0)
       .map(([id, cantidad]) => ({ venta_detalle_id: Number(id), cantidad }));
     if (detalle.length === 0) {
-      this.messageService.add({ severity: 'warn', summary: 'Indicá al menos una cantidad a devolver' });
+      this.messageService.add({ severity: 'warn', summary: 'Indica al menos una cantidad a devolver' });
       return;
     }
     const payload: DevolucionCrear = { venta_id: venta.id, detalle };

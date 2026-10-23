@@ -1,15 +1,16 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { CarritoResumen } from '../../../core/models/ventas.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { CarritoService } from '../data/carrito.service';
 import { CheckoutService } from '../state/checkout.service';
 import { TiendaActualService } from '../state/tienda-actual.service';
+import { ResumenCompraComponent } from './resumen-compra.component';
 
 @Component({
   selector: 'app-carrito',
   standalone: true,
-  imports: [RouterLink, DecimalPipe],
+  imports: [RouterLink, DecimalPipe, IconoComponent, ResumenCompraComponent],
   templateUrl: './carrito.component.html',
   styleUrl: './carrito.component.scss',
 })
@@ -20,7 +21,6 @@ export class CarritoComponent implements OnInit {
   protected readonly tienda = inject(TiendaActualService);
 
   protected readonly cargando = signal(true);
-  protected readonly resumen = signal<CarritoResumen | null>(null);
   /** El backend rechaza la compra mientras haya prendas dadas de baja en el carrito. */
   protected readonly hayNoDisponibles = computed(() => this.carritoService.lineas().some((l) => !l.disponible));
 
@@ -40,14 +40,7 @@ export class CarritoComponent implements OnInit {
   }
 
   private cargarResumen(): void {
-    if (this.carritoService.lineas().length === 0) {
-      this.resumen.set(null);
-      return;
-    }
-    this.carritoService.resumen().subscribe({
-      next: (resumen) => this.resumen.set(resumen),
-      error: () => this.resumen.set(null),
-    });
+    this.carritoService.refrescarResumen();
   }
 
   aumentar(varianteId: number, cantidadActual: number): void {

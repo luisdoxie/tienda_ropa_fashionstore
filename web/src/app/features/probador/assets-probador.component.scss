@@ -1,66 +1,104 @@
-.ayuda {
-  color: var(--fs-texto-tenue);
-  font-size: 13px;
-  max-width: 640px;
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-formulario;
+@include bo-panel;
+
+.columnas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--fs-espacio-4);
+  align-items: start;
+  margin-bottom: var(--fs-espacio-4);
 }
 
-.carga,
-.subir {
+.tarjeta {
   display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-2);
-  margin-bottom: var(--fs-espacio-3);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--fs-espacio-4);
+  margin-bottom: 0;
+  padding: var(--fs-espacio-6);
 
-  label {
-    font-size: 12px;
-    color: var(--fs-texto-tenue);
+  h2 {
+    margin: 0;
+    font-size: 18px;
   }
 
-  input[type='number'] {
-    width: 120px;
+  .campo {
+    align-self: stretch;
   }
 }
 
 .lista-assets {
-  display: flex;
-  gap: var(--fs-espacio-2);
-  flex-wrap: wrap;
-  margin-bottom: var(--fs-espacio-4);
+  align-self: stretch;
 }
 
 .asset-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--fs-espacio-2);
-  padding: var(--fs-espacio-2) var(--fs-espacio-3);
-  border: 1px solid var(--fs-borde);
-  border-radius: var(--fs-radio-sm);
-  background: var(--fs-superficie);
-  cursor: pointer;
-  font-size: 13px;
 
-  &.activo {
-    border-color: var(--fs-acento);
-    background: var(--fs-acento-suave);
+  &.activa {
+    background: var(--fs-neutro-suave);
+    border-color: var(--fs-tinta);
+    color: var(--fs-texto);
   }
+}
+
+.subir {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  padding: 22px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  word-break: break-word;
+  color: var(--fs-tinta);
+  border: 1.5px dashed var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-within {
+    border-color: var(--fs-tinta);
+    background: var(--fs-neutro-suave);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .vista-previa-fila {
   display: flex;
   gap: var(--fs-espacio-6);
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 
 .vista-previa {
   display: inline-block;
+  flex: 1 1 320px;
   max-width: 560px;
   border: 1px solid var(--fs-borde);
   border-radius: var(--fs-radio-md);
   overflow: hidden;
   // Fondo a cuadros para que se note el canal alfa del PNG.
+  background-color: var(--fs-superficie);
   background-image:
-    linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%);
+    linear-gradient(45deg, var(--fs-neutro-suave) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--fs-neutro-suave) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--fs-neutro-suave) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--fs-neutro-suave) 75%);
   background-size: 16px 16px;
   background-position:
     0 0,
@@ -75,9 +113,29 @@
   }
 }
 
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fs-espacio-2);
-  min-width: 200px;
+.panel-detalle {
+  flex: 0 1 280px;
+  min-width: 220px;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--fs-espacio-2) var(--fs-espacio-4);
+  align-self: stretch;
+  margin: 0;
+  font-size: 14px;
+
+  dt {
+    color: var(--fs-texto-tenue);
+  }
+
+  dd {
+    margin: 0;
+    font-weight: 500;
+  }
+}
+
+.fs-pagina-encabezado p {
+  max-width: 720px;
 }

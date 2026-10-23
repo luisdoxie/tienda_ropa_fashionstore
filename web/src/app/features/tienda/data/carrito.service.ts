@@ -19,6 +19,13 @@ export class CarritoService {
   readonly lineas = this.lineasState.asReadonly();
   readonly cantidadLineas = computed(() => this.lineasState().length);
 
+  // Importes del carrito con las promociones aplicadas (los muestran el carrito y
+  // los pasos de entrega y pago). `refrescarResumen()` los vuelve a pedir.
+  private readonly resumenState = signal<CarritoResumen | null>(null);
+  private readonly calculandoResumenState = signal(false);
+  readonly resumen = this.resumenState.asReadonly();
+  readonly calculandoResumen = this.calculandoResumenState.asReadonly();
+
   cargar(): Observable<CarritoLinea[]> {
     return this.http.get<Carrito>(`${environment.apiUrl}/carrito`).pipe(switchMap((carrito) => this.resolver(carrito)));
   }
@@ -41,12 +48,33 @@ export class CarritoService {
       .pipe(switchMap((carrito) => this.resolver(carrito)));
   }
 
-  resumen(): Observable<CarritoResumen> {
-    return this.http.post<CarritoResumen>(`${environment.apiUrl}/carrito/aplicar-promocion`, {});
+  /**
+   * Pide los importes (POST /carrito/aplicar-promocion). Con el carrito vacío no
+   * pide nada: no hay qué calcular. Si falla, el resumen queda en null.
+   */
+  refrescarResumen(): void {
+    if (this.lineasState().length === 0) {
+      this.resumenState.set(null);
+      this.calculandoResumenState.set(false);
+      return;
+    }
+    this.calculandoResumenState.set(true);
+    this.http.post<CarritoResumen>(`${environment.apiUrl}/carrito/aplicar-promocion`, {}).subscribe({
+      next: (resumen) => {
+        this.resumenState.set(resumen);
+        this.calculandoResumenState.set(false);
+      },
+      error: () => {
+        this.resumenState.set(null);
+        this.calculandoResumenState.set(false);
+      },
+    });
   }
 
   limpiar(): void {
     this.lineasState.set([]);
+    this.resumenState.set(null);
+    this.calculandoResumenState.set(false);
   }
 
   private resolver(carrito: Carrito): Observable<CarritoLinea[]> {

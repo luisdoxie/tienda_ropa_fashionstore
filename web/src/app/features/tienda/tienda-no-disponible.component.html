@@ -1,11 +1,23 @@
-<section class="no-disponible" role="alert">
-  <p class="no-disponible__marca">FashionStore</p>
-  @if (motivo() === 'no_disponible') {
-    <h1 class="no-disponible__titulo">Tienda no disponible</h1>
-    <p class="no-disponible__texto">Esta tienda no está disponible por el momento.</p>
-  } @else {
-    <h1 class="no-disponible__titulo">Tienda no encontrada</h1>
-    <p class="no-disponible__texto">No encontramos esta tienda. Revisá el enlace o buscá otra.</p>
-  }
-  <a class="no-disponible__boton" routerLink="/">Ver otras tiendas</a>
-</section>
+@if (motivo() === 'no_disponible') {
+  <app-panel-estado-tienda
+    icono="sin-tienda"
+    titulo="Tienda no disponible"
+    texto="Esta tienda no está disponible por el momento."
+  >
+    <a class="fs-btn fs-btn--acento" routerLink="/">
+      Ver otras tiendas
+      <fs-icono nombre="flecha-derecha" [tam]="24" />
+    </a>
+  </app-panel-estado-tienda>
+} @else {
+  <app-panel-estado-tienda
+    icono="sin-resultados"
+    titulo="Tienda no encontrada"
+    texto="No encontramos esta tienda. Revisa el enlace o busca otra."
+  >
+    <a class="fs-btn fs-btn--acento" routerLink="/">
+      Ver otras tiendas
+      <fs-icono nombre="flecha-derecha" [tam]="24" />
+    </a>
+  </app-panel-estado-tienda>
+}

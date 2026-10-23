@@ -1,16 +1,23 @@
-<h1>Reservas</h1>
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Comercial</span>
+    <h1>Reservas</h1>
+  </div>
+</div>
 
 <div class="filtros">
   <p-select
     [options]="sucursales()"
     optionLabel="nombre"
     optionValue="id"
-    placeholder="Elegí una sucursal"
+    placeholder="Elige una sucursal"
+    ariaLabel="Sucursal"
     [ngModel]="filtroSucursal()"
     (ngModelChange)="filtroSucursal.set($event); buscarReservas()"
   />
   <p-datepicker
     placeholder="Filtrar por fecha"
+    ariaLabel="Filtrar por fecha"
     dateFormat="dd/mm/yy"
     [showIcon]="true"
     [showClear]="true"
@@ -21,51 +28,84 @@
     [options]="opcionesEstado"
     optionLabel="label"
     optionValue="value"
+    ariaLabel="Estado"
     [ngModel]="filtroEstado()"
     (ngModelChange)="filtroEstado.set($event)"
   />
-  <p-button icon="pi pi-refresh" [text]="true" [disabled]="filtroSucursal() === null" (onClick)="buscarReservas()" />
+  <button
+    type="button"
+    class="btn-icono btn-icono--contorno"
+    aria-label="Actualizar"
+    [disabled]="filtroSucursal() === null"
+    (click)="buscarReservas()"
+  >
+    <fs-icono nombre="refrescar" [tam]="24" />
+  </button>
+  <span class="filtros__fin conteo fs-num">{{ filasFiltradas().length }} reservas</span>
 </div>
 
-<p-table [value]="filasFiltradas()" [loading]="cargando()" styleClass="p-datatable-sm">
-  <ng-template #header>
-    <tr>
-      <th>Código</th>
-      <th>Fecha</th>
-      <th>Franja</th>
-      <th>Estado</th>
-      <th style="width: 6rem">Acciones</th>
-    </tr>
-  </ng-template>
-  <ng-template #body let-reserva>
-    <tr>
-      <td>{{ reserva.codigo }}</td>
-      <td>{{ reserva.fecha_visita }}</td>
-      <td>{{ reserva.hora_visita_desde }} - {{ reserva.hora_visita_hasta }}</td>
-      <td><p-tag [value]="etiquetaEstado(reserva.estado)" [severity]="severidadEstado(reserva.estado)" /></td>
-      <td>
-        <p-button icon="pi pi-eye" [text]="true" size="small" pTooltip="Ver detalle" (onClick)="abrirDetalle(reserva)" />
-      </td>
-    </tr>
-  </ng-template>
-  <ng-template #emptymessage>
-    <tr>
-      <td colspan="5">{{ filtroSucursal() === null ? 'Elegí una sucursal.' : 'Sin reservas.' }}</td>
-    </tr>
-  </ng-template>
-</p-table>
+<section class="panel">
+  <div class="panel__scroll">
+    <p-table
+      [value]="filasFiltradas()"
+      [loading]="cargando()"
+      styleClass="p-datatable-sm"
+      [tableStyle]="{ 'min-width': '680px' }"
+    >
+      <ng-template #header>
+        <tr>
+          <th>Código</th>
+          <th>Fecha</th>
+          <th>Franja</th>
+          <th>Estado</th>
+          <th class="num">Acciones</th>
+        </tr>
+      </ng-template>
+      <ng-template #body let-reserva>
+        <tr>
+          <td class="fuerte">{{ reserva.codigo }}</td>
+          <td class="fs-num">{{ reserva.fecha_visita }}</td>
+          <td class="fs-num">{{ reserva.hora_visita_desde }} - {{ reserva.hora_visita_hasta }}</td>
+          <td>
+            <span [class]="'fs-chip ' + claseEstado(reserva.estado)">{{ etiquetaEstado(reserva.estado) }}</span>
+          </td>
+          <td>
+            <div class="acciones">
+              <button
+                type="button"
+                class="btn-icono"
+                aria-label="Ver detalle"
+                pTooltip="Ver detalle"
+                (click)="abrirDetalle(reserva)"
+              >
+                <fs-icono nombre="ojo" [tam]="24" />
+              </button>
+            </div>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template #emptymessage>
+        <tr>
+          <td colspan="5">
+            <div class="vacio">{{ filtroSucursal() === null ? 'Elige una sucursal.' : 'Sin reservas.' }}</div>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
+</section>
 
 <!-- Diálogo de detalle -->
 <p-dialog
   [header]="reservaActual() ? 'Reserva ' + reservaActual()!.codigo : 'Reserva'"
   [(visible)]="dialogoDetalleVisible"
   [modal]="true"
-  [style]="{ width: '560px' }"
+  [style]="{ width: '600px', maxWidth: '96vw' }"
 >
   @if (reservaActual(); as reserva) {
     <div class="detalle-cabecera">
-      <p-tag [value]="etiquetaEstado(reserva.estado)" [severity]="severidadEstado(reserva.estado)" />
-      <span>{{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde }} - {{ reserva.hora_visita_hasta }}</span>
+      <span [class]="'fs-chip ' + claseEstado(reserva.estado)">{{ etiquetaEstado(reserva.estado) }}</span>
+      <span class="fs-num">{{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde }} - {{ reserva.hora_visita_hasta }}</span>
     </div>
     @if (reserva.observacion) {
       <p class="ayuda">{{ reserva.observacion }}</p>
@@ -73,7 +113,7 @@
 
     <!-- pendiente: checklist de preparación -->
     @if (reserva.estado === 'pendiente') {
-      <h3>Marcá cada prenda al prepararla</h3>
+      <h3>Marca cada prenda al prepararla</h3>
       <ul class="checklist">
         @for (linea of reserva.detalle; track linea.id) {
           <li>
@@ -144,12 +184,12 @@
       <h3>Prendas</h3>
       <ul class="checklist">
         @for (linea of reserva.detalle; track linea.id) {
-          <li>
-            Variante {{ linea.variante_id }} — cantidad {{ linea.cantidad }}
+          <li class="linea-seleccion">
+            <span>Variante {{ linea.variante_id }} — cantidad {{ linea.cantidad }}</span>
             @if (linea.seleccionada === true) {
-              <p-tag value="Comprada" severity="success" />
+              <span class="fs-chip fs-chip--exito">Comprada</span>
             } @else if (linea.seleccionada === false) {
-              <p-tag value="No comprada" severity="danger" />
+              <span class="fs-chip fs-chip--error">No comprada</span>
             }
           </li>
         }

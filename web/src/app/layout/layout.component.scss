@@ -1,75 +1,103 @@
+// Estructura del back office: barra lateral carbón (zona oscura) + contenido.
+// En pantallas angostas la barra lateral es un cajón que abre el botón de la
+// barra superior.
+$ancho-menu: 248px;
+$corte-cajon: 900px;
+
 .layout {
   display: flex;
   min-height: 100vh;
+  background: var(--fs-fondo);
 }
 
+// --- Barra lateral --------------------------------------------------------
 .layout__menu {
-  width: 220px;
-  flex-shrink: 0;
-  background: #241c18;
-  color: #c9bcb2;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: 0 0 $ancho-menu;
+  width: $ancho-menu;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 28px 16px 20px;
   display: flex;
   flex-direction: column;
+  gap: 28px;
+  overflow-y: auto;
+  color: var(--fs-claro-tenue);
 }
 
 .layout__marca {
-  padding: var(--fs-espacio-4);
-  font-family: var(--fs-fuente-display);
-  font-style: italic;
-  font-weight: 600;
-  font-size: 19px;
-  color: #f4ede8;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px;
 }
 
-.layout__enlace {
+.layout__marca-sub {
+  padding-left: 46px;
+  font-size: 12px;
+  color: var(--fs-claro-tenue);
+}
+
+.layout__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.layout__seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layout__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+// Rótulo del grupo: mayúsculas pequeñas. En las secciones plegables es un botón.
+.layout__rotulo {
   display: flex;
   align-items: center;
-  gap: var(--fs-espacio-2);
-  padding: var(--fs-espacio-3) var(--fs-espacio-4);
-  color: #c9bcb2;
-  text-decoration: none;
-  font-size: 13px;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-
-  &.activo {
-    background: rgba(154, 62, 31, 0.28);
-    color: #f0ddce;
-  }
-}
-
-.layout__enlace--sub {
-  padding-left: calc(var(--fs-espacio-4) + 20px);
-}
-
-.layout__grupo-titulo {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-2);
-  width: 100%;
-  padding: var(--fs-espacio-3) var(--fs-espacio-4);
-  color: #c9bcb2;
-  background: none;
-  border: none;
+  justify-content: space-between;
+  padding: 0 12px 6px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fs-claro-tenue);
+}
+
+.layout__rotulo--boton {
+  width: 100%;
+  min-height: var(--fs-toque);
+  padding-bottom: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--fs-radio-sm);
   cursor: pointer;
+  text-align: left;
 
   &:hover {
     background: rgba(255, 255, 255, 0.06);
   }
 
-  span {
-    flex: 1;
-    text-align: left;
+  &:focus-visible {
+    outline: 2px solid var(--fs-acento-oscuro);
+    outline-offset: -2px;
   }
 }
 
-.layout__grupo-chevron {
-  font-size: 11px;
+.layout__chevron {
+  display: inline-flex;
   transition: transform 0.15s ease;
 
   &.girado {
@@ -77,6 +105,68 @@
   }
 }
 
+.layout__enlace {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--fs-toque);
+  padding: 10px 12px;
+  box-sizing: border-box;
+  border-radius: var(--fs-radio-sm);
+  font-size: 14px;
+  color: var(--fs-claro-suave);
+  text-decoration: none;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-acento-oscuro);
+    outline-offset: -2px;
+  }
+
+  // Opción activa: lima translúcido con texto lima.
+  &.activo {
+    background: color-mix(in srgb, var(--fs-acento-oscuro) 20%, transparent);
+    color: var(--fs-acento-oscuro-hover);
+    font-weight: 600;
+  }
+}
+
+// Funcionalidad que el plan no incluye: sigue en su lugar, apagada y con candado.
+.layout__enlace--deshabilitado {
+  opacity: 0.55;
+  cursor: not-allowed;
+
+  &:hover {
+    background: none;
+  }
+}
+
+.layout__candado {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.layout__usuario {
+  margin-top: auto;
+  padding: 14px 12px 0;
+  border-top: 1px solid var(--fs-carbon-borde);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.layout__usuario-nombre {
+  color: var(--fs-claro);
+  font-weight: 500;
+}
+
+.layout__usuario-rol {
+  color: var(--fs-claro-tenue);
+}
+
+// --- Contenido ------------------------------------------------------------
 .layout__contenido {
   flex: 1;
   display: flex;
@@ -86,18 +176,10 @@
 
 .layout__barra {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  padding: var(--fs-espacio-3) var(--fs-espacio-6);
-  background: var(--fs-superficie);
-  border-bottom: 1px solid var(--fs-borde);
-  font-size: 13px;
-}
-
-.layout__panel {
-  padding: var(--fs-espacio-6);
-  flex: 1;
-  overflow: auto;
+  gap: var(--fs-espacio-3);
+  padding: var(--fs-espacio-3) 40px 0;
 }
 
 .layout__barra-acciones {
@@ -106,39 +188,61 @@
   gap: var(--fs-espacio-3);
 }
 
-.layout__campana {
+.layout__panel {
+  padding: var(--fs-espacio-6) 40px 48px;
+  flex: 1;
+  overflow: auto;
+}
+
+.layout__boton-icono {
   position: relative;
-  display: flex;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--fs-toque);
+  height: var(--fs-toque);
+  padding: 0;
   background: none;
-  color: var(--fs-texto-tenue);
-  font-size: 18px;
+  border: 0;
+  border-radius: var(--fs-radio-md);
+  color: var(--fs-tinta);
   cursor: pointer;
-  padding: var(--fs-espacio-1);
 
   &:hover {
-    color: var(--fs-texto);
+    background: var(--fs-neutro-suave);
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 1px;
+  }
+}
+
+.layout__hamburguesa {
+  display: none;
+  margin-right: auto;
 }
 
 .layout__campana-badge {
   position: absolute;
-  top: -4px;
-  right: -6px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  padding: 0 5px;
   border-radius: 999px;
-  background: var(--fs-acento);
+  background: var(--fs-tinta);
   color: var(--fs-superficie);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 16px;
+  line-height: 18px;
   text-align: center;
 }
 
 .layout__notificaciones {
   width: 300px;
+  max-width: 80vw;
   max-height: 360px;
   overflow-y: auto;
   display: flex;
@@ -152,10 +256,10 @@
   justify-content: space-between;
   gap: var(--fs-espacio-2);
   padding: var(--fs-espacio-2);
-  border-radius: var(--fs-radio-sm);
+  border-radius: var(--fs-radio-md);
 
   &.no-leida {
-    background: var(--fs-acento-suave);
+    background: var(--fs-neutro-suave);
   }
 
   p {
@@ -164,10 +268,12 @@
 
   button {
     flex-shrink: 0;
+    min-height: var(--fs-toque);
+    padding: 0 var(--fs-espacio-2);
     font-family: inherit;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--fs-acento);
+    color: var(--fs-tinta);
     background: none;
     border: none;
     cursor: pointer;
@@ -181,4 +287,67 @@
 
 .layout__notificacion-cuerpo {
   min-width: 0;
+}
+
+// Fondo oscuro detrás del cajón (solo en pantallas angostas).
+// Texto solo para lectores de pantalla.
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.layout__fondo {
+  display: none;
+  padding: 0;
+  border: 0;
+  cursor: default;
+}
+
+// --- Pantallas angostas: el menú es un cajón ------------------------------
+@media (max-width: #{$corte-cajon - 1px}) {
+  .layout__menu {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 1100;
+    max-width: 86vw;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+
+  .layout--menu-abierto {
+    .layout__menu {
+      transform: none;
+      visibility: visible;
+    }
+
+    .layout__fondo {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 1050;
+      background: rgba(27, 25, 22, 0.58);
+    }
+  }
+
+  .layout__hamburguesa {
+    display: inline-flex;
+  }
+
+  .layout__barra {
+    padding-inline: var(--fs-espacio-4);
+  }
+
+  .layout__panel {
+    padding: var(--fs-espacio-4) var(--fs-espacio-4) var(--fs-espacio-8);
+  }
 }

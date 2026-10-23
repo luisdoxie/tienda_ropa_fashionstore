@@ -293,19 +293,36 @@ funciona hasta que se adapten (E15, E16, E18).
 `docs/plan_desarrollo_fashionstore.md`
 
 ## Tokens de diseño
-Paleta terracota oscurecida (tienda de hombre: menos crema/pastel, base más
-piedra/carbón, acento tipo cuero curtido en vez de coral). Fondo #EAE4DA
-(contenido) / #FFFFFF (superficie/cards) · Texto #1C1713 / tenue #6E6156 ·
-Acento #9A3E1F (hover #732E16, suave #E3D2C1) ·
-Sidebar #241C18 (texto #C9BCB2, activo rgba(154,62,31,.28) / #F0DDCE) ·
-Éxito #16A34A (suave #E8F6EE) · Advertencia #B45309 (suave #FDF0DD) ·
-Error #DC2626 · Borde #DBD0C1 · Muted #C7BCAC.
-Radio: 6px (inputs/filas/densos) · 10px (cards/stat tiles) · 18px (diálogos/hero).
-Tipografía: Fraunces (serif, 500/600/700, itálica para marca y saludos) +
-Public Sans (400-700, UI y datos). Números alineados en columna usan
-tabular-nums. Espaciado en múltiplos de 4px.
-El back office es denso (tablas compactas). El cliente móvil es amplio,
-con la fotografía como protagonista.
+Rediseño web (octubre 2026): carbón cálido sobre claro hueso, un acento lima
+sobre oscuro y oliva sobre claro. Fuente de verdad: los tokens `--fs-*` de
+`web/src/styles.scss`, el preset de `app.config.ts` y el canvas de Design (hoja
+"Sistema de diseño"). Los componentes usan las variables, nunca hex sueltos.
+- Superficies oscuras (portada, acceso, barra lateral): carbón #1B1916, más
+  profundo #121110, panel #232019, borde #2F2C27, texto #F2F2F0 / tenue #B5B2AA.
+  Se marcan con la clase `.fs-zona-oscura`, que remapea los tokens de texto y de
+  acento para todo lo que hay dentro.
+- Superficies claras: fondo #F7F5F1, cabecera de páginas interiores #E7E4DE, pie
+  #DCD8D0, tarjetas #FFFFFF con borde #E4DFD6, texto #161412 / tenue #6B645C.
+- Acento: lima #8FAE5B (hover #A3C26C) solo sobre oscuro; oliva #5D6B34 sobre
+  claro. El botón primario sobre claro es tinta #151515, no el acento. Cada
+  empresa puede definir `color_acento`: `tienda-raiz` redefine `--fs-acento*`
+  (y su variante sobre oscuro, `--fs-acento-oscuro*`) solo en su elemento; si el
+  color contrasta poco con blanco se usa el base.
+- Estados: éxito #15803D, advertencia #A4480A, error #C62828 (cada uno con fondo
+  suave). Chips y avisos: `.fs-chip--*` y `.fs-aviso--*`.
+- Forma: radios 2/4/8 px, sombras mínimas (línea fina de 1px). Back office denso;
+  tienda amplia con la fotografía como protagonista (en `public/imagenes/`).
+- Tipografía: Archivo (ancho variable) para titulares, en mayúsculas y ancho 125%
+  en la tienda (`.fs-display`) y 112% en el back office; Public Sans para UI y
+  datos (14-16 px); Fraunces cursiva solo para el lema. Números alineados usan
+  tabular-nums. Textos en tuteo (tú), no en voseo.
+- Íconos: de trazo (`<fs-icono nombre="..." [tam]="24">`, catálogo en
+  `shared/icono/iconos.ts`). Nunca menos de 20 px: etiquetas 20, botones y menú
+  24, barra de la tienda 28, beneficios 36. Área tocable mínima 44 px (48 en la
+  barra de la tienda). Dentro de componentes de PrimeNG se usan sus `pi pi-*`
+  a 24 px. La marca de la empresa es `<fs-marca>` (logo o monograma con siglas).
+- El probador virtual NO existe en la web: se menciona como "Probador virtual con
+  IA en la app". No hay inicio de sesión social ni "Recordarme".
 
 ## Alcance del probador virtual
 Solo prendas superiores masculinas (poleras, camisas, chamarras).

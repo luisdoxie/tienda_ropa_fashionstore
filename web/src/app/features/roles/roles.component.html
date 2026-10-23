@@ -1,26 +1,32 @@
-<h1>Roles</h1>
-
 <app-tabla-generica
   endpoint="/roles"
+  titulo="Roles"
+  eyebrow="Organización"
+  etiquetaNuevo="Nuevo rol"
+  placeholderBusqueda="Buscar rol"
   [columnas]="columnas"
-  accionExtraIcono="pi pi-key"
+  accionExtraIcono="llave"
   accionExtraEtiqueta="Permisos del rol"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
   (accionExtra)="abrirPermisos($event)"
 />
 
-<p-dialog header="Rol" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '360px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar rol' : 'Nuevo rol'"
+  formId="form-rol"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-rol" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
-    <label for="descripcion">Descripción</label>
+    <label for="descripcion">Descripción <span class="fs-caption">(opcional)</span></label>
     <input id="descripcion" pInputText formControlName="descripcion" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>
 
 <!-- RF03: qué permisos concede cada rol. El backend resuelve los permisos
      contra la base en cada petición, no contra el token, así que lo que se
@@ -29,20 +35,34 @@
   [header]="'Permisos de ' + (rolPermisos()?.nombre ?? '')"
   [(visible)]="dialogoPermisos"
   [modal]="true"
-  [style]="{ width: '620px' }"
+  [draggable]="false"
+  [style]="{ width: '620px', maxWidth: '96vw' }"
 >
   @if (!grupos().length) {
     <p class="fs-caption">Cargando permisos…</p>
   } @else {
     <p class="fs-caption permisos-ayuda">
-      Lo que quede tildado es exactamente lo que va a poder hacer el rol: lo que destildes se le quita.
+      Lo que quede marcado es exactamente lo que podrá hacer el rol: lo que desmarques se le quita.
     </p>
 
     <div class="permisos-grid">
       @for (grupo of grupos(); track grupo.modulo) {
         <section class="permisos-modulo">
-          <button type="button" class="permisos-modulo-titulo" (click)="alternarModulo(grupo)">
-            <i class="pi" [class.pi-check-square]="moduloCompleto(grupo)" [class.pi-stop]="!moduloCompleto(grupo)"></i>
+          <button
+            type="button"
+            class="permisos-modulo-titulo"
+            role="checkbox"
+            [attr.aria-checked]="moduloCompleto(grupo) ? 'true' : moduloParcial(grupo) ? 'mixed' : 'false'"
+            [attr.aria-label]="'Todos los permisos de ' + grupo.modulo"
+            (click)="alternarModulo(grupo)"
+          >
+            <span class="permisos-caja" [class.marcada]="moduloCompleto(grupo) || moduloParcial(grupo)">
+              @if (moduloCompleto(grupo)) {
+                <fs-icono nombre="check" [tam]="20" />
+              } @else if (moduloParcial(grupo)) {
+                <fs-icono nombre="menos" [tam]="20" />
+              }
+            </span>
             {{ grupo.modulo }}
           </button>
 
@@ -67,11 +87,13 @@
 
     <div class="permisos-pie">
       <span class="fs-caption fs-num">{{ seleccionados().size }} permisos seleccionados</span>
-      <p-button
-        label="Guardar permisos"
-        [loading]="guardandoPermisos()"
-        (onClick)="guardarPermisos()"
-      />
+      <span class="permisos-botones">
+        <button type="button" class="fs-btn fs-btn--secundario" (click)="dialogoPermisos.set(false)">Cancelar</button>
+        <button type="button" class="fs-btn fs-btn--primario" [disabled]="guardandoPermisos()" (click)="guardarPermisos()">
+          <fs-icono nombre="check" [tam]="24" />
+          Guardar permisos
+        </button>
+      </span>
     </div>
   }
 </p-dialog>

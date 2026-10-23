@@ -1,38 +1,59 @@
-<h1>Reportes</h1>
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Análisis</span>
+    <h1>Reportes</h1>
+  </div>
+</div>
 
-<section class="fs-card pregunta" aria-label="Preguntá a los reportes">
+<!-- ============================================================ -->
+<!-- Pregunta a la IA (CU-23): texto o dictado por voz              -->
+<!-- ============================================================ -->
+<section class="pregunta fs-zona-oscura" aria-label="Pregunta a los reportes">
+  <div class="pregunta-titulo">
+    <fs-icono nombre="destellos" [tam]="30" />
+    <h2>Pregúntale a la IA</h2>
+  </div>
+
   <div class="pregunta-fila">
-    <input
-      pInputText
-      class="pregunta-texto"
-      maxlength="300"
-      placeholder="Preguntá o dictá: ¿cómo van las ventas de este mes?"
-      [ngModel]="pregunta()"
-      (ngModelChange)="pregunta.set($event)"
-      (keydown.enter)="preguntar()"
-      [disabled]="preguntando() || escuchando()"
-    />
-    <p-button
-      [icon]="escuchando() ? 'pi pi-spin pi-spinner' : 'pi pi-microphone'"
-      [outlined]="true"
-      ariaLabel="Dictar la pregunta"
+    <label class="pregunta-campo">
+      <input
+        class="pregunta-texto"
+        type="text"
+        maxlength="300"
+        aria-label="Pregunta"
+        placeholder="Pregunta o dicta: ¿cómo van las ventas de este mes?"
+        [ngModel]="pregunta()"
+        (ngModelChange)="pregunta.set($event)"
+        (keydown.enter)="preguntar()"
+        [disabled]="preguntando() || escuchando()"
+      />
+    </label>
+    <button
+      type="button"
+      class="btn-microfono"
+      aria-label="Dictar la pregunta"
+      [class.btn-microfono--activo]="escuchando()"
       [disabled]="!vozDisponible || preguntando()"
-      (onClick)="dictar()"
-    />
-    <p-button
-      label="Preguntar"
-      icon="pi pi-send"
-      [loading]="preguntando()"
-      [disabled]="pregunta().trim() === '' || escuchando()"
-      (onClick)="preguntar()"
-    />
+      (click)="dictar()"
+    >
+      <fs-icono [nombre]="escuchando() ? 'refrescar' : 'microfono'" [tam]="32" [class.giro]="escuchando()" />
+    </button>
+    <button
+      type="button"
+      class="fs-btn fs-btn--contorno btn-preguntar"
+      [disabled]="pregunta().trim() === '' || escuchando() || preguntando()"
+      (click)="preguntar()"
+    >
+      <fs-icono [nombre]="preguntando() ? 'refrescar' : 'enviar'" [tam]="24" [class.giro]="preguntando()" />
+      Preguntar
+    </button>
   </div>
 
   @if (!vozDisponible) {
-    <p class="ayuda">Tu navegador no permite dictar (usá Chrome o Edge). Podés escribir la pregunta.</p>
+    <p class="pregunta-ayuda">Tu navegador no permite dictar (usa Chrome o Edge). Puedes escribir la pregunta.</p>
   }
   @if (escuchando()) {
-    <p class="ayuda">Escuchando… hablá ahora.</p>
+    <p class="pregunta-ayuda" role="status">Escuchando… habla ahora.</p>
   }
   @if (errorVoz(); as error) {
     <p class="pregunta-error" role="alert">{{ error }}</p>
@@ -42,12 +63,16 @@
   }
 </section>
 
+<!-- ============================================================ -->
+<!-- Filtros                                                        -->
+<!-- ============================================================ -->
 <div class="filtros">
   <p-select
     [options]="sucursales()"
     optionLabel="nombre"
     optionValue="id"
     placeholder="Todas las sucursales"
+    ariaLabel="Sucursal"
     [showClear]="!sucursalBloqueada()"
     [disabled]="sucursalBloqueada()"
     [ngModel]="filtroSucursalId()"
@@ -58,6 +83,7 @@
     optionLabel="nombre"
     optionValue="id"
     placeholder="Todas las categorías"
+    ariaLabel="Categoría"
     [showClear]="true"
     [ngModel]="filtroCategoriaId()"
     (ngModelChange)="filtroCategoriaId.set($event)"
@@ -66,11 +92,13 @@
     [options]="opcionesCanal"
     optionLabel="label"
     optionValue="value"
+    ariaLabel="Canal"
     [ngModel]="filtroCanal()"
     (ngModelChange)="filtroCanal.set($event)"
   />
   <p-datepicker
     placeholder="Desde"
+    ariaLabel="Desde"
     dateFormat="dd/mm/yy"
     [showIcon]="true"
     [showClear]="true"
@@ -79,6 +107,7 @@
   />
   <p-datepicker
     placeholder="Hasta"
+    ariaLabel="Hasta"
     dateFormat="dd/mm/yy"
     [showIcon]="true"
     [showClear]="true"
@@ -87,6 +116,35 @@
   />
   <p-button icon="pi pi-refresh" label="Buscar" (onClick)="aplicarFiltros()" />
 </div>
+
+<!-- Tarjetas de indicadores: el mismo bloque para todas las pestañas -->
+<ng-template #indicadores let-kpis>
+  <div class="kpis">
+    @for (kpi of kpis; track kpi.etiqueta) {
+      <div class="kpi">
+        <div class="kpi__cabecera">
+          <span class="kpi__etiqueta">{{ kpi.etiqueta }}</span>
+          <span class="kpi__icono" [class.kpi__icono--alerta]="kpi.alerta">
+            <fs-icono [nombre]="kpi.icono" [tam]="30" [trazo]="1.6" />
+          </span>
+        </div>
+        <span class="kpi__valor fs-num" [class.kpi__valor--alerta]="kpi.alerta">
+          @switch (kpi.tipo) {
+            @case ('monto') {
+              Bs {{ kpi.valor | number: '1.2-2' }}
+            }
+            @case ('porcentaje') {
+              {{ kpi.valor | percent: '1.0-1' }}
+            }
+            @default {
+              {{ kpi.valor }}
+            }
+          }
+        </span>
+      </div>
+    }
+  </div>
+</ng-template>
 
 <p-tabs [value]="pestania()" (valueChange)="cambiarPestania($any($event))">
   <p-tablist>
@@ -102,74 +160,55 @@
     <!-- ============================================================ -->
     <p-tabpanel value="dashboard">
       @if (dashboard(); as d) {
-        <div class="stat-fila">
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Ventas del período</div>
-            <div class="stat-valor fs-num">{{ d.ventas_del_periodo | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Transacciones</div>
-            <div class="stat-valor fs-num">{{ d.transacciones }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Ticket promedio</div>
-            <div class="stat-valor fs-num">{{ d.ticket_promedio | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Margen bruto</div>
-            <div class="stat-valor fs-num">{{ d.margen_bruto | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Valor de inventario</div>
-            <div class="stat-valor fs-num">{{ d.valor_inventario_total | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Variantes bajo mínimo</div>
-            <div class="stat-valor fs-num">{{ d.variantes_bajo_minimo }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Conversión reservas → ventas</div>
-            <div class="stat-valor fs-num">{{ d.tasa_conversion_reservas | number: '1.0-2' }}</div>
-          </div>
+        <ng-container [ngTemplateOutlet]="indicadores" [ngTemplateOutletContext]="{ $implicit: kpisDashboard() }" />
+
+        <div class="graficos-fila">
+          <section class="tarjeta" aria-labelledby="t-canal">
+            <h2 id="t-canal">Ventas por canal</h2>
+            <p-chart type="doughnut" [data]="chartVentasPorCanal()" [options]="opcionesAnillo" height="220px" />
+          </section>
+          <section class="tarjeta" aria-labelledby="t-reservas">
+            <h2 id="t-reservas">Reservas por estado</h2>
+            <p-chart type="doughnut" [data]="chartReservasPorEstado()" [options]="opcionesAnillo" height="220px" />
+          </section>
         </div>
 
         <div class="graficos-fila">
-          <div class="fs-card grafico-tarjeta">
-            <h3>Ventas por canal</h3>
-            <p-chart type="doughnut" [data]="chartVentasPorCanal()" [options]="opcionesAnillo" height="220px" />
-          </div>
-          <div class="fs-card grafico-tarjeta">
-            <h3>Reservas por estado</h3>
-            <p-chart type="doughnut" [data]="chartReservasPorEstado()" [options]="opcionesAnillo" height="220px" />
-          </div>
-        </div>
+          <section class="tarjeta" aria-labelledby="t-top">
+            <h2 id="t-top">Productos más vendidos</h2>
+            <ol class="ranking">
+              @for (fila of topProductosDashboard(); track fila.producto_id; let i = $index) {
+                <li>
+                  <span class="ranking__n fs-num">{{ i + 1 }}</span>
+                  <div class="ranking__cuerpo">
+                    <div class="ranking__texto">
+                      <span class="fuerte">{{ fila.producto }}</span>
+                      <span class="tenue fs-num"
+                        >{{ fila.cantidad_vendida }} u. · Bs {{ fila.total_vendido | number: '1.2-2' }}</span
+                      >
+                    </div>
+                    <div class="ranking__barra"><div [style.width.%]="fila.ancho"></div></div>
+                  </div>
+                </li>
+              } @empty {
+                <li class="vacio">Sin ventas en el período.</li>
+              }
+            </ol>
+          </section>
 
-        <div class="fs-card seccion-tarjeta">
-          <h3>Productos más vendidos</h3>
-          <ul class="lista-simple">
-            @for (fila of d.top_productos; track fila.producto_id) {
-              <li>
-                <span>{{ fila.producto }}</span>
-                <span class="fs-num">{{ fila.cantidad_vendida }} u. · {{ fila.total_vendido | number: '1.2-2' }}</span>
-              </li>
-            } @empty {
-              <li>Sin ventas en el período.</li>
-            }
-          </ul>
-        </div>
-
-        <div class="fs-card seccion-tarjeta">
-          <h3>Pruebas del probador por estado</h3>
-          <div class="pills-fila">
-            @for (fila of d.uso_probador; track fila.estado) {
-              <span class="pill"
-                >{{ fila.estado === 'completado' ? 'Completadas' : fila.estado === 'fallido' ? 'Fallidas' : 'En proceso' }}:
-                {{ fila.cantidad }}</span
-              >
-            } @empty {
-              <span class="ayuda">Sin pruebas generadas en el período.</span>
-            }
-          </div>
+          <section class="tarjeta" aria-labelledby="t-probador">
+            <h2 id="t-probador">Pruebas del probador por estado</h2>
+            <div class="chips-fila">
+              @for (fila of d.uso_probador; track fila.estado) {
+                <span [class]="'fs-chip ' + claseEstadoProbador(fila.estado)"
+                  >{{ fila.estado === 'completado' ? 'Completadas' : fila.estado === 'fallido' ? 'Fallidas' : 'En proceso' }}:
+                  {{ fila.cantidad }}</span
+                >
+              } @empty {
+                <span class="tenue">Sin pruebas generadas en el período.</span>
+              }
+            </div>
+          </section>
         </div>
       } @else if (cargandoDashboard()) {
         <p-table [value]="[]" [loading]="true" />
@@ -181,77 +220,76 @@
     <!-- ============================================================ -->
     <p-tabpanel value="ventas">
       @if (ventas(); as v) {
-        <div class="stat-fila">
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Transacciones</div>
-            <div class="stat-valor fs-num">{{ v.resumen.transacciones }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Total ventas</div>
-            <div class="stat-valor fs-num">{{ v.resumen.total_ventas | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Ticket promedio</div>
-            <div class="stat-valor fs-num">{{ v.resumen.ticket_promedio | number: '1.2-2' }}</div>
-          </div>
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Margen bruto</div>
-            <div class="stat-valor fs-num">{{ v.resumen.margen_bruto | number: '1.2-2' }}</div>
-          </div>
-        </div>
+        <ng-container [ngTemplateOutlet]="indicadores" [ngTemplateOutletContext]="{ $implicit: kpisVentas() }" />
 
         <div class="graficos-fila">
-          <div class="fs-card grafico-tarjeta">
-            <h3>Productos más vendidos</h3>
+          <section class="tarjeta" aria-labelledby="t-top-ventas">
+            <h2 id="t-top-ventas">Productos más vendidos</h2>
             <p-chart type="bar" [data]="chartTopProductos()" [options]="opcionesBarrasHorizontales" height="260px" />
-          </div>
-          <div class="fs-card grafico-tarjeta">
-            <h3>Ventas por sucursal</h3>
+          </section>
+          <section class="tarjeta" aria-labelledby="t-sucursal">
+            <h2 id="t-sucursal">Ventas por sucursal</h2>
             <p-chart type="bar" [data]="chartVentasPorSucursal()" [options]="opcionesBarrasVerticales" height="260px" />
-          </div>
-          <div class="fs-card grafico-tarjeta">
-            <h3>Ventas por canal</h3>
+          </section>
+          <section class="tarjeta" aria-labelledby="t-canal-ventas">
+            <h2 id="t-canal-ventas">Ventas por canal</h2>
             <p-chart type="doughnut" [data]="chartVentasPorCanal()" [options]="opcionesAnillo" height="220px" />
-          </div>
+          </section>
         </div>
 
-        <div class="tabla-cabecera">
-          <h3>Detalle</h3>
-          <p-button icon="pi pi-download" label="Exportar CSV" [text]="true" (onClick)="dtVentas.exportCSV()" />
-        </div>
-        <p-table #dtVentas [value]="v.detalle" [loading]="cargandoVentas()" styleClass="p-datatable-sm" [paginator]="true" [rows]="20">
-          <ng-template #header>
-            <tr>
-              <th>Fecha</th>
-              <th>Código</th>
-              <th>Canal</th>
-              <th>Sucursal</th>
-              <th>Producto</th>
-              <th>Categoría</th>
-              <th>Cantidad</th>
-              <th>Subtotal</th>
-              <th>Margen</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-fila>
-            <tr>
-              <td>{{ fila.fecha | date: 'short' }}</td>
-              <td>{{ fila.codigo }}</td>
-              <td>{{ fila.canal === 'digital' ? 'Digital' : 'Presencial' }}</td>
-              <td>{{ fila.sucursal }}</td>
-              <td>{{ fila.producto }}</td>
-              <td>{{ fila.categoria }}</td>
-              <td>{{ fila.cantidad }}</td>
-              <td>{{ fila.subtotal | number: '1.2-2' }}</td>
-              <td>{{ fila.margen | number: '1.2-2' }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="9">Sin ventas en el período.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <div class="panel__titulo">
+            <h3>Detalle</h3>
+            <button type="button" class="btn-texto" (click)="dtVentas.exportCSV()">
+              <fs-icono nombre="descargar" [tam]="24" />
+              Exportar CSV
+            </button>
+          </div>
+          <div class="panel__scroll">
+            <p-table
+              #dtVentas
+              [columns]="columnasCsvVentas"
+              [value]="v.detalle"
+              [loading]="cargandoVentas()"
+              styleClass="p-datatable-sm"
+              [paginator]="true"
+              [rows]="20"
+              [tableStyle]="{ 'min-width': '980px' }"
+            >
+              <ng-template #header>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Código</th>
+                  <th>Canal</th>
+                  <th>Sucursal</th>
+                  <th>Producto</th>
+                  <th>Categoría</th>
+                  <th class="num">Cantidad</th>
+                  <th class="num">Subtotal</th>
+                  <th class="num">Margen</th>
+                </tr>
+              </ng-template>
+              <ng-template #body let-fila>
+                <tr>
+                  <td class="fs-num">{{ fila.fecha | date: 'short' }}</td>
+                  <td class="fuerte">{{ fila.codigo }}</td>
+                  <td>{{ fila.canal === 'digital' ? 'Digital' : 'Presencial' }}</td>
+                  <td>{{ fila.sucursal }}</td>
+                  <td>{{ fila.producto }}</td>
+                  <td class="tenue">{{ fila.categoria }}</td>
+                  <td class="num">{{ fila.cantidad }}</td>
+                  <td class="num">{{ fila.subtotal | number: '1.2-2' }}</td>
+                  <td class="num">{{ fila.margen | number: '1.2-2' }}</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage>
+                <tr>
+                  <td colspan="9"><div class="vacio">Sin ventas en el período.</div></td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
       } @else if (cargandoVentas()) {
         <p-table [value]="[]" [loading]="true" />
       }
@@ -262,89 +300,113 @@
     <!-- ============================================================ -->
     <p-tabpanel value="inventario">
       @if (inventario(); as inv) {
-        <div class="tabla-cabecera">
-          <h3>Consolidado</h3>
-          <p-button icon="pi pi-download" label="Exportar CSV" [text]="true" (onClick)="dtConsolidado.exportCSV()" />
-        </div>
-        <p-table #dtConsolidado [value]="inv.consolidado" [loading]="cargandoInventario()" styleClass="p-datatable-sm" [paginator]="true" [rows]="20">
-          <ng-template #header>
-            <tr>
-              <th>Producto</th>
-              <th>SKU</th>
-              <th>Talla</th>
-              <th>Color</th>
-              <th>Sucursal</th>
-              <th>Disponible</th>
-              <th>Mínimo</th>
-              <th>Valor</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-fila>
-            <tr [class.fila-alerta]="fila.cantidad_disponible <= fila.stock_minimo">
-              <td>{{ fila.producto }}</td>
-              <td>{{ fila.sku }}</td>
-              <td>{{ fila.talla }}</td>
-              <td>{{ fila.color }}</td>
-              <td>{{ fila.sucursal }}</td>
-              <td>{{ fila.cantidad_disponible }}</td>
-              <td>{{ fila.stock_minimo }}</td>
-              <td>{{ fila.valor_inventario | number: '1.2-2' }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="8">Sin stock registrado.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <div class="panel__titulo">
+            <h3>Consolidado</h3>
+            <button type="button" class="btn-texto" (click)="dtConsolidado.exportCSV()">
+              <fs-icono nombre="descargar" [tam]="24" />
+              Exportar CSV
+            </button>
+          </div>
+          <div class="panel__scroll">
+            <p-table
+              #dtConsolidado
+              [columns]="columnasCsvInventario"
+              [value]="inv.consolidado"
+              [loading]="cargandoInventario()"
+              styleClass="p-datatable-sm"
+              [paginator]="true"
+              [rows]="20"
+              [tableStyle]="{ 'min-width': '860px' }"
+            >
+              <ng-template #header>
+                <tr>
+                  <th>Producto</th>
+                  <th>SKU</th>
+                  <th>Talla</th>
+                  <th>Color</th>
+                  <th>Sucursal</th>
+                  <th class="num">Disponible</th>
+                  <th class="num">Mínimo</th>
+                  <th class="num">Valor</th>
+                </tr>
+              </ng-template>
+              <ng-template #body let-fila>
+                <tr [class.fila-alerta]="fila.cantidad_disponible <= fila.stock_minimo">
+                  <td class="fuerte">{{ fila.producto }}</td>
+                  <td class="tenue">{{ fila.sku }}</td>
+                  <td>{{ fila.talla }}</td>
+                  <td class="tenue">{{ fila.color }}</td>
+                  <td>{{ fila.sucursal }}</td>
+                  <td class="num fuerte" [class.dato-alerta]="fila.cantidad_disponible <= fila.stock_minimo">
+                    {{ fila.cantidad_disponible }}
+                  </td>
+                  <td class="num tenue">{{ fila.stock_minimo }}</td>
+                  <td class="num">{{ fila.valor_inventario | number: '1.2-2' }}</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage>
+                <tr>
+                  <td colspan="8"><div class="vacio">Sin stock registrado.</div></td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
 
-        <h3>Alertas (bajo mínimo)</h3>
-        <p-table [value]="inv.alertas" styleClass="p-datatable-sm">
-          <ng-template #header>
-            <tr>
-              <th>Producto</th>
-              <th>SKU</th>
-              <th>Sucursal</th>
-              <th>Disponible</th>
-              <th>Mínimo</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-fila>
-            <tr>
-              <td>{{ fila.producto }}</td>
-              <td>{{ fila.sku }}</td>
-              <td>{{ fila.sucursal }}</td>
-              <td>{{ fila.cantidad_disponible }}</td>
-              <td>{{ fila.stock_minimo }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="5">Sin alertas.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <div class="panel__titulo"><h3>Alertas (bajo mínimo)</h3></div>
+          <div class="panel__scroll">
+            <p-table [value]="inv.alertas" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '620px' }">
+              <ng-template #header>
+                <tr>
+                  <th>Producto</th>
+                  <th>SKU</th>
+                  <th>Sucursal</th>
+                  <th class="num">Disponible</th>
+                  <th class="num">Mínimo</th>
+                </tr>
+              </ng-template>
+              <ng-template #body let-fila>
+                <tr>
+                  <td class="fuerte">{{ fila.producto }}</td>
+                  <td class="tenue">{{ fila.sku }}</td>
+                  <td>{{ fila.sucursal }}</td>
+                  <td class="num fuerte dato-alerta">{{ fila.cantidad_disponible }}</td>
+                  <td class="num tenue">{{ fila.stock_minimo }}</td>
+                </tr>
+              </ng-template>
+              <ng-template #emptymessage>
+                <tr>
+                  <td colspan="5"><div class="vacio">Sin alertas.</div></td>
+                </tr>
+              </ng-template>
+            </p-table>
+          </div>
+        </section>
 
-        <h3>Valuación por sucursal</h3>
-        <p-table [value]="inv.valuacion" styleClass="p-datatable-sm">
-          <ng-template #header>
-            <tr>
-              <th>Sucursal</th>
-              <th>Valor total</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-fila>
-            <tr>
-              <td>{{ fila.sucursal }}</td>
-              <td>{{ fila.valor_total | number: '1.2-2' }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="2">Sin datos.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <div class="panel__titulo"><h3>Valuación por sucursal</h3></div>
+          <p-table [value]="inv.valuacion" styleClass="p-datatable-sm">
+            <ng-template #header>
+              <tr>
+                <th>Sucursal</th>
+                <th class="num">Valor total</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-fila>
+              <tr>
+                <td class="fuerte">{{ fila.sucursal }}</td>
+                <td class="num">{{ fila.valor_total | number: '1.2-2' }}</td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="2"><div class="vacio">Sin datos.</div></td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </section>
       } @else if (cargandoInventario()) {
         <p-table [value]="[]" [loading]="true" />
       }
@@ -355,39 +417,36 @@
     <!-- ============================================================ -->
     <p-tabpanel value="reservas">
       @if (reservas(); as r) {
-        <div class="stat-fila">
-          <div class="fs-card stat-tarjeta">
-            <div class="stat-etiqueta">Tasa de conversión a venta</div>
-            <div class="stat-valor fs-num">{{ r.tasa_conversion | number: '1.0-2' }}</div>
-          </div>
-        </div>
+        <ng-container [ngTemplateOutlet]="indicadores" [ngTemplateOutletContext]="{ $implicit: kpisReservas() }" />
 
         <div class="graficos-fila">
-          <div class="fs-card grafico-tarjeta">
-            <h3>Reservas por estado</h3>
+          <section class="tarjeta" aria-labelledby="t-reservas-estado">
+            <h2 id="t-reservas-estado">Reservas por estado</h2>
             <p-chart type="doughnut" [data]="chartReservasPorEstado()" [options]="opcionesAnillo" height="220px" />
-          </div>
+          </section>
         </div>
 
-        <p-table [value]="r.por_estado" [loading]="cargandoReservas()" styleClass="p-datatable-sm">
-          <ng-template #header>
-            <tr>
-              <th>Estado</th>
-              <th>Cantidad</th>
-            </tr>
-          </ng-template>
-          <ng-template #body let-fila>
-            <tr>
-              <td>{{ fila.nombre }}</td>
-              <td>{{ fila.cantidad }}</td>
-            </tr>
-          </ng-template>
-          <ng-template #emptymessage>
-            <tr>
-              <td colspan="2">Sin reservas en el período.</td>
-            </tr>
-          </ng-template>
-        </p-table>
+        <section class="panel">
+          <p-table [value]="r.por_estado" [loading]="cargandoReservas()" styleClass="p-datatable-sm">
+            <ng-template #header>
+              <tr>
+                <th>Estado</th>
+                <th class="num">Cantidad</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-fila>
+              <tr>
+                <td class="fuerte">{{ fila.nombre }}</td>
+                <td class="num">{{ fila.cantidad }}</td>
+              </tr>
+            </ng-template>
+            <ng-template #emptymessage>
+              <tr>
+                <td colspan="2"><div class="vacio">Sin reservas en el período.</div></td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </section>
       } @else if (cargandoReservas()) {
         <p-table [value]="[]" [loading]="true" />
       }

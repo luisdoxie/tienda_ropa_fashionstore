@@ -2,6 +2,7 @@
   display: block;
 }
 
+// Carga: tres barras de esqueleto centradas, sin marca (todavía no se sabe de qué tienda es).
 .raiz-estado {
   min-height: 100vh;
   display: flex;
@@ -12,34 +13,6 @@
   padding: var(--fs-espacio-6) var(--fs-espacio-4);
   text-align: center;
   background: var(--fs-fondo);
-}
-
-.raiz-estado__marca {
-  margin: 0;
-  font-family: var(--fs-fuente-display);
-  font-style: italic;
-  font-weight: 600;
-  font-size: 28px;
-}
-
-.raiz-estado__texto {
-  margin: 0;
-  color: var(--fs-texto-tenue);
-}
-
-.raiz-estado__boton {
-  padding: var(--fs-espacio-2) var(--fs-espacio-6);
-  border: 0;
-  border-radius: 999px;
-  background: var(--fs-acento);
-  color: var(--fs-superficie);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--fs-acento-hover);
-  }
 }
 
 .raiz-esqueleto {
@@ -58,5 +31,11 @@
 @keyframes raiz-pulso {
   50% {
     opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .raiz-esqueleto {
+    animation: none;
   }
 }

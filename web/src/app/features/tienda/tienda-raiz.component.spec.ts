@@ -72,6 +72,7 @@ describe('TiendaRaizComponent', () => {
     mostrar();
     expect(el().querySelector('app-tienda-no-disponible')).not.toBeNull();
     expect(el().textContent).toContain('Tienda no encontrada');
+    expect(el().textContent).toContain('Revisa el enlace o busca otra.');
     expect(el().querySelector('router-outlet')).toBeNull();
   });
 
@@ -88,7 +89,9 @@ describe('TiendaRaizComponent', () => {
     const cargar = vi.spyOn(servicio, 'cargar').mockReturnValue(of('lista'));
     mostrar();
     expect(el().textContent).toContain('No pudimos cargar la tienda');
-    const boton = el().querySelector<HTMLButtonElement>('button.raiz-estado__boton');
+    expect(el().textContent).toContain('Revisa tu conexión e inténtalo de nuevo.');
+    expect(el().querySelector('[role="alert"]')).not.toBeNull();
+    const boton = el().querySelector<HTMLButtonElement>('button.fs-btn');
     expect(boton).not.toBeNull();
     expect(boton?.textContent?.trim()).toBe('Reintentar');
 
@@ -105,7 +108,12 @@ describe('TiendaRaizComponent', () => {
       expect(el().style.getPropertyValue('--fs-acento')).toBe('#2563eb');
       expect(el().style.getPropertyValue('--fs-acento-hover')).not.toBe('');
       expect(el().style.getPropertyValue('--fs-acento-suave')).not.toBe('');
-      expect(el().style.getPropertyValue('--p-primary-color')).toBe('#2563eb');
+      // La variante sobre superficies oscuras y el texto de un botón relleno con ella.
+      expect(el().style.getPropertyValue('--fs-acento-oscuro')).not.toBe('');
+      expect(el().style.getPropertyValue('--fs-acento-oscuro-hover')).not.toBe('');
+      expect(el().style.getPropertyValue('--fs-sobre-acento-oscuro')).not.toBe('');
+      // Los controles siguen siendo tinta: la marca no toca el primario de PrimeNG.
+      expect(el().style.getPropertyValue('--p-primary-color')).toBe('');
       expect(document.documentElement.style.getPropertyValue('--fs-acento')).toBe('');
       expect(getComputedStyle(document.documentElement).getPropertyValue('--fs-acento').trim()).not.toBe('#2563eb');
     });

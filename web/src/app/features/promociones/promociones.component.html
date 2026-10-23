@@ -1,16 +1,24 @@
-<h1>Promociones</h1>
-
 <app-tabla-generica
   endpoint="/promociones"
+  titulo="Promociones"
+  eyebrow="Comercial"
+  etiquetaNuevo="Nueva promoción"
+  placeholderBusqueda="Buscar promoción"
   [columnas]="columnas"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
 />
 
-<p-dialog header="Promoción" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '480px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar promoción' : 'Nueva promoción'"
+  formId="form-promocion"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-promocion" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     @if (!editando()) {
       <label for="tipo">Tipo</label>
@@ -24,13 +32,16 @@
     }
 
     <label for="valor">{{ formulario.value.tipo === 'monto' ? 'Valor (Bs)' : 'Valor (%)' }}</label>
-    <p-inputnumber inputId="valor" formControlName="valor" [min]="0.01" [maxFractionDigits]="2" />
+    <p-inputnumber inputId="valor" formControlName="valor" appAriaError="err-valor" [min]="0.01" [maxFractionDigits]="2" />
+    <app-error-campo id="err-valor" [control]="formulario.controls.valor">Ingresa un valor mayor que cero.</app-error-campo>
 
     <label for="fecha_inicio">Desde</label>
-    <p-datepicker inputId="fecha_inicio" formControlName="fecha_inicio" dateFormat="dd/mm/yy" [showIcon]="true" />
+    <p-datepicker inputId="fecha_inicio" formControlName="fecha_inicio" appAriaError="err-fecha_inicio" dateFormat="dd/mm/yy" [showIcon]="true" />
+    <app-error-campo id="err-fecha_inicio" [control]="formulario.controls.fecha_inicio">Elige la fecha de inicio.</app-error-campo>
 
     <label for="fecha_fin">Hasta</label>
-    <p-datepicker inputId="fecha_fin" formControlName="fecha_fin" dateFormat="dd/mm/yy" [showIcon]="true" />
+    <p-datepicker inputId="fecha_fin" formControlName="fecha_fin" appAriaError="err-fecha_fin" dateFormat="dd/mm/yy" [showIcon]="true" />
+    <app-error-campo id="err-fecha_fin" [control]="formulario.controls.fecha_fin">Elige la fecha de fin.</app-error-campo>
 
     @if (editando()) {
       <label class="formulario__checkbox">
@@ -38,25 +49,33 @@
         Activa
       </label>
     } @else {
-      <h3>Alcance (a qué aplica)</h3>
+      <h3 class="alcance-titulo">Alcance (a qué aplica)</h3>
       <div formArrayName="alcances">
         @for (linea of lineasAlcance.controls; track $index; let i = $index) {
           <div [formGroupName]="i" class="fila-alcance">
             <p-select [options]="opcionesAlcance" optionLabel="label" optionValue="value" formControlName="tipo" />
-            <p-inputnumber [useGrouping]="false" placeholder="ID" formControlName="id" />
+            <p-inputnumber
+              [useGrouping]="false"
+              placeholder="ID"
+              formControlName="id"
+              [attr.aria-label]="'ID del alcance ' + (i + 1)"
+              [appAriaError]="'err-alcance-' + i"
+            />
             <p-button
               icon="pi pi-trash"
+              ariaLabel="Quitar alcance"
               [text]="true"
               severity="danger"
               [disabled]="lineasAlcance.length === 1"
               (onClick)="quitarAlcance(i)"
             />
           </div>
+          <app-error-campo [id]="'err-alcance-' + i" [control]="linea.get('id')">
+            Ingresa el ID del alcance {{ i + 1 }}.
+          </app-error-campo>
         }
       </div>
-      <p-button icon="pi pi-plus" label="Agregar alcance" [text]="true" size="small" (onClick)="agregarAlcance()" />
+      <p-button icon="pi pi-plus" label="Agregar alcance" [text]="true" (onClick)="agregarAlcance()" />
     }
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

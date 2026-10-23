@@ -1,0 +1,18 @@
+<div class="pagina">
+  <header class="pagina__cab fs-zona-oscura">
+    <div class="pagina__cab-interior">
+      <fs-marca nombre="FashionStore" variante="oscuro" />
+    </div>
+  </header>
+
+  <main class="pagina__principal">
+    <section class="panel fs-zona-oscura" role="alert">
+      <span class="panel__icono"><fs-icono [nombre]="icono()" [tam]="56" [trazo]="1.5" /></span>
+      <h1 class="fs-display panel__titulo">{{ titulo() }}</h1>
+      <p class="panel__texto">{{ texto() }}</p>
+      <div class="panel__accion"><ng-content /></div>
+    </section>
+  </main>
+
+  <footer class="pagina__pie">FashionStore · Plataforma para tiendas de ropa</footer>
+</div>

@@ -1,11 +1,25 @@
-<h1>Proveedores</h1>
+<app-tabla-generica
+  endpoint="/proveedores"
+  titulo="Proveedores"
+  eyebrow="Catálogo"
+  etiquetaNuevo="Nuevo proveedor"
+  placeholderBusqueda="Buscar proveedor"
+  [columnas]="columnas"
+  (crear)="abrirCrear()"
+  (editar)="abrirEditar($event)"
+/>
 
-<app-tabla-generica endpoint="/proveedores" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
-
-<p-dialog header="Proveedor" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '420px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar proveedor' : 'Nuevo proveedor'"
+  formId="form-proveedor"
+  ancho="520px"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-proveedor" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="nit">NIT</label>
     <input id="nit" pInputText formControlName="nit" />
@@ -17,7 +31,8 @@
     <input id="telefono" pInputText formControlName="telefono" />
 
     <label for="email">Email</label>
-    <input id="email" type="email" pInputText formControlName="email" />
+    <input id="email" type="email" pInputText formControlName="email" appAriaError="err-email" />
+    <app-error-campo id="err-email" [control]="formulario.controls.email">Ingresa un email válido.</app-error-campo>
 
     <label for="direccion">Dirección</label>
     <input id="direccion" pInputText formControlName="direccion" />
@@ -32,7 +47,5 @@
       placeholder="Sin usuario asociado"
       [showClear]="true"
     />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

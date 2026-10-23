@@ -1,6 +1,8 @@
 import {
   CONTRASTE_MINIMO,
+  CONTRASTE_MINIMO_SOBRE_OSCURO,
   aclarar,
+  acentoSobreOscuro,
   calcularPaletaAcento,
   contraste,
   luminancia,
@@ -89,6 +91,29 @@ describe('color', () => {
 
     it('el texto sobre el acento es blanco en un acento oscuro', () => {
       expect(calcularPaletaAcento('#9a3e1f')?.textoSobreAcento).toBe('#ffffff');
+    });
+  });
+
+  describe('acentoSobreOscuro', () => {
+    it('un acento que ya contrasta con el carbón se queda igual', () => {
+      expect(acentoSobreOscuro('#8fae5b').acento).toBe('#8fae5b');
+    });
+
+    it.each(['#036', '#1a2b3c', '#9a3e1f'])('un acento oscuro (%s) se aclara hasta contrastar con el carbón', (color) => {
+      const normal = normalizarHex(color)!;
+      const sobre = acentoSobreOscuro(normal);
+      expect(luminancia(sobre.acento)).toBeGreaterThan(luminancia(normal));
+      expect(contraste(sobre.acento, '#1b1916')).toBeGreaterThanOrEqual(CONTRASTE_MINIMO_SOBRE_OSCURO);
+    });
+
+    it('el hover es más claro y el texto del botón contrasta con el relleno', () => {
+      const sobre = acentoSobreOscuro('#8fae5b');
+      expect(luminancia(sobre.hover)).toBeGreaterThan(luminancia(sobre.acento));
+      expect(contraste(sobre.acento, sobre.textoSobreAcento)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('la paleta de la tienda incluye la variante sobre oscuro', () => {
+      expect(calcularPaletaAcento('#2563eb')?.sobreOscuro.acento).toBeTruthy();
     });
   });
 });

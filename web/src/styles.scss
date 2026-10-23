@@ -1,28 +1,65 @@
 @import 'primeicons/primeicons.css';
 
-// Tokens de diseño de CLAUDE.md (paleta terracota), como variables CSS.
-// El back office es denso: tablas compactas, poco espaciado.
+// Sistema de diseño de FashionStore (ver "Tokens de diseño" en CLAUDE.md y el
+// canvas de Design). Carbón cálido sobre claro hueso, con un acento lima sobre
+// las superficies oscuras y oliva sobre las claras. Cada empresa puede cambiar
+// el acento (`color_acento`): `tienda-raiz` redefine --fs-acento* en su elemento.
 :root {
-  --fs-fondo: #eae4da;
+  // Superficies claras
+  --fs-fondo: #f7f5f1;
+  --fs-fondo-alt: #efebe4;
+  --fs-banda: #e7e4de; // cabecera de las páginas interiores
+  --fs-pie: #dcd8d0;
   --fs-superficie: #ffffff;
-  --fs-texto: #1c1713;
-  --fs-texto-tenue: #6e6156;
-  --fs-acento: #9a3e1f;
-  --fs-acento-hover: #732e16;
-  --fs-acento-suave: #e3d2c1;
-  --fs-exito: #16a34a;
-  --fs-exito-suave: #e8f6ee;
-  --fs-advertencia: #b45309;
-  --fs-advertencia-suave: #fdf0dd;
-  --fs-error: #dc2626;
-  --fs-borde: #dbd0c1;
-  --fs-muted: #c7bcac;
+  --fs-borde: #e4dfd6; // tarjetas y tablas
+  --fs-borde-fuerte: #cfcbc3; // bandas y campos
+  --fs-campo-borde: #c9c2b6;
+  --fs-muted: #c9c2b6;
 
-  --fs-radio-sm: 6px;
-  --fs-radio-md: 10px;
-  --fs-radio-lg: 18px;
+  // Texto sobre claro
+  --fs-texto: #161412;
+  --fs-tinta: #151515; // botón primario y trazos sobre claro
+  --fs-texto-tenue: #6b645c;
 
-  --fs-fuente-display: 'Fraunces', serif;
+  // Acento sobre claro (oliva) y sobre oscuro (lima)
+  --fs-acento: #5d6b34;
+  --fs-acento-hover: #46521f;
+  --fs-acento-suave: #e8eedc;
+  --fs-acento-oscuro: #8fae5b;
+  --fs-acento-oscuro-hover: #a3c26c;
+  --fs-sobre-acento-oscuro: #121110;
+
+  // Superficies oscuras (portada, acceso, barra lateral)
+  --fs-carbon: #1b1916;
+  --fs-carbon-2: #121110;
+  --fs-carbon-panel: #232019;
+  --fs-carbon-borde: #2f2c27;
+  --fs-carbon-campo: #3a3733;
+  --fs-claro: #f2f2f0;
+  --fs-claro-tenue: #b5b2aa;
+  --fs-claro-suave: #d9d9d6;
+
+  // Estados
+  --fs-exito: #15803d;
+  --fs-exito-suave: #e7f4ec;
+  --fs-advertencia: #a4480a;
+  --fs-advertencia-suave: #fbefdc;
+  --fs-error: #c62828;
+  --fs-error-suave: #f6e3e1;
+  --fs-neutro-suave: #ecebe6;
+  --fs-neutro-texto: #5a5650;
+
+  // Esquinas casi rectas; elevación mínima.
+  --fs-radio-sm: 2px;
+  --fs-radio-md: 4px;
+  --fs-radio-lg: 8px;
+  --fs-sombra-sm: 0 1px 0 rgba(22, 20, 18, 0.04);
+  --fs-sombra-md: 0 8px 24px rgba(22, 20, 18, 0.08);
+  --fs-sombra-lg: 0 20px 48px rgba(22, 20, 18, 0.3);
+
+  // Archivo (ancho variable) para titulares, Public Sans para la interfaz.
+  --fs-fuente-display: 'Archivo', 'Public Sans', system-ui, sans-serif;
+  --fs-fuente-lema: 'Fraunces', serif;
   --fs-fuente-ui:
     'Public Sans',
     system-ui,
@@ -37,6 +74,40 @@
   --fs-espacio-4: 16px;
   --fs-espacio-6: 24px;
   --fs-espacio-8: 32px;
+  --fs-espacio-12: 48px;
+  --fs-espacio-16: 64px;
+
+  // Íconos: nunca menos de 20 px.
+  --fs-icono-etiqueta: 20px;
+  --fs-icono-boton: 24px;
+  --fs-icono-barra: 28px;
+  --fs-icono-beneficio: 36px;
+
+  // Área tocable mínima.
+  --fs-toque: 44px;
+  --fs-toque-barra: 48px;
+}
+
+// Zona oscura: dentro de ella los tokens de texto y de acento cambian, así
+// los componentes usan las mismas variables sin saber en qué fondo están.
+.fs-zona-oscura {
+  --fs-fondo: var(--fs-carbon);
+  --fs-superficie: var(--fs-carbon-panel);
+  --fs-texto: var(--fs-claro);
+  --fs-texto-tenue: var(--fs-claro-tenue);
+  --fs-borde: var(--fs-carbon-borde);
+  --fs-borde-fuerte: var(--fs-carbon-campo);
+  --fs-campo-borde: var(--fs-carbon-campo);
+  --fs-tinta: var(--fs-claro);
+  --fs-acento: var(--fs-acento-oscuro);
+  --fs-acento-hover: var(--fs-acento-oscuro-hover);
+  --fs-acento-suave: color-mix(in srgb, var(--fs-acento-oscuro) 20%, transparent);
+  --fs-error: #ff9a8f;
+
+  color: var(--fs-claro);
+  background:
+    radial-gradient(900px 520px at 22% 45%, color-mix(in srgb, var(--fs-acento-oscuro) 14%, transparent), transparent 62%),
+    var(--fs-carbon);
 }
 
 html,
@@ -49,19 +120,21 @@ body {
   font-size: 14px;
 }
 
-// Escala tipográfica: Fraunces para H1/H2 (marca, títulos de sección),
-// Public Sans para el resto. La densidad de las tablas no cambia acá.
+// Escala tipográfica. En el back office los títulos son compactos; los
+// titulares de la tienda usan .fs-display (mayúsculas y ancho extendido).
 h1 {
   font-family: var(--fs-fuente-display);
-  font-weight: 600;
-  font-size: 28px;
-  line-height: 1.15;
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1.1;
   margin: 0 0 var(--fs-espacio-2);
 }
 
 h2 {
   font-family: var(--fs-fuente-display);
-  font-weight: 600;
+  font-stretch: 112%;
+  font-weight: 800;
   font-size: 20px;
   line-height: 1.2;
   margin: 0 0 var(--fs-espacio-2);
@@ -74,13 +147,44 @@ h3 {
   margin: 0 0 var(--fs-espacio-1);
 }
 
-.fs-etiqueta {
+// Titular de portada y de secciones de la tienda.
+.fs-display {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 1.04;
+  letter-spacing: 0.005em;
+
+  em {
+    font-style: normal;
+    color: var(--fs-acento);
+  }
+}
+
+// Lema manuscrito (solo la portada).
+.fs-lema {
+  font-family: var(--fs-fuente-lema);
+  font-style: italic;
+  line-height: 1.15;
+}
+
+// Rótulo en mayúsculas pequeñas sobre un título.
+.fs-eyebrow {
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fs-texto-tenue);
+}
+
+.fs-etiqueta {
+  font-size: 13px;
   color: var(--fs-texto-tenue);
 }
 
 .fs-caption {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fs-texto-tenue);
 }
 
@@ -89,31 +193,396 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
-// Tarjeta base: no había elevación de ningún tipo antes de este rediseño.
+// Tarjeta base: línea fina, sin elevación.
 .fs-card {
   background: var(--fs-superficie);
   border: 1px solid var(--fs-borde);
   border-radius: var(--fs-radio-md);
-  box-shadow: 0 1px 2px rgba(28, 23, 19, 0.06);
+  box-shadow: var(--fs-sombra-sm);
 }
 
-// Back office denso: PrimeNG trae bastante padding por defecto, se recorta
-// acá para que quepan más filas por pantalla sin tocar cada tabla.
-.p-datatable .p-datatable-tbody > tr > td,
+// ---------------------------------------------------------------------------
+// Botones propios (enlaces y <button>). Los p-button de PrimeNG toman su
+// aspecto del preset de app.config.ts.
+// ---------------------------------------------------------------------------
+.fs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: var(--fs-toque-barra);
+  padding: 0 24px;
+  box-sizing: border-box;
+  font-family: var(--fs-fuente-ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+
+  &[disabled],
+  &.fs-btn--deshabilitado {
+    background: var(--fs-campo-borde);
+    border-color: var(--fs-campo-borde);
+    color: var(--fs-texto-tenue);
+    cursor: not-allowed;
+  }
+}
+
+.fs-btn--primario {
+  background: var(--fs-tinta);
+  color: #f5f4f0;
+
+  &:hover:not([disabled]) {
+    background: #2a2723;
+  }
+}
+
+.fs-btn--secundario {
+  background: transparent;
+  border-color: var(--fs-tinta);
+  color: var(--fs-tinta);
+
+  &:hover:not([disabled]) {
+    background: var(--fs-neutro-suave);
+  }
+}
+
+// Solo sobre superficies oscuras: lima (o el acento de la empresa).
+.fs-btn--acento {
+  background: var(--fs-acento-oscuro);
+  color: var(--fs-sobre-acento-oscuro);
+
+  &:hover:not([disabled]) {
+    background: var(--fs-acento-oscuro-hover);
+  }
+}
+
+// Contorno claro sobre superficies oscuras.
+.fs-btn--contorno {
+  background: transparent;
+  border-color: var(--fs-claro);
+  color: var(--fs-claro);
+
+  &:hover:not([disabled]) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.fs-btn--bloque {
+  display: flex;
+  width: 100%;
+}
+
+.fs-btn--sm {
+  min-height: var(--fs-toque);
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.fs-enlace {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+// ---------------------------------------------------------------------------
+// Campos de formulario propios (login, registro, tienda). Los inputs de
+// PrimeNG usan el preset.
+// ---------------------------------------------------------------------------
+.fs-campo {
+  position: relative;
+  display: block;
+}
+
+.fs-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--fs-toque-barra);
+  padding: 14px;
+  font-family: var(--fs-fuente-ui);
+  font-size: 15px;
+  color: var(--fs-texto);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+
+  &:focus {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 1px;
+  }
+
+  &--icono {
+    padding-left: 54px;
+  }
+
+  &--accion {
+    padding-right: 54px;
+  }
+
+  &--error,
+  &.ng-invalid.ng-touched {
+    border-color: var(--fs-error);
+  }
+
+  &::placeholder {
+    color: var(--fs-texto-tenue);
+    opacity: 0.8;
+  }
+}
+
+.fs-campo__icono {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fs-texto-tenue);
+  pointer-events: none;
+}
+
+.fs-campo__accion {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--fs-toque-barra);
+  height: var(--fs-toque-barra);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  color: var(--fs-texto-tenue);
+  cursor: pointer;
+}
+
+.fs-zona-oscura .fs-input {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fs-claro);
+
+  &:focus {
+    outline-color: var(--fs-acento-oscuro);
+  }
+}
+
+.fs-etiqueta-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fs-error-texto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fs-error);
+}
+
+// ---------------------------------------------------------------------------
+// Chips de estado
+// ---------------------------------------------------------------------------
+.fs-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-neutro-suave);
+  color: var(--fs-neutro-texto);
+  white-space: nowrap;
+}
+
+.fs-chip--exito {
+  background: var(--fs-exito-suave);
+  color: var(--fs-exito);
+}
+
+.fs-chip--advertencia {
+  background: var(--fs-advertencia-suave);
+  color: var(--fs-advertencia);
+}
+
+.fs-chip--error {
+  background: var(--fs-error-suave);
+  color: var(--fs-error);
+}
+
+// Aviso en línea (suscripción por vencer, mensaje de éxito...).
+.fs-aviso {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-advertencia-suave);
+  color: var(--fs-advertencia);
+}
+
+.fs-aviso--error {
+  background: var(--fs-error-suave);
+  color: var(--fs-error);
+}
+
+.fs-aviso--exito {
+  background: var(--fs-exito-suave);
+  color: var(--fs-exito);
+}
+
+// ---------------------------------------------------------------------------
+// Estructura de pantalla
+// ---------------------------------------------------------------------------
+// Encabezado de pantalla del back office: título a la izquierda, acciones a la
+// derecha y una línea fina debajo.
+.fs-pagina-encabezado {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--fs-espacio-4);
+  margin-bottom: var(--fs-espacio-6);
+  border-bottom: 1px solid var(--fs-borde);
+
+  h1 {
+    margin: 4px 0 0;
+  }
+
+  p {
+    margin: var(--fs-espacio-1) 0 0;
+    color: var(--fs-texto-tenue);
+    font-size: 13px;
+  }
+}
+
+// Pestañas subrayadas.
+.fs-tabs {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--fs-borde);
+}
+
+.fs-tab {
+  padding: 8px 0 12px;
+  margin-bottom: -1px;
+  font-size: 15px;
+  color: var(--fs-texto-tenue);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+
+  &--activa {
+    color: var(--fs-texto);
+    font-weight: 600;
+    border-bottom-color: var(--fs-texto);
+  }
+}
+
+// Estado vacío (sin resultados, sin datos).
+.fs-estado-vacio {
+  padding: var(--fs-espacio-12) var(--fs-espacio-4);
+  text-align: center;
+  color: var(--fs-texto-tenue);
+  font-size: 14px;
+}
+
+// Selector de una sola opción en chips rectangulares (talla, color, tipo de
+// entrega, método de pago, categorías del catálogo público).
+.fs-pill-fila {
+  display: flex;
+  gap: var(--fs-espacio-2);
+  flex-wrap: wrap;
+}
+
+.fs-pill {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  min-height: var(--fs-toque);
+  padding: 0 var(--fs-espacio-4);
+  border-radius: var(--fs-radio-md);
+  border: 1px solid var(--fs-campo-borde);
+  background: var(--fs-superficie);
+  color: var(--fs-texto-tenue);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+
+  &:hover:not(.activa) {
+    border-color: var(--fs-tinta);
+    color: var(--fs-texto);
+  }
+
+  &.activa {
+    background: var(--fs-tinta);
+    border-color: var(--fs-tinta);
+    color: #f5f4f0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PrimeNG: lo que el preset no cubre
+// ---------------------------------------------------------------------------
+// Tablas del back office: densas, con encabezado en mayúsculas pequeñas.
 .p-datatable .p-datatable-thead > tr > th {
-  padding: var(--fs-espacio-2) var(--fs-espacio-3) !important;
+  padding: var(--fs-espacio-3) var(--fs-espacio-3) !important;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fs-texto-tenue);
+  border-bottom: 1px solid var(--fs-texto) !important;
 }
 
 .p-datatable .p-datatable-tbody > tr > td {
-  font-size: 13px;
+  padding: var(--fs-espacio-2) var(--fs-espacio-3) !important;
+  font-size: 14px;
+  border-bottom: 1px solid var(--fs-fondo-alt) !important;
 }
 
 .p-component {
   font-size: 14px;
 }
 
-.p-button {
-  padding: var(--fs-espacio-2) var(--fs-espacio-3);
+// Íconos de PrimeIcons dentro de botones y menús: 24 px.
+.p-button .p-button-icon,
+.p-button .pi {
+  font-size: var(--fs-icono-boton);
+}
+
+// Botones de ícono solo (acciones de tabla): área tocable de 44 px.
+.p-button.p-button-icon-only {
+  width: var(--fs-toque);
+  height: var(--fs-toque);
+}
+
+.p-dialog .p-dialog-title {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 112%;
+  font-weight: 800;
+  font-size: 20px;
 }
 
 // Formularios de los diálogos de crear/editar de cada pantalla CRUD.
@@ -123,8 +592,8 @@ h3 {
   gap: var(--fs-espacio-2);
 
   label {
-    font-size: 12px;
-    color: var(--fs-texto-tenue);
+    font-size: 13px;
+    font-weight: 500;
     margin-top: var(--fs-espacio-2);
   }
 
@@ -136,17 +605,15 @@ h3 {
   }
 }
 
-// Pantallas de autenticación (login, recuperar/restablecer contraseña):
-// comparten el mismo layout de tarjeta centrada, así que las clases viven
-// acá en vez de repetirse en cada .scss de componente.
+// Pantallas de autenticación (login, recuperar/restablecer contraseña). Las
+// pantallas nuevas usan .fs-acceso (ver cada componente); estas clases siguen
+// vivas para lo que aún no migró.
 .auth-pantalla {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(circle at 50% 0%, var(--fs-acento-suave) 0%, transparent 55%),
-    var(--fs-fondo);
+  background: var(--fs-fondo);
   padding: var(--fs-espacio-4);
 }
 
@@ -154,51 +621,45 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: var(--fs-espacio-2);
-  width: 360px;
+  width: 380px;
   max-width: 100%;
-  padding: var(--fs-espacio-8);
+  padding: var(--fs-espacio-8) var(--fs-espacio-8) var(--fs-espacio-6);
   background: var(--fs-superficie);
   border: 1px solid var(--fs-borde);
-  border-top: 3px solid var(--fs-acento);
   border-radius: var(--fs-radio-lg);
-  box-shadow: 0 12px 32px rgba(28, 23, 19, 0.1);
+  box-shadow: var(--fs-sombra-md);
 
   label {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--fs-texto-tenue);
     margin-top: var(--fs-espacio-2);
   }
 
   input[pInputText] {
     width: 100%;
-    padding: var(--fs-espacio-2) var(--fs-espacio-3);
-    border: 1px solid var(--fs-borde);
-    border-radius: var(--fs-radio-sm);
+    padding: var(--fs-espacio-3);
+    border: 1px solid var(--fs-campo-borde);
+    border-radius: var(--fs-radio-md);
     font-family: var(--fs-fuente-ui);
-    font-size: 14px;
-
-    &:focus {
-      outline: none;
-      border-color: var(--fs-acento);
-      box-shadow: 0 0 0 3px var(--fs-acento-suave);
-    }
+    font-size: 15px;
   }
 }
 
 .auth-marca {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--fs-acento);
+  color: var(--fs-texto-tenue);
 }
 
 .auth-titulo {
   font-family: var(--fs-fuente-display);
-  font-style: italic;
-  font-weight: 600;
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
   font-size: 26px;
-  line-height: 1.15;
+  line-height: 1.1;
   margin: var(--fs-espacio-1) 0 0;
   text-wrap: balance;
 }
@@ -206,42 +667,38 @@ h3 {
 .auth-subtitulo {
   margin: 0 0 var(--fs-espacio-4);
   color: var(--fs-texto-tenue);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .auth-enlace {
   align-self: flex-end;
   margin-top: var(--fs-espacio-1);
-  font-size: 12px;
-  color: var(--fs-acento);
-  text-decoration: none;
-
-  &:hover {
-    color: var(--fs-acento-hover);
-    text-decoration: underline;
-  }
+  font-size: 14px;
+  color: var(--fs-texto);
+  text-decoration: underline;
 }
 
 .auth-enlace--bloque {
   align-self: stretch;
   text-align: center;
-  padding: var(--fs-espacio-2) var(--fs-espacio-3);
-  border: 1px solid var(--fs-acento);
-  border-radius: var(--fs-radio-sm);
+  padding: var(--fs-espacio-3);
+  border: 1px solid var(--fs-tinta);
+  border-radius: var(--fs-radio-md);
+  text-decoration: none;
 }
 
 .auth-error {
   color: var(--fs-error);
-  font-size: 13px;
+  font-size: 14px;
   margin: 0;
 }
 
 .auth-exito {
   color: var(--fs-exito);
   background: var(--fs-exito-suave);
-  border-radius: var(--fs-radio-sm);
-  padding: var(--fs-espacio-2) var(--fs-espacio-3);
-  font-size: 13px;
+  border-radius: var(--fs-radio-md);
+  padding: var(--fs-espacio-3);
+  font-size: 14px;
   margin: 0;
 }
 
@@ -250,50 +707,7 @@ h3 {
   width: 100%;
 }
 
-.auth-tarjeta ::ng-deep .p-password input:focus {
-  border-color: var(--fs-acento);
-  box-shadow: 0 0 0 3px var(--fs-acento-suave);
-}
-
-.auth-tarjeta ::ng-deep .p-button {
-  margin-top: var(--fs-espacio-2);
-  background: var(--fs-acento);
-  border-color: var(--fs-acento);
-
-  &:hover {
-    background: var(--fs-acento-hover);
-    border-color: var(--fs-acento-hover);
-  }
-}
-
-// Selector de una sola opción en pills (talla/color, tipo de entrega,
-// método de pago, categorías del catálogo público) -- un solo lugar para
-// no repetir el mismo CSS en cada pantalla de la tienda.
-.fs-pill-fila {
-  display: flex;
-  gap: var(--fs-espacio-2);
-  flex-wrap: wrap;
-}
-
-.fs-pill {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  padding: var(--fs-espacio-2) var(--fs-espacio-4);
-  border-radius: 999px;
-  border: 1px solid var(--fs-borde);
-  background: var(--fs-superficie);
-  color: var(--fs-texto-tenue);
-  cursor: pointer;
-
-  &.activa {
-    background: var(--fs-texto);
-    border-color: var(--fs-texto);
-    color: var(--fs-fondo);
-  }
-}
-
-// Comprobante de venta imprimible (caja, P5.4): al imprimir, solo se ve
+// Comprobante de venta imprimible (caja): al imprimir, solo se ve
 // #area-imprimible -- el resto de la página (sidebar, diálogo, toasts) se
 // oculta. Va acá y no en el scss del componente porque tiene que alcanzar a
 // todo el documento, no solo al subárbol del componente.

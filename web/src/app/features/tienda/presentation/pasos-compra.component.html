@@ -1,0 +1,25 @@
+<ol class="pasos" aria-label="Pasos de la compra">
+  @for (paso of pasos; track paso; let i = $index; let ultimo = $last) {
+    <li
+      class="paso"
+      [class.paso--hecho]="i < actual()"
+      [class.paso--vigente]="i === actual()"
+      [attr.aria-current]="i === actual() ? 'step' : null"
+    >
+      <span class="paso__circulo">
+        @if (i < actual()) {
+          <fs-icono nombre="check" [tam]="24" [trazo]="2" />
+        } @else {
+          <span class="fs-num">{{ i + 1 }}</span>
+        }
+      </span>
+      <span class="paso__titulo">{{ paso }}</span>
+      @if (i < actual()) {
+        <span class="solo-lector">completado</span>
+      }
+      @if (!ultimo) {
+        <span class="paso__linea" aria-hidden="true"></span>
+      }
+    </li>
+  }
+</ol>

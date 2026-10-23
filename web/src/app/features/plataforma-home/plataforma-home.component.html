@@ -4,83 +4,250 @@
     [class.tarjeta--volver]="volver"
     [routerLink]="['/t', tienda.codigo]"
     [style.--tarjeta-acento]="tienda.acento"
-    [style.--tarjeta-texto]="tienda.textoSobreAcento"
   >
     <span class="tarjeta__logo" aria-hidden="true">
-      @if (mostrarLogo(tienda)) {
-        <img [src]="tienda.logo" alt="" loading="lazy" (error)="logoFallo(tienda.codigo)" />
-      } @else {
-        <span class="tarjeta__inicial">{{ tienda.inicial }}</span>
-      }
+      <fs-marca
+        [nombre]="tienda.nombre"
+        [logoUrl]="tienda.logo"
+        variante="claro"
+        [soloMonograma]="true"
+        [style.--marca-color]="tienda.acento"
+      />
     </span>
     <span class="tarjeta__texto">
       @if (volver) {
         <span class="tarjeta__eyebrow">Volver a</span>
       }
       <span class="tarjeta__nombre">{{ tienda.nombre }}</span>
+      <span class="tarjeta__ruta">/t/{{ tienda.codigo }}</span>
     </span>
+    <fs-icono class="tarjeta__flecha" nombre="flecha-derecha" [tam]="28" />
   </a>
 </ng-template>
 
-<header class="home-cabecera">
-  <span class="home-marca">FashionStore</span>
-  <a class="home-acceso" [routerLink]="rutaAccesoPersonal">Acceso del personal</a>
-</header>
+<div class="home-hero fs-zona-oscura">
+  <header class="home-cabecera">
+    <a class="home-logo" routerLink="/" aria-label="FashionStore, inicio">
+      <fs-marca nombre="FashionStore" variante="oscuro" />
+    </a>
+    <nav class="home-nav" aria-label="Principal">
+      <a href="#servicios">Servicios</a>
+      <a href="#planes">Planes</a>
+      <a href="#tiendas">Tiendas</a>
+    </nav>
+    <a class="home-acceso" [routerLink]="rutaAccesoPersonal">
+      <fs-icono nombre="candado" [tam]="24" />
+      Acceso del personal
+    </a>
+  </header>
 
-<main class="home">
-  <h1 class="home-titulo">Elegí tu tienda</h1>
+  <section class="home-presentacion">
+    <div class="home-presentacion__texto">
+      <span class="home-eyebrow">Plataforma para tiendas de ropa</span>
+      <h1 class="home-titular">Tu tienda,<br />tu inventario<br /><em>y tus ventas</em><br />en un solo lugar</h1>
+      <p class="home-lead">
+        Cada empresa tiene su tienda en línea, su caja y su stock por sucursal. Tus clientes se prueban las prendas con
+        IA desde la app.
+      </p>
+      <div class="home-acciones">
+        <a class="fs-btn fs-btn--acento" href="#tiendas">
+          Ver tiendas activas
+          <fs-icono nombre="flecha-derecha" [tam]="24" />
+        </a>
+        <a class="fs-btn fs-btn--contorno" href="#servicios">Conocer los servicios</a>
+      </div>
+    </div>
 
-  <p-iconfield class="home-buscador">
-    <p-inputicon class="pi pi-search" />
-    <input
-      pInputText
-      type="search"
-      class="home-buscador__input"
-      placeholder="Buscá una tienda por nombre"
-      aria-label="Buscar tienda por nombre"
-      autocomplete="off"
-      (input)="onBuscar($any($event.target).value)"
-    />
-  </p-iconfield>
+    <div
+      class="home-vista"
+      role="img"
+      aria-label="Vista previa ilustrativa del panel de una empresa, con datos de ejemplo"
+    >
+      <div class="home-vista__cabecera">
+        <div class="home-vista__empresa">
+          <fs-marca nombre="Tu empresa" variante="oscuro" tam="sm" [soloMonograma]="true" />
+          <div>
+            <div class="home-vista__nombre">Tu empresa</div>
+            <div class="home-vista__sub">Vista previa del panel · datos de ejemplo</div>
+          </div>
+        </div>
+        <span class="fs-chip home-vista__estado">Activa</span>
+      </div>
+      <div class="home-vista__cifras">
+        <div class="home-vista__cifra">
+          <div class="home-vista__etiqueta">Ventas de hoy</div>
+          <div class="home-vista__valor fs-num">Bs 3.450</div>
+        </div>
+        <div class="home-vista__cifra">
+          <div class="home-vista__etiqueta">Reservas pendientes</div>
+          <div class="home-vista__valor fs-num">14</div>
+        </div>
+      </div>
+      <svg class="home-vista__grafico" viewBox="0 0 420 120" width="100%" aria-hidden="true" focusable="false">
+        <line x1="0" y1="100" x2="420" y2="100" stroke="currentColor" opacity="0.25" />
+        <g fill="currentColor">
+          <rect x="12" y="62" width="38" height="38" rx="1" opacity="0.55" />
+          <rect x="72" y="46" width="38" height="54" rx="1" opacity="0.55" />
+          <rect x="132" y="54" width="38" height="46" rx="1" opacity="0.55" />
+          <rect x="192" y="30" width="38" height="70" rx="1" opacity="0.55" />
+          <rect x="252" y="14" width="38" height="86" rx="1" />
+          <rect x="312" y="4" width="38" height="96" rx="1" />
+          <rect x="372" y="48" width="38" height="52" rx="1" opacity="0.55" />
+        </g>
+      </svg>
+      <div class="home-vista__filas">
+        <div class="home-vista__fila"><span>Camisa Oxford · Celeste · M</span><span>2 u.</span></div>
+        <div class="home-vista__fila"><span>Chamarra de lana · Carbón · L</span><span>1 u.</span></div>
+      </div>
+    </div>
+  </section>
 
-  @if (ultima(); as ultimaTienda) {
-    <section class="home-volver" aria-label="Tu última tienda">
-      <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: ultimaTienda, volver: true }" />
-    </section>
-  }
+  <div class="home-confianza">
+    <ul class="home-confianza__lista">
+      @for (beneficio of confianza; track beneficio.titulo) {
+        <li class="home-confianza__item">
+          <fs-icono [nombre]="beneficio.icono" [tam]="40" />
+          <div>
+            <div class="home-confianza__titulo">{{ beneficio.titulo }}</div>
+            <div class="home-confianza__texto">{{ beneficio.texto }}</div>
+          </div>
+        </li>
+      }
+    </ul>
+  </div>
+</div>
 
-  @if (cargando()) {
-    <div class="home-grilla" aria-busy="true" aria-label="Cargando tiendas">
-      @for (n of esqueletos; track n) {
-        <div class="fs-card tarjeta tarjeta--esqueleto">
-          <span class="tarjeta__logo tarjeta__logo--esqueleto"></span>
-          <span class="tarjeta__linea"></span>
+<section id="servicios" class="home-seccion">
+  <div class="home-seccion__cabecera">
+    <span class="fs-eyebrow">Servicios</span>
+    <h2 class="home-h2">Todo lo que una tienda de ropa necesita</h2>
+  </div>
+  <div class="home-servicios">
+    @for (servicio of servicios; track servicio.titulo) {
+      <article class="home-servicio">
+        <span class="home-servicio__icono"><fs-icono [nombre]="servicio.icono" [tam]="32" /></span>
+        <h3>{{ servicio.titulo }}</h3>
+        <p>{{ servicio.texto }}</p>
+      </article>
+    }
+  </div>
+  <p class="fs-caption home-nota">Próximamente: analítica con aprendizaje automático y trabajo sin conexión.</p>
+</section>
+
+<section class="home-banda">
+  <div class="home-banda__interior">
+    <div class="home-banda__titulo">
+      <span class="fs-eyebrow home-eyebrow--acento">Cómo funciona</span>
+      <h2 class="home-h2">De cero a vender en tres pasos</h2>
+    </div>
+    <ol class="home-pasos">
+      @for (paso of pasos; track paso.numero) {
+        <li class="home-paso">
+          <span class="home-paso__numero">{{ paso.numero }}</span>
+          <span class="home-paso__titulo">{{ paso.titulo }}</span>
+          <span class="home-paso__texto">{{ paso.texto }}</span>
+        </li>
+      }
+    </ol>
+  </div>
+</section>
+
+<section id="planes" class="home-seccion">
+  <div class="home-seccion__cabecera">
+    <span class="fs-eyebrow">Planes</span>
+    <h2 class="home-h2">Crece a tu ritmo</h2>
+  </div>
+  <div class="home-planes">
+    @for (plan of planes; track plan.nombre) {
+      <article class="home-plan" [class.home-plan--oscuro]="plan.oscuro">
+        <h3 class="home-plan__nombre">{{ plan.nombre }}</h3>
+        <ul class="home-plan__items">
+          @for (item of plan.items; track item) {
+            <li>
+              <fs-icono nombre="check" [tam]="26" />
+              {{ item }}
+            </li>
+          }
+        </ul>
+      </article>
+    }
+  </div>
+</section>
+
+<section id="tiendas" class="home-tiendas">
+  <div class="home-tiendas__interior">
+    <div class="home-seccion__cabecera">
+      <span class="fs-eyebrow">Tiendas activas</span>
+      <h2 class="home-h2">Visita una tienda</h2>
+    </div>
+
+    <span class="fs-campo home-buscador">
+      <fs-icono class="fs-campo__icono" nombre="busqueda" [tam]="24" />
+      <input
+        type="search"
+        class="fs-input fs-input--icono"
+        placeholder="Busca una tienda por nombre"
+        aria-label="Buscar tienda por nombre"
+        autocomplete="off"
+        (input)="onBuscar($any($event.target).value)"
+      />
+    </span>
+
+    @if (ultima(); as ultimaTienda) {
+      <section class="home-volver" aria-label="Tu última tienda">
+        <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: ultimaTienda, volver: true }" />
+      </section>
+    }
+
+    @if (cargando()) {
+      <div class="home-grilla" aria-busy="true" aria-label="Cargando tiendas">
+        @for (n of esqueletos; track n) {
+          <div class="fs-card tarjeta tarjeta--esqueleto">
+            <span class="tarjeta__logo tarjeta__logo--esqueleto"></span>
+            <span class="tarjeta__linea"></span>
+          </div>
+        }
+      </div>
+    } @else if (error()) {
+      <div class="home-estado" role="alert">
+        <p class="home-estado__titulo">No pudimos cargar las tiendas</p>
+        <p class="fs-caption">Revisa tu conexión e inténtalo de nuevo.</p>
+        <button type="button" class="fs-btn fs-btn--secundario home-boton" (click)="cargar()">Reintentar</button>
+      </div>
+    } @else if (!tiendas().length) {
+      <p class="fs-caption home-estado" role="status">No encontramos tiendas con ese nombre.</p>
+    } @else {
+      <div class="home-grilla">
+        @for (tienda of tiendas(); track tienda.codigo) {
+          <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: tienda, volver: false }" />
+        }
+      </div>
+
+      @if (hayMas()) {
+        <div class="home-mas">
+          <button type="button" class="fs-btn fs-btn--secundario home-boton" [disabled]="cargandoMas()" (click)="verMas()">
+            {{ cargandoMas() ? 'Cargando…' : 'Ver más' }}
+          </button>
         </div>
       }
-    </div>
-  } @else if (error()) {
-    <div class="home-estado" role="alert">
-      <p class="home-estado__titulo">No pudimos cargar las tiendas</p>
-      <p class="fs-caption">Revisá tu conexión e intentá de nuevo.</p>
-      <button type="button" class="home-boton" (click)="cargar()">Reintentar</button>
-    </div>
-  } @else if (!tiendas().length) {
-    <p class="fs-caption home-estado" role="status">No encontramos tiendas con ese nombre.</p>
-  } @else {
-    <div class="home-grilla">
-      @for (tienda of tiendas(); track tienda.codigo) {
-        <ng-container *ngTemplateOutlet="tarjetaTienda; context: { $implicit: tienda, volver: false }" />
-      }
-    </div>
-
-    @if (hayMas()) {
-      <div class="home-mas">
-        <button type="button" class="home-boton" [disabled]="cargandoMas()" (click)="verMas()">
-          {{ cargandoMas() ? 'Cargando…' : 'Ver más' }}
-        </button>
-      </div>
     }
-  }
-</main>
+  </div>
+</section>
 
-<footer class="home-pie">Con la tecnología de FashionStore</footer>
+<section class="home-cta">
+  <div class="home-cta__interior">
+    <div class="home-cta__texto">
+      <h2 class="home-h2 home-cta__titulo">¿Tu empresa ya está en <em>FashionStore?</em></h2>
+      <p class="home-cta__nota">
+        Entra al panel con el acceso del personal. El alta de una empresa nueva la hace el administrador de la
+        plataforma.
+      </p>
+    </div>
+    <a class="fs-btn fs-btn--primario home-cta__enlace" [routerLink]="rutaAccesoPersonal">
+      Ir al acceso del personal
+      <fs-icono nombre="flecha-derecha" [tam]="24" />
+    </a>
+  </div>
+</section>
+
+<footer class="home-pie">FashionStore · Plataforma para tiendas de ropa</footer>

@@ -1,48 +1,63 @@
-<h1>Assets del probador</h1>
-<p class="ayuda">
-  Subí la imagen de cada prenda (PNG con fondo transparente) y validala para que el cliente pueda probársela.
-  Solo las variantes con un asset validado aparecen en el probador de la app. El servidor exige un PNG real con canal
-  alfa (transparencia), de al menos 512 px de lado y de hasta 3 MB.
-</p>
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Catálogo</span>
+    <h1>Assets del probador</h1>
+    <p>
+      Sube la imagen de cada prenda (PNG con fondo transparente) y valídala para que el cliente pueda probársela. Solo
+      las variantes con un asset validado aparecen en el probador de la app. El servidor exige un PNG real con canal
+      alfa (transparencia), de al menos 512 px de lado y de hasta 3 MB.
+    </p>
+  </div>
+</div>
 
-<section class="carga">
-  <label for="variante">ID de variante</label>
-  <input id="variante" type="number" pInputText [ngModel]="varianteId()" (ngModelChange)="varianteId.set($event)" />
-  <p-button label="Cargar assets" size="small" (onClick)="cargarAssets()" [disabled]="varianteId() === null" />
-</section>
+<div class="columnas">
+  <section class="panel tarjeta" aria-labelledby="titulo-cargar">
+    <h2 id="titulo-cargar">Assets de una variante</h2>
+    <div class="campo">
+      <label for="variante">ID de variante</label>
+      <input id="variante" type="number" pInputText [ngModel]="varianteId()" (ngModelChange)="varianteId.set($event)" />
+    </div>
+    <p-button label="Cargar assets" icon="pi pi-search" (onClick)="cargarAssets()" [disabled]="varianteId() === null" />
 
-@if (assets().length > 0) {
-  <section class="lista-assets">
-    @for (asset of assets(); track asset.id) {
-      <button
-        type="button"
-        class="asset-chip"
-        [class.activo]="assetSeleccionado()?.id === asset.id"
-        (click)="seleccionarAsset(asset)"
-      >
-        {{ etiquetaTipo(asset.tipo) }}
-        <p-tag
-          [value]="asset.estado"
-          [severity]="asset.estado === 'validado' ? 'success' : asset.estado === 'rechazado' ? 'danger' : 'warn'"
-        />
-      </button>
+    @if (assets().length > 0) {
+      <div class="fs-pill-fila lista-assets" role="group" aria-label="Assets de la variante">
+        @for (asset of assets(); track asset.id) {
+          <button
+            type="button"
+            class="fs-pill asset-chip"
+            [class.activa]="assetSeleccionado()?.id === asset.id"
+            [attr.aria-pressed]="assetSeleccionado()?.id === asset.id"
+            (click)="seleccionarAsset(asset)"
+          >
+            {{ etiquetaTipo(asset.tipo) }}
+            <span [class]="'fs-chip ' + claseEstado(asset.estado)">{{ asset.estado }}</span>
+          </button>
+        }
+      </div>
     }
   </section>
-}
 
-<section class="subir">
-  <label for="tipo">Tipo</label>
-  <p-select
-    inputId="tipo"
-    [options]="tipos"
-    optionLabel="label"
-    optionValue="value"
-    [ngModel]="tipoNuevo()"
-    (ngModelChange)="tipoNuevo.set($event)"
-  />
-  <input type="file" accept="image/png" (change)="onArchivoSeleccionado($event)" />
-  <p-button label="Subir" size="small" (onClick)="subirAsset()" [disabled]="varianteId() === null" />
-</section>
+  <section class="panel tarjeta" aria-labelledby="titulo-subir">
+    <h2 id="titulo-subir">Subir un asset nuevo</h2>
+    <div class="campo">
+      <label for="tipo">Tipo</label>
+      <p-select
+        inputId="tipo"
+        [options]="tipos"
+        optionLabel="label"
+        optionValue="value"
+        [ngModel]="tipoNuevo()"
+        (ngModelChange)="tipoNuevo.set($event)"
+      />
+    </div>
+    <label class="subir">
+      <fs-icono nombre="subir" [tam]="40" />
+      <span>{{ archivoNuevo ? archivoNuevo.name : 'Elegir imagen PNG' }}</span>
+      <input type="file" accept="image/png" class="sr-only" (change)="onArchivoSeleccionado($event)" />
+    </label>
+    <p-button label="Subir" icon="pi pi-upload" (onClick)="subirAsset()" [disabled]="varianteId() === null" />
+  </section>
+</div>
 
 @if (assetSeleccionado(); as asset) {
   <section class="vista-previa-fila">
@@ -50,15 +65,23 @@
       <img [src]="asset.url" alt="Asset del probador" />
     </div>
 
-    <aside class="panel">
-      <p><strong>Tipo:</strong> {{ etiquetaTipo(asset.tipo) }}</p>
-      <p><strong>Estado:</strong> {{ asset.estado }}</p>
-      @if (asset.ancho_px && asset.alto_px) {
-        <p><strong>Tamaño:</strong> {{ asset.ancho_px }} × {{ asset.alto_px }} px</p>
-      }
+    <aside class="panel tarjeta panel-detalle" aria-label="Detalle del asset">
+      <h2>Detalle</h2>
+      <dl class="datos">
+        <dt>Tipo</dt>
+        <dd>{{ etiquetaTipo(asset.tipo) }}</dd>
+        <dt>Estado</dt>
+        <dd>
+          <span [class]="'fs-chip ' + claseEstado(asset.estado)">{{ asset.estado }}</span>
+        </dd>
+        @if (asset.ancho_px && asset.alto_px) {
+          <dt>Tamaño</dt>
+          <dd class="fs-num">{{ asset.ancho_px }} × {{ asset.alto_px }} px</dd>
+        }
+      </dl>
       <p-button
         label="Validar"
-        size="small"
+        icon="pi pi-check"
         severity="success"
         [disabled]="asset.estado !== 'pendiente'"
         (onClick)="validarAsset()"

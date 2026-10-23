@@ -1,4 +1,11 @@
-<h1>Productos</h1>
+<p-confirmdialog />
+
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Catálogo</span>
+    <h1>Productos</h1>
+  </div>
+</div>
 
 <app-tabla-generica endpoint="/productos" [columnas]="columnas" (crear)="abrirCrear()" (editar)="abrirEditar($event)" />
 
@@ -6,186 +13,368 @@
   [header]="editando() ? 'Editar producto' : 'Nuevo producto'"
   [(visible)]="dialogoVisible"
   [modal]="true"
-  [style]="{ width: '640px' }"
+  [style]="{ width: '980px', maxWidth: '96vw' }"
 >
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
-    <label for="codigo">Código</label>
-    <input id="codigo" pInputText formControlName="codigo" />
+  <div class="producto">
+    <div class="producto__principal">
+      <form [formGroup]="formulario" (ngSubmit)="guardar()" class="producto__form">
+        <!-- ============ Datos del producto ============ -->
+        <section class="seccion" aria-labelledby="titulo-datos">
+          <h3 id="titulo-datos" class="seccion__titulo">Datos del producto</h3>
 
-    <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
-
-    <label for="descripcion">Descripción</label>
-    <input id="descripcion" pInputText formControlName="descripcion" />
-
-    <label for="categoria">Categoría</label>
-    <p-select
-      inputId="categoria"
-      formControlName="categoria_id"
-      [options]="categorias()"
-      optionLabel="nombre"
-      optionValue="id"
-      placeholder="Seleccioná una categoría"
-    />
-
-    <label for="material">Material (opcional)</label>
-    <p-select
-      inputId="material"
-      formControlName="material_id"
-      [options]="materiales()"
-      optionLabel="nombre"
-      optionValue="id"
-      [showClear]="true"
-      placeholder="Ninguno"
-    />
-
-    <label for="temporada">Temporada (opcional)</label>
-    <p-select
-      inputId="temporada"
-      formControlName="temporada_id"
-      [options]="temporadas()"
-      optionLabel="nombre"
-      optionValue="id"
-      [showClear]="true"
-      placeholder="Ninguna"
-    />
-
-    <label for="coleccion">Colección (opcional)</label>
-    <p-select
-      inputId="coleccion"
-      formControlName="coleccion_id"
-      [options]="colecciones()"
-      optionLabel="nombre"
-      optionValue="id"
-      [showClear]="true"
-      placeholder="Ninguna"
-    />
-
-    <label for="genero">Género</label>
-    <p-select inputId="genero" formControlName="genero" [options]="opcionesGenero" optionLabel="label" optionValue="value" />
-
-    <label for="precio_base">Precio base</label>
-    <p-inputnumber inputId="precio_base" formControlName="precio_base" mode="currency" currency="BOB" locale="es-BO" />
-
-    <div class="formulario__checkbox">
-      <p-checkbox inputId="admite_probador" formControlName="admite_probador" [binary]="true" />
-      <label for="admite_probador">Admite probador virtual</label>
-    </div>
-
-    @if (!editando()) {
-      <label for="tallas">Tallas</label>
-      <p-select
-        inputId="tallas"
-        formControlName="tallas_ids"
-        [options]="tallas()"
-        optionLabel="codigo"
-        optionValue="id"
-        [multiple]="true"
-        placeholder="Elegí una o más tallas"
-      />
-
-      <label for="colores">Colores</label>
-      <p-select
-        inputId="colores"
-        formControlName="colores_ids"
-        [options]="colores()"
-        optionLabel="nombre"
-        optionValue="id"
-        [multiple]="true"
-        placeholder="Elegí uno o más colores"
-      />
-      <p class="fs-caption">Se crea una variante por cada combinación de talla y color elegidas.</p>
-    }
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
-  </form>
-
-  @if (editando()) {
-    <div class="seccion-anidada">
-      <h3>Variantes</h3>
-      @if (variantes().length === 0) {
-        <p class="fs-caption">Sin variantes todavía.</p>
-      } @else {
-        <table class="tabla-variantes">
-          <thead>
-            <tr>
-              <th>Talla</th>
-              <th>Color</th>
-              <th>SKU</th>
-              <th>Precio (vacío = precio base)</th>
-              <th>Activo</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (variante of variantes(); track variante.id) {
-              <tr>
-                <td>{{ tallaCodigo(variante.talla_id) }}</td>
-                <td>{{ colorNombre(variante.color_id) }}</td>
-                <td>{{ variante.sku }}</td>
-                <td>
-                  <p-inputnumber
-                    [ngModel]="variante.precio"
-                    [ngModelOptions]="{ standalone: true }"
-                    (ngModelChange)="actualizarPrecioVariante(variante, $event)"
-                    mode="currency"
-                    currency="BOB"
-                    locale="es-BO"
-                    [min]="0"
-                  />
-                </td>
-                <td>
-                  <p-checkbox
-                    [ngModel]="variante.activo"
-                    [ngModelOptions]="{ standalone: true }"
-                    (ngModelChange)="alternarActivoVariante(variante, $event)"
-                    [binary]="true"
-                  />
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      }
-      <p-button label="Agregar tallas/colores" [text]="true" (onClick)="abrirDialogoVariantes()" />
-    </div>
-
-    <div class="seccion-anidada">
-      <h3>Imágenes</h3>
-      <div class="grilla-imagenes">
-        @for (imagen of imagenes(); track imagen.id) {
-          <div class="tarjeta-imagen">
-            <img [src]="imagen.url" alt="" />
-            @if (imagen.es_principal) {
-              <span class="badge-principal">Principal</span>
-            }
-            <div class="acciones-imagen">
-              @if (!imagen.es_principal) {
-                <button type="button" (click)="marcarPrincipal(imagen)">Marcar principal</button>
+          <div class="fila fila--codigo">
+            <div class="campo">
+              <label for="codigo">Código</label>
+              <input id="codigo" pInputText formControlName="codigo" />
+              @if (invalido('codigo')) {
+                <p class="fs-error-texto"><fs-icono nombre="alerta" [tam]="20" />Ingresa el código.</p>
               }
-              <button type="button" class="eliminar" (click)="eliminarImagen(imagen)">Eliminar</button>
+            </div>
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input id="nombre" pInputText formControlName="nombre" />
+              @if (invalido('nombre')) {
+                <p class="fs-error-texto"><fs-icono nombre="alerta" [tam]="20" />Ingresa el nombre.</p>
+              }
             </div>
           </div>
+
+          <div class="campo">
+            <label for="descripcion">Descripción</label>
+            <input id="descripcion" pInputText formControlName="descripcion" />
+          </div>
+
+          <div class="fila fila--tres">
+            <div class="campo">
+              <label for="categoria">Categoría</label>
+              <p-select
+                inputId="categoria"
+                formControlName="categoria_id"
+                [options]="categorias()"
+                optionLabel="nombre"
+                optionValue="id"
+                placeholder="Selecciona una categoría"
+              />
+              @if (invalido('categoria_id')) {
+                <p class="fs-error-texto"><fs-icono nombre="alerta" [tam]="20" />Elige una categoría.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="genero">Género</label>
+              <p-select
+                inputId="genero"
+                formControlName="genero"
+                [options]="opcionesGenero"
+                optionLabel="label"
+                optionValue="value"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="precio_base">Precio base</label>
+              <p-inputnumber inputId="precio_base" formControlName="precio_base" mode="currency" currency="BOB" locale="es-BO" />
+            </div>
+
+            <div class="campo">
+              <label for="material">Material (opcional)</label>
+              <p-select
+                inputId="material"
+                formControlName="material_id"
+                [options]="materiales()"
+                optionLabel="nombre"
+                optionValue="id"
+                [showClear]="true"
+                placeholder="Ninguno"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="temporada">Temporada (opcional)</label>
+              <p-select
+                inputId="temporada"
+                formControlName="temporada_id"
+                [options]="temporadas()"
+                optionLabel="nombre"
+                optionValue="id"
+                [showClear]="true"
+                placeholder="Ninguna"
+              />
+            </div>
+
+            <div class="campo">
+              <label for="coleccion">Colección (opcional)</label>
+              <p-select
+                inputId="coleccion"
+                formControlName="coleccion_id"
+                [options]="colecciones()"
+                optionLabel="nombre"
+                optionValue="id"
+                [showClear]="true"
+                placeholder="Ninguna"
+              />
+            </div>
+          </div>
+
+          <div class="probador">
+            <label class="probador__texto" for="admite_probador">
+              <fs-icono nombre="destellos" [tam]="30" />
+              Admite probador virtual
+            </label>
+            <p-toggleswitch class="interruptor" inputId="admite_probador" formControlName="admite_probador" />
+          </div>
+        </section>
+
+        <!-- ============ Tallas y colores (solo al crear) ============ -->
+        @if (!editando()) {
+          <section class="seccion" aria-labelledby="titulo-tallas">
+            <h3 id="titulo-tallas" class="seccion__titulo">Tallas y colores</h3>
+
+            <div class="grupo-chips">
+              <span class="grupo-chips__titulo" id="etiqueta-tallas">Tallas</span>
+              <div class="fs-pill-fila" role="group" aria-labelledby="etiqueta-tallas">
+                @for (talla of tallas(); track talla.id) {
+                  <button
+                    type="button"
+                    class="fs-pill"
+                    [class.activa]="tieneId(formulario.controls.tallas_ids, talla.id)"
+                    [attr.aria-pressed]="tieneId(formulario.controls.tallas_ids, talla.id)"
+                    (click)="alternarId(formulario.controls.tallas_ids, talla.id)"
+                  >
+                    {{ talla.codigo }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            <div class="grupo-chips">
+              <span class="grupo-chips__titulo" id="etiqueta-colores">Colores</span>
+              <div class="fs-pill-fila" role="group" aria-labelledby="etiqueta-colores">
+                @for (color of colores(); track color.id) {
+                  <button
+                    type="button"
+                    class="fs-pill pill-color"
+                    [class.activa]="tieneId(formulario.controls.colores_ids, color.id)"
+                    [attr.aria-pressed]="tieneId(formulario.controls.colores_ids, color.id)"
+                    (click)="alternarId(formulario.controls.colores_ids, color.id)"
+                  >
+                    <span class="muestra" [style.background]="color.codigo_hex || 'transparent'" aria-hidden="true"></span>
+                    {{ color.nombre }}
+                  </button>
+                }
+              </div>
+            </div>
+            @if (sinElegir(formulario.controls.tallas_ids) || sinElegir(formulario.controls.colores_ids)) {
+              <p class="fs-error-texto" role="alert">
+                <fs-icono nombre="alerta" [tam]="20" />
+                Elige al menos una talla y un color.
+              </p>
+            }
+            <p class="fs-caption">Se crea una variante por cada combinación de talla y color elegidas.</p>
+          </section>
+        }
+
+        <div class="dialogo-acciones">
+          <p-button label="Cancelar" [outlined]="true" (onClick)="dialogoVisible.set(false)" />
+          <p-button type="submit" label="Guardar producto" icon="pi pi-check" />
+        </div>
+      </form>
+
+      @if (editando()) {
+        <!-- ============ Variantes ============ -->
+        <section class="seccion seccion--tabla" aria-labelledby="titulo-variantes">
+          <div class="seccion__cabecera">
+            <h3 id="titulo-variantes" class="seccion__titulo">Variantes</h3>
+            <button type="button" class="btn-texto" (click)="abrirDialogoVariantes()">
+              <fs-icono nombre="mas" [tam]="24" />
+              Agregar tallas/colores
+            </button>
+          </div>
+          @if (variantes().length === 0) {
+            <p class="vacio">Sin variantes todavía.</p>
+          } @else {
+            <div class="tabla-scroll">
+              <table class="tabla-variantes">
+                <thead>
+                  <tr>
+                    <th>Talla</th>
+                    <th>Color</th>
+                    <th>SKU</th>
+                    <th class="num">Precio</th>
+                    <th class="num">Activo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (variante of variantes(); track variante.id) {
+                    <tr>
+                      <td class="fuerte">{{ tallaCodigo(variante.talla_id) }}</td>
+                      <td class="tenue">{{ colorNombre(variante.color_id) }}</td>
+                      <td class="tenue">{{ variante.sku }}</td>
+                      <td class="num">
+                        <p-inputnumber
+                          [ngModel]="variante.precio"
+                          [ngModelOptions]="{ standalone: true }"
+                          (ngModelChange)="actualizarPrecioVariante(variante, $event)"
+                          [placeholder]="'Base: ' + (formulario.controls.precio_base.value | number: '1.2-2')"
+                          ariaLabel="Precio de la variante"
+                          mode="currency"
+                          currency="BOB"
+                          locale="es-BO"
+                          [min]="0"
+                        />
+                      </td>
+                      <td class="num">
+                        <p-toggleswitch
+                          class="interruptor"
+                          [ngModel]="variante.activo"
+                          [ngModelOptions]="{ standalone: true }"
+                          (ngModelChange)="alternarActivoVariante(variante, $event)"
+                          [ariaLabel]="'Variante ' + tallaCodigo(variante.talla_id) + ' ' + colorNombre(variante.color_id) + ' activa'"
+                        />
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="fs-caption nota">Si dejas el precio vacío, la variante usa el precio base.</p>
+          }
+        </section>
+      }
+    </div>
+
+    @if (editando()) {
+      <!-- ============ Imágenes ============ -->
+      <section class="seccion producto__lateral" aria-labelledby="titulo-imagenes">
+        <h3 id="titulo-imagenes" class="seccion__titulo">Imágenes</h3>
+
+        <div class="grilla-imagenes">
+          @for (imagen of imagenes(); track imagen.id) {
+            <div class="tarjeta-imagen" [class.tarjeta-imagen--principal]="imagen.es_principal">
+              <div class="tarjeta-imagen__foto">
+                <img [src]="imagen.url" [alt]="'Imagen de ' + (editando()?.nombre ?? 'producto')" />
+                @if (imagen.es_principal) {
+                  <span class="badge-principal">Principal</span>
+                }
+              </div>
+              <div class="acciones-imagen">
+                @if (!imagen.es_principal) {
+                  <button
+                    type="button"
+                    class="btn-icono btn-icono--contorno"
+                    aria-label="Marcar como principal"
+                    (click)="marcarPrincipal(imagen)"
+                  >
+                    <fs-icono nombre="estrella" [tam]="24" />
+                  </button>
+                } @else {
+                  <span></span>
+                }
+                <button
+                  type="button"
+                  class="btn-icono btn-icono--contorno btn-icono--peligro eliminar"
+                  aria-label="Eliminar imagen"
+                  (click)="eliminarImagen(imagen)"
+                >
+                  <fs-icono nombre="basura" [tam]="24" />
+                </button>
+              </div>
+            </div>
+          } @empty {
+            <p class="vacio sin-imagenes">Sin imágenes todavía.</p>
+          }
+        </div>
+
+        <form [formGroup]="formularioImagen" (ngSubmit)="subirImagen()" class="formulario-imagen">
+          <label class="subir">
+            <fs-icono nombre="subir" [tam]="40" />
+            <span>{{ archivoImagen ? archivoImagen.name : 'Elegir imagen' }}</span>
+            <input type="file" accept="image/*" class="sr-only" (change)="onArchivoSeleccionado($event)" />
+          </label>
+
+          <div class="campo">
+            <label for="color_imagen">Color (opcional, para fotos por color)</label>
+            <p-select
+              inputId="color_imagen"
+              formControlName="color_id"
+              [options]="colores()"
+              optionLabel="nombre"
+              optionValue="id"
+              [showClear]="true"
+              placeholder="Cualquier color"
+            />
+          </div>
+          <div class="probador">
+            <label class="probador__texto" for="es_principal">Marcar como principal</label>
+            <p-toggleswitch class="interruptor" inputId="es_principal" formControlName="es_principal" />
+          </div>
+          <p-button
+            type="submit"
+            label="Subir imagen"
+            icon="pi pi-upload"
+            styleClass="w-full"
+            [loading]="subiendoImagen()"
+            [disabled]="!archivoImagen"
+          />
+        </form>
+      </section>
+    }
+  </div>
+</p-dialog>
+
+<!-- Diálogo: agregar tallas y colores a un producto existente -->
+<p-dialog
+  header="Agregar tallas y colores"
+  [(visible)]="dialogoVariantesVisible"
+  [modal]="true"
+  [style]="{ width: '560px', maxWidth: '96vw' }"
+>
+  <form [formGroup]="formularioVariantes" (ngSubmit)="guardarVariantesNuevas()" class="producto__form">
+    <div class="grupo-chips">
+      <span class="grupo-chips__titulo" id="etiqueta-tallas-nuevas">Tallas</span>
+      <div class="fs-pill-fila" role="group" aria-labelledby="etiqueta-tallas-nuevas">
+        @for (talla of tallas(); track talla.id) {
+          <button
+            type="button"
+            class="fs-pill"
+            [class.activa]="tieneId(formularioVariantes.controls.tallas_ids, talla.id)"
+            [attr.aria-pressed]="tieneId(formularioVariantes.controls.tallas_ids, talla.id)"
+            (click)="alternarId(formularioVariantes.controls.tallas_ids, talla.id)"
+          >
+            {{ talla.codigo }}
+          </button>
         }
       </div>
-
-      <form [formGroup]="formularioImagen" (ngSubmit)="subirImagen()" class="formulario formulario-imagen">
-        <input type="file" accept="image/*" (change)="onArchivoSeleccionado($event)" />
-        <label for="color_imagen">Color (opcional, para fotos por color)</label>
-        <p-select
-          inputId="color_imagen"
-          formControlName="color_id"
-          [options]="colores()"
-          optionLabel="nombre"
-          optionValue="id"
-          [showClear]="true"
-          placeholder="Cualquier color"
-        />
-        <div class="formulario__checkbox">
-          <p-checkbox inputId="es_principal" formControlName="es_principal" [binary]="true" />
-          <label for="es_principal">Marcar como principal</label>
-        </div>
-        <p-button type="submit" label="Subir imagen" [loading]="subiendoImagen()" styleClass="w-full" />
-      </form>
     </div>
-  }
+
+    <div class="grupo-chips">
+      <span class="grupo-chips__titulo" id="etiqueta-colores-nuevos">Colores</span>
+      <div class="fs-pill-fila" role="group" aria-labelledby="etiqueta-colores-nuevos">
+        @for (color of colores(); track color.id) {
+          <button
+            type="button"
+            class="fs-pill pill-color"
+            [class.activa]="tieneId(formularioVariantes.controls.colores_ids, color.id)"
+            [attr.aria-pressed]="tieneId(formularioVariantes.controls.colores_ids, color.id)"
+            (click)="alternarId(formularioVariantes.controls.colores_ids, color.id)"
+          >
+            <span class="muestra" [style.background]="color.codigo_hex || 'transparent'" aria-hidden="true"></span>
+            {{ color.nombre }}
+          </button>
+        }
+      </div>
+    </div>
+    @if (sinElegir(formularioVariantes.controls.tallas_ids) || sinElegir(formularioVariantes.controls.colores_ids)) {
+      <p class="fs-error-texto" role="alert">
+        <fs-icono nombre="alerta" [tam]="20" />
+        Elige al menos una talla y un color.
+      </p>
+    }
+    <p class="fs-caption">Se crea una variante por cada combinación de talla y color elegidas.</p>
+
+    <div class="dialogo-acciones">
+      <p-button label="Cancelar" [outlined]="true" (onClick)="dialogoVariantesVisible.set(false)" />
+      <p-button type="submit" label="Agregar variantes" icon="pi pi-check" />
+    </div>
+  </form>
 </p-dialog>

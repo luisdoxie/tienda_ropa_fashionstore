@@ -1,89 +1,62 @@
-h1 {
-  margin-bottom: var(--fs-espacio-4);
-}
+@use '../../shared/estilos/patron-bo' as *;
 
-h3 {
-  margin: var(--fs-espacio-4) 0 var(--fs-espacio-2);
-  font-size: 14px;
-}
-
-.filtros {
-  display: flex;
-  align-items: center;
-  gap: var(--fs-espacio-2);
-  margin: var(--fs-espacio-4) 0;
-}
-
-.ayuda {
-  color: var(--fs-texto-tenue);
-  font-size: 12px;
-  margin: var(--fs-espacio-2) 0;
-}
-
-.fila-alerta {
-  background: color-mix(in srgb, var(--fs-error) 8%, transparent);
-}
-
-.cantidad-negativa {
-  color: var(--fs-error);
-}
-
-.total-valuacion {
-  text-align: right;
-  font-weight: 600;
-  margin-top: var(--fs-espacio-2);
-}
+@include bo-base;
+@include bo-texto;
+@include bo-filtros;
+@include bo-buscador;
+@include bo-interruptor;
+@include bo-pestanias;
+@include bo-panel;
+@include bo-panel-titulo;
+@include bo-panel-pie;
+@include bo-tabla;
+@include bo-btn-icono;
+@include bo-btn-texto;
+@include bo-formulario;
+@include bo-dialogo-acciones;
+@include bo-tabla-lineas;
 
 .formulario-recepcion {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-2);
-  max-width: 900px;
+  gap: var(--fs-espacio-4);
   margin-bottom: var(--fs-espacio-6);
 }
 
-.formulario-fila {
-  display: flex;
-  gap: var(--fs-espacio-4);
-  flex-wrap: wrap;
-
-  .campo {
-    display: flex;
-    flex-direction: column;
-    gap: var(--fs-espacio-1);
-    flex: 1 1 200px;
-  }
-}
-
-.campo {
+.tarjeta-formulario {
   display: flex;
   flex-direction: column;
-  gap: var(--fs-espacio-1);
+  gap: var(--fs-espacio-4);
+  margin-bottom: 0;
+  padding: var(--fs-espacio-6);
 
-  label {
-    font-size: 12px;
-    color: var(--fs-texto-tenue);
+  h2 {
+    margin: 0;
+    font-size: 18px;
   }
 }
 
-.formulario-acciones {
-  margin-top: var(--fs-espacio-2);
+.formulario-dialogo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+
+  h3 {
+    margin: var(--fs-espacio-2) 0 0;
+  }
 }
 
-.tabla-lineas {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: var(--fs-espacio-2);
+.sin-borde {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 
-  th,
-  td {
-    text-align: left;
-    padding: var(--fs-espacio-1) var(--fs-espacio-2);
-    border-bottom: 1px solid var(--fs-borde);
-    font-size: 13px;
-  }
+.tabla-limites {
+  min-width: 560px;
+}
 
-  input[type='number'] {
-    width: 100px;
-  }
+:host ::ng-deep .tabla-limites .p-inputnumber-input {
+  width: 120px;
+  min-height: var(--fs-toque);
 }

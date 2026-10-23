@@ -1,55 +1,92 @@
-<nav class="tienda-nav">
-  <div class="tienda-nav-inner">
-    <a class="tienda-logo" [routerLink]="tienda.ruta()">
-      @if (logoUrl(); as url) {
-        <img class="tienda-logo__img" [src]="url" [alt]="tienda.empresa()?.nombre ?? 'FashionStore'" (error)="logoNoCargo()" />
-      } @else {
-        {{ tienda.empresa()?.nombre ?? 'FashionStore' }}
-      }
+<header
+  class="cab"
+  [class.cab--oscura]="esPortada()"
+  [class.fs-zona-oscura]="esPortada()"
+  [class.cab--simple]="esCheckout()"
+>
+  <div class="cab__interior">
+    <a class="cab__marca" [routerLink]="tienda.ruta()">
+      <fs-marca
+        [nombre]="nombreTienda()"
+        [logoUrl]="logoUrl()"
+        [variante]="esPortada() ? 'oscuro' : 'claro'"
+        [tam]="esMovil() ? 'sm' : 'md'"
+      />
     </a>
 
-    <div class="tienda-nav-grupo">
-      <div class="tienda-nav-iconos">
-        <a class="tienda-carrito" [routerLink]="tienda.ruta('reserva', 'confirmar')" aria-label="Ver reserva">
-          <span class="pi pi-calendar"></span>
+    @if (esCheckout()) {
+      <span class="cab__seguro">
+        <fs-icono nombre="escudo-check" [tam]="28" />
+        Compra segura
+      </span>
+    } @else {
+      <div class="cab__panel" id="tienda-menu" [class.abierto]="menuAbierto()">
+        <nav class="cab__nav" aria-label="Principal">
+          <a class="cab__enlace" [class.cab__enlace--activo]="esPortada()" [routerLink]="tienda.ruta()">Inicio</a>
+          @if (esPortada()) {
+            <a class="cab__enlace" [attr.href]="enlacePortada() + '#catalogo'" (click)="irAColeccion($event)">Colección</a>
+          }
+        </nav>
+
+        <div class="cab__cuenta">
+          @if (sesionDeEstaTienda()) {
+            <a class="cab__enlace cab__enlace--icono" [routerLink]="tienda.ruta('mis-compras')">
+              <fs-icono nombre="usuario" [tam]="24" />
+              Mi cuenta
+            </a>
+            <button type="button" class="cab__enlace cab__enlace--icono" (click)="cerrarSesion()">
+              <fs-icono nombre="salir" [tam]="24" />
+              Salir
+            </button>
+          } @else {
+            <a class="cab__enlace cab__enlace--icono" [routerLink]="tienda.ruta('login')">
+              <fs-icono nombre="usuario" [tam]="24" />
+              Iniciar sesión
+            </a>
+            <a class="cab__enlace cab__enlace--contorno" [routerLink]="tienda.ruta('registro')">Registrarse</a>
+          }
+        </div>
+      </div>
+
+      <div class="cab__iconos">
+        @if (esPortada()) {
+          <button type="button" class="cab__icono cab__icono--buscar" aria-label="Buscar prendas" (click)="irAColeccion($event, true)">
+            <fs-icono nombre="busqueda" [tam]="28" />
+          </button>
+        }
+
+        <a class="cab__icono" [routerLink]="tienda.ruta('reserva', 'confirmar')" aria-label="Ver reserva">
+          <fs-icono nombre="calendario" [tam]="28" />
           @if (reservaCarritoService.cantidad() > 0) {
-            <span class="tienda-carrito__badge">{{ reservaCarritoService.cantidad() }}</span>
+            <span class="cab__badge">{{ reservaCarritoService.cantidad() }}</span>
           }
         </a>
 
-        <a class="tienda-carrito" [routerLink]="tienda.ruta('carrito')" aria-label="Ver carrito">
-          <span class="pi pi-shopping-bag"></span>
+        <a class="cab__icono" [routerLink]="tienda.ruta('carrito')" aria-label="Ver carrito">
+          <fs-icono nombre="carrito" [tam]="28" />
           @if (carritoService.cantidadLineas() > 0) {
-            <span class="tienda-carrito__badge">{{ carritoService.cantidadLineas() }}</span>
+            <span class="cab__badge">{{ carritoService.cantidadLineas() }}</span>
           }
         </a>
 
         <button
+          #botonMenu
           type="button"
-          class="tienda-menu-boton"
+          class="cab__icono cab__menu"
           (click)="alternarMenu()"
           [attr.aria-expanded]="menuAbierto()"
           aria-controls="tienda-menu"
           [attr.aria-label]="menuAbierto() ? 'Cerrar menú' : 'Abrir menú'"
         >
-          <span class="pi" [class.pi-bars]="!menuAbierto()" [class.pi-times]="menuAbierto()"></span>
+          <fs-icono [nombre]="menuAbierto() ? 'cerrar' : 'menu'" [tam]="28" />
         </button>
       </div>
-
-      <div class="tienda-nav-derecha" id="tienda-menu" [class.abierto]="menuAbierto()">
-        @if (sesionDeEstaTienda()) {
-          <a class="tienda-enlace" [routerLink]="tienda.ruta('mis-reservas')">Mis reservas</a>
-          <a class="tienda-enlace" [routerLink]="tienda.ruta('mis-compras')">Mis compras</a>
-          <button type="button" class="tienda-enlace tienda-enlace--boton" (click)="cerrarSesion()">Salir</button>
-        } @else {
-          <a class="tienda-enlace" [routerLink]="tienda.ruta('login')">Iniciar sesión</a>
-          <a class="tienda-enlace tienda-enlace--relleno" [routerLink]="tienda.ruta('registro')">Registrarse</a>
-        }
-      </div>
-    </div>
+    }
   </div>
-</nav>
+</header>
 
-<router-outlet />
+<main class="tienda-principal">
+  <router-outlet />
+</main>
 
 <footer class="tienda-pie">Con la tecnología de FashionStore</footer>

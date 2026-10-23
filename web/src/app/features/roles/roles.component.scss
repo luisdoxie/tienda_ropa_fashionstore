@@ -16,12 +16,13 @@
   align-items: center;
   gap: var(--fs-espacio-2);
   width: 100%;
+  min-height: var(--fs-toque);
   margin-bottom: var(--fs-espacio-1);
   padding: 0;
   border: none;
   background: transparent;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -29,22 +30,47 @@
   cursor: pointer;
 }
 
+// Casilla del módulo completo (20 px).
+.permisos-caja {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-superficie);
+  color: var(--fs-sobre-acento-oscuro);
+
+  &.marcada {
+    background: var(--fs-tinta);
+    border-color: var(--fs-tinta);
+    color: var(--fs-superficie);
+  }
+}
+
 .permisos-item {
   display: flex;
-  align-items: flex-start;
-  gap: var(--fs-espacio-2);
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  min-height: var(--fs-toque);
   padding: var(--fs-espacio-1) 0;
   cursor: pointer;
 
   input {
-    margin-top: 3px;
-    accent-color: var(--fs-acento);
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--fs-tinta);
   }
 
   code {
     display: block;
     font-family: inherit;
-    font-size: 13.5px;
+    font-size: 14px;
     color: var(--fs-texto);
   }
 
@@ -59,8 +85,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--fs-espacio-3);
   margin-top: var(--fs-espacio-4);
   padding-top: var(--fs-espacio-3);
   border-top: 1px solid var(--fs-borde);
+}
+
+.permisos-botones {
+  display: flex;
+  gap: 10px;
 }

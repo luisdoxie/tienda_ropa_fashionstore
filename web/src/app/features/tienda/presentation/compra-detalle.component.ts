@@ -7,9 +7,11 @@ import { environment } from '../../../../environments/environment';
 import { ProductoImagenLookupItem } from '../../../core/models/catalogo.models';
 import { Envio, EstadoEnvio } from '../../../core/models/entregas.models';
 import { Venta, VentaDetalle } from '../../../core/models/ventas.models';
+import { IconoComponent } from '../../../shared/icono/icono.component';
 import { DireccionesService } from '../data/direcciones.service';
 import { PedidosService } from '../data/pedidos.service';
 import { TiendaActualService } from '../state/tienda-actual.service';
+import { ResumenCompraComponent } from './resumen-compra.component';
 
 const ETIQUETAS_ENVIO: Record<EstadoEnvio, string> = {
   programado: 'Programado',
@@ -28,7 +30,7 @@ interface LineaComprobante extends VentaDetalle {
 @Component({
   selector: 'app-compra-detalle',
   standalone: true,
-  imports: [RouterLink, DatePipe, DecimalPipe],
+  imports: [RouterLink, DatePipe, DecimalPipe, IconoComponent, ResumenCompraComponent],
   templateUrl: './compra-detalle.component.html',
   styleUrl: './compra-detalle.component.scss',
 })

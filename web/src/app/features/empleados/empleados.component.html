@@ -1,23 +1,31 @@
-<h1>Empleados</h1>
-
 <app-tabla-generica
   endpoint="/empleados"
+  titulo="Empleados"
+  eyebrow="Organización"
+  etiquetaNuevo="Nuevo empleado"
+  placeholderBusqueda="Buscar empleado"
   [columnas]="columnas"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
 />
 
-<p-dialog header="Empleado" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '400px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar empleado' : 'Nuevo empleado'"
+  formId="form-empleado"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-empleado" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="usuario">Usuario</label>
     <p-select
       inputId="usuario"
-      formControlName="usuario_id"
+      formControlName="usuario_id" appAriaError="err-usuario_id"
       [options]="opcionesUsuario()"
       optionLabel="etiqueta"
       optionValue="id"
-      placeholder="Seleccioná un usuario (rol cajero o encargado)"
+      placeholder="Selecciona un usuario (rol cajero o encargado)"
     />
+    <app-error-campo id="err-usuario_id" [control]="formulario.controls.usuario_id">Selecciona un usuario.</app-error-campo>
 
     <label for="sucursal">Sucursal</label>
     <p-select
@@ -38,7 +46,5 @@
 
     <label for="fecha_ingreso">Fecha de ingreso</label>
     <input id="fecha_ingreso" type="date" pInputText formControlName="fecha_ingreso" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

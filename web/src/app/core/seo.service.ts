@@ -3,7 +3,7 @@ import { Meta, Title } from '@angular/platform-browser';
 import { EmpresaPublica } from './models/empresa.models';
 
 export const TITULO_PLATAFORMA = 'FashionStore | Tiendas de ropa';
-const DESCRIPCION_PLATAFORMA = 'Elegí tu tienda de ropa en FashionStore.';
+const DESCRIPCION_PLATAFORMA = 'Elige tu tienda de ropa en FashionStore.';
 
 const SELECTORES_OG = ["property='og:title'", "property='og:description'", "property='og:image'"];
 const SELECTOR_ROBOTS = "name='robots'";

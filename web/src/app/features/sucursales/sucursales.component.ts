@@ -2,22 +2,24 @@ import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MessageService } from 'primeng/api';
-import { ButtonModule } from 'primeng/button';
 import { CheckboxModule } from 'primeng/checkbox';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
-import { forkJoin } from 'rxjs';
+import { finalize, forkJoin } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { Ciudad } from '../../core/models/organizacion.models';
 import { HorarioSucursal, Sucursal } from '../../core/models/organizacion.models';
+import { DialogoCrudComponent } from '../../shared/tabla-generica/dialogo-crud.component';
+import { AriaErrorDirective, ErrorCampoComponent } from '../../shared/tabla-generica/error-campo.component';
+import { IconoComponent } from '../../shared/icono/icono.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Sucursal>[] = [
   { campo: 'codigo', encabezado: 'Código' },
   { campo: 'nombre', encabezado: 'Nombre' },
   { campo: 'direccion', encabezado: 'Dirección' },
-  { campo: 'activo', encabezado: 'Activo', tipo: 'booleano' },
+  { campo: 'activo', encabezado: 'Activa', tipo: 'booleano', femenino: true },
 ];
 
 // dia_semana es 1=lunes...7=domingo (isoweekday), como lo valida
@@ -53,12 +55,14 @@ interface FilaHorario {
   standalone: true,
   imports: [
     ReactiveFormsModule,
-    ButtonModule,
     DialogModule,
     InputTextModule,
     CheckboxModule,
     SelectModule,
     TablaGenericaComponent,
+    DialogoCrudComponent,
+    IconoComponent,
+    ErrorCampoComponent, AriaErrorDirective,
   ],
   templateUrl: './sucursales.component.html',
   styleUrl: './sucursales.component.scss',
@@ -66,6 +70,8 @@ interface FilaHorario {
 export class SucursalesComponent implements OnInit {
   protected readonly columnas = COLUMNAS;
   protected readonly dialogoVisible = signal(false);
+  /** Mientras la petición de guardar está en vuelo, Guardar queda deshabilitado. */
+  protected readonly guardando = signal(false);
   protected readonly editando = signal<Sucursal | null>(null);
   protected readonly ciudades = signal<Ciudad[]>([]);
 
@@ -142,7 +148,8 @@ export class SucursalesComponent implements OnInit {
       ? this.http.put(`${environment.apiUrl}/sucursales/${sucursal.id}`, datos)
       : this.http.post(`${environment.apiUrl}/sucursales`, datos);
 
-    peticion.subscribe(() => {
+    this.guardando.set(true);
+    peticion.pipe(finalize(() => this.guardando.set(false))).subscribe(() => {
       this.dialogoVisible.set(false);
       this.tabla.recargar();
     });
@@ -168,7 +175,7 @@ export class SucursalesComponent implements OnInit {
         this.messageService.add({
           severity: 'error',
           summary: 'No se pudieron cargar los horarios',
-          detail: 'Probá de nuevo en un momento.',
+          detail: 'Prueba de nuevo en un momento.',
         });
       },
     });
@@ -224,7 +231,7 @@ export class SucursalesComponent implements OnInit {
     if (this.diasInvalidos().length) {
       this.messageService.add({
         severity: 'warn',
-        summary: 'Revisá los horarios',
+        summary: 'Revisa los horarios',
         detail: `La hora de cierre tiene que ser posterior a la de apertura: ${this.diasInvalidos().join(', ')}.`,
       });
       return;

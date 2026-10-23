@@ -1,0 +1,281 @@
+// Piezas de estilo que comparten las pantallas de la tienda del cliente
+// (carrito, pasos de compra, mis compras/reservas y sus detalles). Se usan con
+// `@use './comun' as c;` y `@include c.pagina;`.
+
+// Contenedor de página: ancho máximo y márgenes del canvas.
+@mixin pagina($ancho: 1360px) {
+  width: 100%;
+  max-width: $ancho;
+  margin: 0 auto;
+  padding: 40px 32px 80px;
+  box-sizing: border-box;
+
+  @media (max-width: 760px) {
+    padding: 24px 16px 56px;
+  }
+}
+
+// Encabezado de pantalla: rótulo y título a la izquierda, acción a la derecha, línea de tinta debajo.
+@mixin encabezado {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 20px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--fs-tinta);
+
+  h1 {
+    margin: 6px 0 0;
+    font-size: 34px;
+    line-height: 1;
+  }
+
+  @media (max-width: 760px) {
+    margin-bottom: 20px;
+
+    h1 {
+      font-size: 26px;
+    }
+  }
+}
+
+// Enlace con flecha ("Seguir comprando", "Mis compras").
+@mixin enlace-flecha {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--fs-toque);
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+  text-decoration: underline;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+}
+
+// Dos columnas: contenido a la izquierda y resumen a la derecha.
+@mixin columnas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  align-items: flex-start;
+
+  .columnas__principal {
+    flex: 2 1 620px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .columnas__lateral {
+    flex: 1 1 340px;
+    max-width: 460px;
+    min-width: 0;
+  }
+
+  @media (max-width: 760px) {
+    gap: 24px;
+
+    .columnas__principal {
+      flex-basis: 100%;
+    }
+
+    .columnas__lateral {
+      flex-basis: 100%;
+      max-width: none;
+    }
+  }
+}
+
+// Tarjeta de una prenda (carrito, comprobante, reserva).
+@mixin linea-prenda {
+  .linea {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 20px;
+    padding: 16px;
+    background: var(--fs-superficie);
+    border: 1px solid var(--fs-borde);
+    border-radius: var(--fs-radio-md);
+  }
+
+  .linea--aviso {
+    border-color: var(--fs-error);
+  }
+
+  .linea__foto {
+    flex: none;
+    width: 104px;
+    height: 130px;
+    object-fit: cover;
+    background: var(--fs-neutro-suave);
+    border-radius: var(--fs-radio-sm);
+  }
+
+  .linea__foto--vacia {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fs-texto-tenue);
+  }
+
+  .linea__info {
+    flex: 1 1 220px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .linea__nombre {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .linea__detalle {
+    font-size: 14px;
+    color: var(--fs-texto-tenue);
+  }
+
+  .linea__precio {
+    font-size: 16px;
+  }
+
+  @media (max-width: 480px) {
+    .linea {
+      gap: 14px;
+    }
+
+    .linea__foto {
+      width: 80px;
+      height: 100px;
+    }
+
+    .linea__info {
+      flex-basis: calc(100% - 80px - 14px);
+    }
+  }
+}
+
+// Tarjeta de fila (mis compras, mis reservas): ícono, datos, estado, importe y chevron.
+@mixin fila-lista {
+  .lista {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 20px;
+    padding: 18px 22px;
+    color: inherit;
+    text-decoration: none;
+    background: var(--fs-superficie);
+    border: 1px solid var(--fs-borde);
+    border-radius: var(--fs-radio-md);
+
+    &:hover {
+      border-color: var(--fs-tinta);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--fs-tinta);
+      outline-offset: 2px;
+    }
+  }
+
+  .fila__icono {
+    flex: none;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fs-neutro-suave);
+    border-radius: var(--fs-radio-md);
+    color: var(--fs-tinta);
+  }
+
+  .fila__datos {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+
+  .fila__codigo {
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .fila__fecha {
+    margin-top: 2px;
+    font-size: 14px;
+    color: var(--fs-texto-tenue);
+  }
+
+  .fila__total {
+    min-width: 110px;
+    text-align: right;
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  .fila__chevron {
+    flex: none;
+    color: var(--fs-tinta);
+  }
+
+  @media (max-width: 760px) {
+    .fila {
+      padding: 14px 16px;
+      gap: 12px 14px;
+    }
+
+    .fila__total {
+      min-width: 0;
+      margin-left: auto;
+    }
+  }
+}
+
+// Estado vacío con recuadro punteado (sin compras, sin reservas).
+@mixin vacio-punteado {
+  .vacio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 36px 24px;
+    text-align: center;
+    background: var(--fs-superficie);
+    border: 1px dashed var(--fs-campo-borde);
+    border-radius: var(--fs-radio-md);
+
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--fs-texto-tenue);
+    }
+  }
+
+  .vacio__icono {
+    width: 72px;
+    height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fs-neutro-suave);
+    border-radius: 50%;
+    color: var(--fs-tinta);
+  }
+}

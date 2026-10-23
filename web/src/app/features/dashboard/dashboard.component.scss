@@ -1,147 +1,349 @@
-.saludo-fila {
+// Resumen del back office (canvas Dashboard).
+:host {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: var(--fs-espacio-3);
-  margin-bottom: var(--fs-espacio-6);
-}
+  flex-direction: column;
+  gap: var(--fs-espacio-6);
 
-.saludo {
-  font-family: var(--fs-fuente-display);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 26px;
-  margin: 0 0 var(--fs-espacio-1);
-}
-
-.saludo-sub {
-  margin: 0;
-  font-size: 13px;
-  color: var(--fs-texto-tenue);
-}
-
-.saludo-fecha {
-  font-size: 12.5px;
-  color: var(--fs-texto-tenue);
-  text-align: right;
-}
-
-.aviso {
-  color: var(--fs-advertencia);
-  background: var(--fs-advertencia-suave);
-  border-radius: var(--fs-radio-sm);
-  padding: var(--fs-espacio-3);
-  font-size: 13px;
-}
-
-.stat-fila {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--fs-espacio-3);
-  margin-bottom: var(--fs-espacio-6);
-}
-
-.stat-tarjeta {
-  padding: var(--fs-espacio-4);
-}
-
-.stat-etiqueta {
-  font-size: 12.5px;
-  color: var(--fs-texto-tenue);
-  margin-bottom: var(--fs-espacio-1);
-}
-
-.stat-valor {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.seccion {
-  margin-bottom: var(--fs-espacio-6);
-
-  h2 {
-    margin-bottom: var(--fs-espacio-3);
+  // El encabezado y el aviso ya traen su propio margen en el flujo.
+  .fs-pagina-encabezado {
+    margin-bottom: 0;
   }
 }
 
-.tarjeta-fila {
+.dash-contexto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.dash-sucursal {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+// --- Tarjetas KPI ---------------------------------------------------------
+.dash-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--fs-espacio-4);
+}
+
+.dash-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.dash-kpi__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: var(--fs-espacio-3);
 }
 
-.producto-tarjeta {
-  overflow: hidden;
+.dash-kpi__etiqueta {
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
 }
 
-.producto-foto {
-  height: 92px;
+// Ícono de 30 px en un cuadro de 52 px.
+.dash-kpi__icono {
+  flex: none;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(155deg, var(--fs-acento-suave), var(--fs-fondo));
-  color: var(--fs-acento);
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-neutro-suave);
+  color: var(--fs-tinta);
+}
+
+.dash-kpi__valor {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 112%;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.dash-kpi__nota {
+  font-size: 12px;
+  color: var(--fs-texto-tenue);
+}
+
+// --- Paneles --------------------------------------------------------------
+.dash-fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-4);
+  align-items: stretch;
+}
+
+.dash-panel {
+  min-width: 0;
+  padding: 20px 24px;
+}
+
+.dash-panel--grafico {
+  flex: 2 1 460px;
+}
+
+.dash-panel--lista {
+  flex: 1 1 280px;
+}
+
+.dash-panel__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--fs-espacio-3);
+  margin-bottom: var(--fs-espacio-3);
+
+  h2 {
+    margin: 0;
+    font-weight: 500;
+  }
+}
+
+// --- Gráfico de barras (unidades vendidas hoy por prenda) -----------------
+.dash-barras {
+  display: flex;
+  align-items: stretch;
+  gap: var(--fs-espacio-3);
+  height: 240px;
+  padding-top: var(--fs-espacio-2);
+}
+
+.dash-barra {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.dash-barra__valor {
+  font-size: 12px;
+  text-align: center;
+  color: var(--fs-texto);
+}
+
+// La pista lleva la línea base; la barra crece desde ella.
+.dash-barra__pista {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--fs-texto);
+}
+
+.dash-barra__relleno {
+  display: block;
+  width: 100%;
+  max-width: 64px;
+  min-height: 2px;
+  border-radius: 1px 1px 0 0;
+  background: var(--fs-tinta);
+  opacity: 0.55;
+
+  // La prenda más vendida del día va en oliva y a todo color.
+  &--max {
+    background: var(--fs-acento);
+    opacity: 1;
+  }
+}
+
+.dash-barra__nombre {
+  height: 2.6em;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--fs-texto-tenue);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+// --- Lista de stock bajo --------------------------------------------------
+.dash-lista {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-lista__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  padding: 10px 0;
+  border-top: 1px solid var(--fs-borde);
+}
+
+.dash-lista__foto {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-neutro-suave);
+  color: var(--fs-texto-tenue);
 
   img {
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
+}
 
-  .pi {
-    font-size: 24px;
-    opacity: 0.7;
+.dash-lista__texto {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-lista__nombre {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-lista__cantidad {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fs-advertencia);
+  white-space: nowrap;
+}
+
+// --- Últimas ventas -------------------------------------------------------
+.dash-tabla {
+  padding: 0;
+
+  .dash-panel__cabecera {
+    padding: 18px 24px 12px;
+    margin-bottom: 0;
   }
 }
 
-.producto-cuerpo {
-  padding: var(--fs-espacio-2) var(--fs-espacio-3) var(--fs-espacio-3);
+.dash-tabla__scroll {
+  overflow-x: auto;
+
+  table {
+    width: 100%;
+    min-width: 480px;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fs-texto-tenue);
+    border-top: 1px solid var(--fs-texto);
+    border-bottom: 1px solid var(--fs-borde);
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--fs-fondo-alt);
+  }
+
+  th:first-child,
+  td:first-child {
+    padding-left: 24px;
+  }
+
+  th:last-child,
+  td:last-child {
+    padding-right: 24px;
+  }
+
+  .derecha {
+    text-align: right;
+  }
 }
 
-.producto-nombre {
-  font-size: 12.5px;
+.dash-tabla__codigo {
   font-weight: 600;
-  margin-bottom: var(--fs-espacio-1);
 }
 
-.producto-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11.5px;
-  color: var(--fs-texto-tenue);
-}
-
-.pills-fila {
+// --- Reservas de hoy ------------------------------------------------------
+.dash-pills {
   display: flex;
   gap: var(--fs-espacio-2);
   flex-wrap: wrap;
-  margin-bottom: var(--fs-espacio-2);
+  margin-bottom: var(--fs-espacio-3);
 }
 
-.pill {
+.dash-pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--fs-espacio-1);
-  font-size: 12px;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--fs-espacio-3);
+  font-size: 13px;
   font-weight: 600;
-  padding: var(--fs-espacio-1) var(--fs-espacio-3);
   border-radius: 999px;
   background: var(--fs-superficie);
   border: 1px solid var(--fs-borde);
 }
 
-.pill-punto {
-  width: 7px;
-  height: 7px;
+.dash-pill__punto {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
-.barra-apilada {
+.dash-apilada {
   display: flex;
   height: 8px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--fs-borde);
   max-width: 480px;
+}
+
+@media (max-width: 600px) {
+  .dash-contexto {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .dash-panel {
+    padding-inline: var(--fs-espacio-4);
+  }
+
+  .dash-barras {
+    gap: var(--fs-espacio-3);
+  }
+}
+
+// Texto solo para lectores de pantalla (alternativa a los gráficos).
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }

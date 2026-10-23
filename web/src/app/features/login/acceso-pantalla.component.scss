@@ -1,0 +1,454 @@
+// Pantallas de acceso: login, registro, recuperar y restablecer contraseña.
+// Sin encapsulación: los formularios proyectados usan las clases `.acceso-*`.
+
+.acceso {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--fs-texto);
+  font-family: var(--fs-fuente-ui);
+
+  &:not(.acceso--personal) {
+    background: var(--fs-fondo);
+  }
+}
+
+// Cabecera clara de la tienda (acceso del cliente).
+.acceso__cabecera {
+  background: var(--fs-banda);
+  color: var(--fs-tinta);
+  border-bottom: 1px solid var(--fs-borde-fuerte);
+}
+
+.acceso__cabecera-interior {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: var(--fs-espacio-4) var(--fs-espacio-8);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-6);
+}
+
+.acceso__marca,
+.acceso__foto-marca {
+  display: inline-flex;
+  color: inherit;
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 4px;
+  }
+}
+
+.acceso__volver {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--fs-toque);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fs-tinta);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+}
+
+.acceso__cuerpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+// Panel con la fotografía y una capa oscura para que se lea el texto.
+.acceso__foto {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 560px;
+  box-sizing: border-box;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 48px;
+  background: var(--fs-carbon-panel);
+  color: var(--fs-claro);
+}
+
+.acceso__foto-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+  z-index: -2;
+}
+
+.acceso__foto-capa {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(27, 25, 22, 0.1) 40%, rgba(27, 25, 22, 0.78) 100%);
+}
+
+.acceso__foto-marca {
+  margin-bottom: auto;
+  align-self: flex-start;
+  color: var(--fs-claro);
+}
+
+.acceso__foto-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 440px;
+}
+
+.acceso--personal {
+  .acceso__foto {
+    padding: 40px 56px;
+  }
+
+  .acceso__foto-capa {
+    background: linear-gradient(180deg, rgba(27, 25, 22, 0.5) 0%, rgba(27, 25, 22, 0.22) 40%, rgba(27, 25, 22, 0.85) 100%);
+  }
+}
+
+.acceso__panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 48px var(--fs-espacio-8);
+}
+
+.acceso__pie {
+  padding: 28px var(--fs-espacio-8);
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--fs-neutro-texto);
+  background: var(--fs-pie);
+  border-top: 1px solid var(--fs-borde-fuerte);
+}
+
+// Lema sobre la foto (acceso del cliente).
+.acceso-lema {
+  margin: 0;
+  font-family: var(--fs-fuente-lema);
+  font-style: italic;
+  font-size: 32px;
+  line-height: 1.15;
+  color: var(--fs-claro);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+}
+
+// Titular de la foto en el acceso del personal.
+.acceso-foto-titular {
+  margin: 0;
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 46px;
+  line-height: 1.04;
+  text-transform: uppercase;
+  color: var(--fs-claro);
+
+  em {
+    font-style: normal;
+    color: var(--fs-acento-oscuro);
+  }
+}
+
+.acceso-foto-texto {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fs-claro-suave);
+}
+
+.acceso-foto-nota {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--fs-carbon-campo);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--fs-claro);
+}
+
+.acceso-ventajas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fs-claro);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  fs-icono {
+    color: var(--fs-acento-oscuro);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Formulario
+// ---------------------------------------------------------------------------
+.acceso-form {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+
+  &--ancho {
+    max-width: 460px;
+  }
+}
+
+.acceso-form .fs-campo + .fs-error-texto {
+  margin-top: calc(-1 * var(--fs-espacio-2));
+}
+
+.acceso-titular {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-2);
+  padding-left: var(--fs-espacio-4);
+  border-left: 2px solid var(--fs-acento);
+}
+
+.acceso-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fs-texto-tenue);
+}
+
+.acceso-h1 {
+  margin: 0;
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 32px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+
+  &--medio {
+    font-size: 30px;
+  }
+
+  &--suave {
+    font-stretch: 112%;
+    font-weight: 700;
+    line-height: 1.1;
+    text-transform: none;
+  }
+}
+
+.acceso-texto {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--fs-texto-tenue);
+}
+
+.acceso-fila {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.acceso-enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--fs-toque);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fs-texto);
+  text-decoration: underline;
+
+  &:hover {
+    color: var(--fs-acento-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+
+  &--centrado {
+    align-self: center;
+  }
+
+  // "Soy administrador de la plataforma": botón con aspecto de enlace.
+  &--boton {
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+  }
+}
+
+// En el acceso del personal los enlaces van en lima.
+.acceso--personal .acceso-enlace,
+.acceso--personal .acceso-pie a {
+  color: var(--fs-acento-hover);
+}
+
+.acceso-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fs-error);
+}
+
+.acceso-pie {
+  padding-top: 14px;
+  border-top: 1px solid var(--fs-borde);
+  font-size: 14px;
+  text-align: center;
+  color: var(--fs-texto-tenue);
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--fs-toque);
+    font-weight: 600;
+    color: var(--fs-texto);
+    text-decoration: underline;
+  }
+}
+
+.acceso-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fs-espacio-3);
+}
+
+.acceso-ayuda {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fs-texto-tenue);
+}
+
+// Estado de una pantalla (correo enviado, contraseña actualizada, enlace inválido).
+.acceso-estado {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  text-align: center;
+
+  &__icono {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fs-exito-suave);
+    color: var(--fs-exito);
+
+    &--error {
+      background: var(--fs-error-suave);
+      color: var(--fs-error);
+    }
+  }
+
+  h1 {
+    margin: 0;
+    font-family: var(--fs-fuente-display);
+    font-stretch: 112%;
+    font-weight: 800;
+    font-size: 24px;
+    line-height: 1.15;
+  }
+
+  p {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--fs-texto-tenue);
+  }
+
+  .acceso-exito {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px;
+    border-radius: var(--fs-radio-md);
+    background: var(--fs-exito-suave);
+    color: var(--fs-exito);
+  }
+}
+
+@media (max-width: 900px) {
+  .acceso__cuerpo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  // La foto pasa a ser una franja: el formulario queda a la vista.
+  .acceso__foto,
+  .acceso--personal .acceso__foto {
+    min-height: 160px;
+    padding: var(--fs-espacio-6);
+    gap: var(--fs-espacio-4);
+  }
+
+  .acceso__foto-contenido {
+    display: none;
+  }
+
+  .acceso__foto-marca {
+    margin-bottom: 0;
+  }
+
+  .acceso__panel {
+    padding: var(--fs-espacio-8) var(--fs-espacio-4);
+  }
+
+  .acceso__cabecera-interior {
+    padding-inline: var(--fs-espacio-4);
+  }
+}
+
+@media (max-width: 480px) {
+  .acceso-h1 {
+    font-size: 26px;
+  }
+
+  .acceso-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

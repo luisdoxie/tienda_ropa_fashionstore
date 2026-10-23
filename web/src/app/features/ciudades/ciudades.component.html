@@ -1,20 +1,27 @@
-<h1>Ciudades</h1>
-
 <app-tabla-generica
   endpoint="/ciudades"
+  titulo="Ciudades"
+  eyebrow="Organización"
+  etiquetaNuevo="Nueva ciudad"
+  placeholderBusqueda="Buscar ciudad"
   [columnas]="columnas"
   (crear)="abrirCrear()"
   (editar)="abrirEditar($event)"
 />
 
-<p-dialog header="Ciudad" [(visible)]="dialogoVisible" [modal]="true" [style]="{ width: '360px' }">
-  <form [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
+<app-dialogo-crud
+  [guardando]="guardando()"
+  [titulo]="editando() ? 'Editar ciudad' : 'Nueva ciudad'"
+  formId="form-ciudad"
+  ancho="440px"
+  [(visible)]="dialogoVisible"
+>
+  <form id="form-ciudad" [formGroup]="formulario" (ngSubmit)="guardar()" class="formulario">
     <label for="nombre">Nombre</label>
-    <input id="nombre" pInputText formControlName="nombre" />
+    <input id="nombre" pInputText formControlName="nombre" appAriaError="err-nombre" />
+    <app-error-campo id="err-nombre" [control]="formulario.controls.nombre">Ingresa el nombre.</app-error-campo>
 
     <label for="departamento">Departamento</label>
     <input id="departamento" pInputText formControlName="departamento" />
-
-    <p-button type="submit" label="Guardar" styleClass="w-full" />
   </form>
-</p-dialog>
+</app-dialogo-crud>

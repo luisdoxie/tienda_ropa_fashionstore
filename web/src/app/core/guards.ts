@@ -3,10 +3,18 @@ import { CanActivateFn, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { CarritoService } from '../features/tienda/data/carrito.service';
 import { TiendaActualService } from '../features/tienda/state/tienda-actual.service';
-import { AuthService } from './auth.service';
+import { AuthService, RUTA_LOGIN_PERSONAL } from './auth.service';
 
 /** Código de tienda al comienzo de una URL del comprador: /t/:codigo/... */
 const PATRON_TIENDA = /^\/t\/([^/?#]+)/;
+
+/** Pantalla de entrada del superadministrador y raíz de todo su panel. */
+export const RUTA_INICIO_SUPERADMIN = '/plataforma/empresas';
+
+/** Pantalla de entrada del personal de una empresa. */
+export const RUTA_INICIO_PERSONAL = '/dashboard';
+
+const PATRON_PLATAFORMA = /^\/plataforma(?:[/?#]|$)/;
 
 export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
@@ -21,7 +29,7 @@ export const authGuard: CanActivateFn = (_route, state) => {
       queryParams: { returnTo: state.url },
     });
   }
-  return router.createUrlTree(['/login'], { queryParams: { returnTo: state.url } });
+  return router.createUrlTree([RUTA_LOGIN_PERSONAL], { queryParams: { returnTo: state.url } });
 };
 
 /**
@@ -49,7 +57,7 @@ export const tiendaSesionGuard: CanActivateFn = (_route, state) => {
   inject(MessageService).add({
     severity: 'info',
     summary: 'Sesión cerrada',
-    detail: `Cerramos tu sesión porque entraste a otra tienda. Ingresá con tu cuenta de ${nombre}.`,
+    detail: `Cerramos tu sesión porque entraste a otra tienda. Ingresa con tu cuenta de ${nombre}.`,
   });
   return router.createUrlTree(['/t', codigo, 'login'], { queryParams: { returnTo: state.url } });
 };
@@ -61,26 +69,65 @@ export function permisoGuard(permiso: string): CanActivateFn {
     const router = inject(Router);
 
     if (!authService.estaAutenticado()) {
-      return router.parseUrl('/login');
+      return router.parseUrl(RUTA_LOGIN_PERSONAL);
     }
     if (!authService.tienePermiso(permiso)) {
-      return router.parseUrl('/dashboard');
+      return router.parseUrl(authService.esSuperadmin() ? RUTA_INICIO_SUPERADMIN : RUTA_INICIO_PERSONAL);
+    }
+    return true;
+  };
+}
+
+/** Guarda de ruta por rol (basta con tener uno de los roles indicados). */
+export function rolGuard(...roles: string[]): CanActivateFn {
+  return () => {
+    const authService = inject(AuthService);
+    const router = inject(Router);
+
+    if (!authService.estaAutenticado()) {
+      return router.parseUrl(RUTA_LOGIN_PERSONAL);
+    }
+    if (!authService.roles().some((rol) => roles.includes(rol))) {
+      return router.parseUrl(authService.esSuperadmin() ? RUTA_INICIO_SUPERADMIN : RUTA_INICIO_PERSONAL);
     }
     return true;
   };
 }
 
 /**
- * Protege la raíz del back office: un cliente autenticado (rol único
- * "cliente") nunca debe ver ninguna pantalla de administración, ni
- * escribiendo la URL a mano. Reemplaza a `authGuard` en esa ruta.
+ * Panel de la plataforma (/plataforma/...): solo el superadministrador. Un
+ * administrador de empresa que escribe la URL termina en su dashboard.
  */
-export const staffGuard: CanActivateFn = () => {
+export const superadminGuard: CanActivateFn = () => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
   if (!authService.estaAutenticado()) {
-    return router.parseUrl('/login');
+    return router.parseUrl(RUTA_LOGIN_PERSONAL);
+  }
+  if (!authService.esSuperadmin()) {
+    return router.parseUrl(RUTA_INICIO_PERSONAL);
+  }
+  return true;
+};
+
+/**
+ * Protege la raíz del back office: un cliente autenticado (rol único
+ * "cliente") nunca debe ver ninguna pantalla de administración, ni
+ * escribiendo la URL a mano. Reemplaza a `authGuard` en esa ruta.
+ *
+ * El superadministrador (sin empresa) solo trabaja en /plataforma/...: si pide
+ * una pantalla del back office de una empresa va a /plataforma/empresas.
+ */
+export const staffGuard: CanActivateFn = (_route, state) => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  if (!authService.estaAutenticado()) {
+    return router.parseUrl(RUTA_LOGIN_PERSONAL);
+  }
+  if (authService.esSuperadmin()) {
+    return PATRON_PLATAFORMA.test(state.url) ? true : router.parseUrl(RUTA_INICIO_SUPERADMIN);
   }
   const roles = authService.roles();
   // Sin ningún rol de staff (incluye roles.length === 0, un usuario

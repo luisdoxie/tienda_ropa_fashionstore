@@ -9,13 +9,13 @@ import { ProductoImagenLookupItem } from '../../core/models/catalogo.models';
 import { FilaConsolidado } from '../../core/models/inventario.models';
 import { Empleado, Sucursal } from '../../core/models/organizacion.models';
 import { EstadoReserva, Reserva } from '../../core/models/reservas.models';
-import { Venta } from '../../core/models/ventas.models';
+import { EstadoVenta, Venta } from '../../core/models/ventas.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 
 interface ProductoVendidoHoy {
   variante_id: number;
   cantidad: number;
   nombre: string;
-  imagen: string | null;
 }
 
 interface AlertaStockConFoto extends FilaConsolidado {
@@ -29,6 +29,16 @@ interface ResumenEstadoReserva {
   cantidad: number;
 }
 
+/** Cómo se muestra el estado de una venta en "Últimas ventas". */
+const ESTADO_VENTA: Record<EstadoVenta, { etiqueta: string; chip: string }> = {
+  pendiente_pago: { etiqueta: 'Pendiente de pago', chip: 'fs-chip--advertencia' },
+  pagada: { etiqueta: 'Pagada', chip: 'fs-chip--exito' },
+  entregada: { etiqueta: 'Entregada', chip: 'fs-chip--exito' },
+  anulada: { etiqueta: 'Anulada', chip: 'fs-chip--error' },
+};
+
+const VENTAS_RECIENTES = 5;
+
 const ESTADOS_RESERVA: { estado: EstadoReserva; etiqueta: string; color: string }[] = [
   { estado: 'pendiente', etiqueta: 'Pendientes', color: 'var(--fs-acento)' },
   { estado: 'en_prueba', etiqueta: 'En prueba', color: 'var(--fs-advertencia)' },
@@ -39,7 +49,7 @@ const ESTADOS_RESERVA: { estado: EstadoReserva; etiqueta: string; color: string 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, IconoComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -67,7 +77,14 @@ export class DashboardComponent implements OnInit {
   protected readonly totalVentasHoy = signal(0);
   protected readonly vendidosHoy = signal<ProductoVendidoHoy[]>([]);
 
+  /** Las ventas de hoy más recientes (la tabla "Últimas ventas"). */
+  protected readonly ventasRecientes = signal<Venta[]>([]);
+  /** Unidades de la prenda más vendida: es el 100 % de la altura de las barras. */
+  protected readonly maxVendido = computed(() => Math.max(1, ...this.vendidosHoy().map((v) => v.cantidad)));
+
   protected readonly alertasStock = signal<AlertaStockConFoto[]>([]);
+  /** Todas las alertas de stock bajo (la lista de abajo muestra solo las primeras). */
+  protected readonly totalAlertasStock = signal(0);
 
   protected readonly reservasHoy = signal<Reserva[]>([]);
   protected readonly totalReservasHoy = computed(() => this.reservasHoy().length);
@@ -144,6 +161,9 @@ export class DashboardComponent implements OnInit {
     const ventasHoy = ventas.filter((v) => v.fecha.slice(0, 10) === hoy);
 
     this.ticketsHoy.set(ventasHoy.length);
+    this.ventasRecientes.set(
+      [...ventasHoy].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, VENTAS_RECIENTES),
+    );
     // El backend serializa los montos (Decimal) como texto: sin Number() se concatenan.
     this.totalVentasHoy.set(ventasHoy.reduce((acc, v) => acc + Number(v.total), 0));
 
@@ -156,7 +176,7 @@ export class DashboardComponent implements OnInit {
     const top = [...cantidadPorVariante.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4)
-      .map(([variante_id, cantidad]) => ({ variante_id, cantidad, nombre: `Variante ${variante_id}`, imagen: null }));
+      .map(([variante_id, cantidad]) => ({ variante_id, cantidad, nombre: `Variante ${variante_id}` }));
     this.vendidosHoy.set(top);
 
     if (top.length) {
@@ -168,6 +188,7 @@ export class DashboardComponent implements OnInit {
     const query = sucursalId !== null ? `?sucursal_id=${sucursalId}` : '';
     this.http.get<FilaConsolidado[]>(`${environment.apiUrl}/inventario/alertas${query}`).subscribe({
       next: (filas) => {
+        this.totalAlertasStock.set(filas.length);
         const top: AlertaStockConFoto[] = filas.slice(0, 4).map((f) => ({ ...f, imagen: null }));
         this.alertasStock.set(top);
         if (top.length) {
@@ -194,8 +215,8 @@ export class DashboardComponent implements OnInit {
     this.reservasHoy.set(reservas.filter((r) => r.fecha_visita.slice(0, 10) === hoy));
   }
 
-  /** Resuelve nombre+foto real de producto vía el catálogo público -- ver
-   * ProductoImagenLookupItem. Se llama una vez por origen de ids (ventas
+  /** Resuelve el nombre real de lo vendido y la foto de las alertas de stock
+   * vía el catálogo público -- ver ProductoImagenLookupItem. Se llama una vez por origen de ids (ventas
    * de hoy / alertas de stock), cada una independiente de la otra. */
   private cargarFotos(varianteIds: number[], productoIds: number[]): void {
     const params = new URLSearchParams();
@@ -215,7 +236,7 @@ export class DashboardComponent implements OnInit {
           this.vendidosHoy.update((lista) =>
             lista.map((v) => {
               const item = porVariante.get(v.variante_id);
-              return item ? { ...v, nombre: item.producto_nombre, imagen: item.imagen_principal } : v;
+              return item ? { ...v, nombre: item.producto_nombre } : v;
             }),
           );
           this.alertasStock.update((lista) =>
@@ -226,6 +247,15 @@ export class DashboardComponent implements OnInit {
           );
         },
       });
+  }
+
+  protected estadoVenta(estado: EstadoVenta): { etiqueta: string; chip: string } {
+    return ESTADO_VENTA[estado] ?? { etiqueta: estado, chip: '' };
+  }
+
+  /** Hora local de una venta ("14:35"). */
+  protected horaDe(fecha: string): string {
+    return new Date(fecha).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   private formatearFecha(fecha: Date): string {

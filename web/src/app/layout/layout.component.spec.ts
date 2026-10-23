@@ -1,0 +1,580 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
+import { MessageService } from 'primeng/api';
+import { environment } from '../../environments/environment';
+import { AuthService } from '../core/auth.service';
+import { MiSuscripcion } from '../core/models/plan.models';
+import { PlanService } from '../core/plan.service';
+import { ITEMS_FIN, ITEMS_INICIO, ItemMenu, LayoutComponent } from './layout.component';
+
+const API = environment.apiUrl;
+
+@Component({ standalone: true, template: '' })
+class PaginaVaciaComponent {}
+
+/** jsdom no trae matchMedia: se simula una pantalla angosta (cajón) o ancha. */
+function simularAncho(angosta: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (consulta: string) => ({
+      matches: angosta,
+      media: consulta,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  });
+}
+
+/** Todos los permisos que el menú pregunta (un administrador de empresa los tiene). */
+const PERMISOS_ADMIN = [
+  'reportes.ver',
+  'usuarios.gestionar',
+  'roles.gestionar',
+  'organizacion.gestionar',
+  'catalogo.gestionar',
+  'ventas.presencial',
+  'ventas.gestionar',
+  'reservas.gestionar_sucursal',
+  'inventario.ver',
+  'abastecimiento.gestionar',
+  'entregas.gestionar',
+  'probador.gestionar',
+  'empresa.gestionar',
+];
+
+// El orden del menú de antes. Esta lista NO se reordena: los ítems nuevos van al final de su lista.
+const INICIO_ESPERADO = ['Dashboard', 'Reportes'];
+const GRUPOS_ESPERADOS: Record<string, string[]> = {
+  Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales'],
+  Catálogo: ['Productos', 'Categorías', 'Tallas', 'Colores', 'Temporadas', 'Colecciones'],
+  Ventas: ['Caja', 'Promociones', 'Reservas'],
+};
+const FIN_ESPERADO_PREVIO = ['Inventario', 'Proveedores', 'Envíos', 'Zonas de envío', 'Assets del probador'];
+
+function suscripcion(funcionalidades: string[], plan = 'Básico'): MiSuscripcion {
+  return {
+    plan_codigo: plan.toLowerCase(),
+    plan_nombre: plan,
+    estado: 'activa',
+    fecha_inicio: '2026-01-01',
+    fecha_vencimiento: '2099-01-01',
+    max_sucursales: 2,
+    sucursales_activas: 1,
+    funcionalidades,
+  };
+}
+
+describe('LayoutComponent', () => {
+  let http: HttpTestingController;
+  let auth: AuthService;
+  let plan: PlanService;
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(), MessageService],
+    });
+    http = TestBed.inject(HttpTestingController);
+    auth = TestBed.inject(AuthService);
+    plan = TestBed.inject(PlanService);
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    http.match(() => true);
+    delete (window as { matchMedia?: unknown }).matchMedia;
+  });
+
+  function iniciarSesion(roles: string[], permisos: string[], empresaId: number | null): void {
+    auth.guardarTokens({ access_token: 'a', refresh_token: 'r', token_type: 'bearer' });
+    auth.cargarUsuarioActual().subscribe();
+    http.expectOne(`${API}/auth/yo`).flush({
+      id: 1,
+      nombre: 'Ana',
+      apellido: 'Paz',
+      email: 'a@b.com',
+      telefono: null,
+      activo: true,
+      roles,
+      permisos,
+      empresa_id: empresaId,
+    });
+  }
+
+  function crear() {
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+    const comp = fixture.componentInstance as any;
+    return { fixture, comp, el: fixture.nativeElement as HTMLElement };
+  }
+
+  const etiquetas = (items: { etiqueta: string }[]) => items.map((i) => i.etiqueta);
+
+  describe('orden del menú de una empresa', () => {
+    it('los ítems existentes mantienen su orden y los nuevos van al final de su lista', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, comp } = crear();
+
+      expect(etiquetas(comp.itemsInicio())).toEqual(INICIO_ESPERADO);
+
+      const grupos = Object.fromEntries(
+        (comp.gruposMenu() as { etiqueta: string; items: { etiqueta: string }[] }[]).map((g) => [
+          g.etiqueta,
+          etiquetas(g.items),
+        ]),
+      );
+      expect(grupos).toEqual(GRUPOS_ESPERADOS);
+      expect(Object.keys(grupos)).toEqual(['Organización', 'Catálogo', 'Ventas']);
+
+      expect(etiquetas(comp.itemsFin())).toEqual([...FIN_ESPERADO_PREVIO, 'Mi empresa']);
+      fixture.destroy();
+    });
+
+    it('"Mi empresa" solo aparece con el permiso empresa.gestionar', () => {
+      iniciarSesion(['cajero'], ['ventas.presencial', 'inventario.ver'], 7);
+      const { fixture, comp } = crear();
+
+      expect(etiquetas(comp.itemsFin())).toEqual(['Inventario']);
+      fixture.destroy();
+    });
+
+    it('un empleado sin permisos de gestión solo ve Dashboard', () => {
+      iniciarSesion(['cajero'], [], 7);
+      const { fixture, comp } = crear();
+
+      expect(etiquetas(comp.itemsInicio())).toEqual(['Dashboard']);
+      expect(comp.gruposMenu()).toEqual([]);
+      fixture.destroy();
+    });
+
+    it('el personal de una empresa nunca ve el grupo Plataforma', () => {
+      iniciarSesion(['administrador'], [...PERMISOS_ADMIN, 'plataforma.gestionar'], 7);
+      const { fixture, comp } = crear();
+
+      expect(etiquetas(comp.gruposMenu())).not.toContain('Plataforma');
+      fixture.destroy();
+    });
+  });
+
+  describe('funcionalidades que el plan no incluye', () => {
+    const itemIa: ItemMenu = { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', funcion: 'reportes_ia' };
+    const itemOffline: ItemMenu = {
+      etiqueta: 'Operaciones sincronizadas',
+      icono: 'refrescar',
+      ruta: '/sincronizacion',
+      funcion: 'operacion_offline',
+    };
+
+    beforeEach(() => {
+      // Etapas siguientes (E17, E16 parte 2) agregan estos ítems: se simulan al final de la lista.
+      ITEMS_FIN.push(itemIa, itemOffline);
+    });
+
+    afterEach(() => {
+      ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemIa), 1);
+      ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemOffline), 1);
+    });
+
+    it('con plan Básico sale deshabilitado, en su lugar, con candado y enlace a Mi empresa', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set(suscripcion(['operacion_offline']));
+      const { fixture, el } = crear();
+      fixture.detectChanges();
+
+      const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
+      const textos = enlaces.map((a) => (a.textContent ?? '').trim());
+      // Mismo lugar y orden: después de "Mi empresa", en el orden en que se agregaron.
+      expect(textos.slice(-3)).toEqual(['Mi empresa', 'Reportes con IA', 'Operaciones sincronizadas']);
+
+      const ia = enlaces.find((a) => (a.textContent ?? '').includes('Reportes con IA')) as HTMLElement;
+      expect(ia.classList).toContain('layout__enlace--deshabilitado');
+      expect(ia.getAttribute('aria-disabled')).toBe('true');
+      expect(ia.getAttribute('href')).toBe('/mi-empresa?ver=funcionalidades');
+      expect(ia.querySelector('.layout__candado')).not.toBeNull();
+      expect(ia.getAttribute('title')).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
+
+      // Lo que el plan sí incluye es un enlace normal.
+      const offline = enlaces.find((a) => (a.textContent ?? '').includes('Operaciones sincronizadas')) as HTMLElement;
+      expect(offline.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(offline.getAttribute('href')).toBe('/sincronizacion');
+      fixture.destroy();
+    });
+
+    it('con plan Profesional el ítem es normal', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set(suscripcion(['reportes_ia', 'operacion_offline'], 'Profesional'));
+      const { fixture, el } = crear();
+
+      const ia = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+        (a.textContent ?? '').includes('Reportes con IA'),
+      ) as HTMLElement;
+      expect(ia.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(ia.getAttribute('href')).toBe('/reportes-ia');
+      expect(ia.querySelector('.layout__candado')).toBeNull();
+      fixture.destroy();
+    });
+
+    it('si no se conoce el plan (empleado sin acceso a Mi empresa) no se deshabilita nada', () => {
+      iniciarSesion(['cajero'], ['inventario.ver'], 7);
+      const { fixture, comp } = crear();
+
+      expect(comp.itemsFin().every((i: { deshabilitado: boolean }) => !i.deshabilitado)).toBe(true);
+      fixture.destroy();
+    });
+  });
+
+  describe('superadministrador', () => {
+    it('solo ve el grupo Plataforma, con Empresas, Planes y Suscripciones', () => {
+      iniciarSesion(['superadministrador'], ['plataforma.gestionar'], null);
+      const { fixture, comp } = crear();
+
+      expect(comp.itemsInicio()).toEqual([]);
+      expect(comp.itemsFin()).toEqual([]);
+      expect(etiquetas(comp.gruposMenu())).toEqual(['Plataforma']);
+      expect(etiquetas(comp.gruposMenu()[0].items)).toEqual(['Empresas', 'Planes', 'Suscripciones']);
+      expect(comp.gruposMenu()[0].items.map((i: ItemMenu) => i.ruta)).toEqual([
+        '/plataforma/empresas',
+        '/plataforma/planes',
+        '/plataforma/suscripciones',
+      ]);
+      fixture.destroy();
+    });
+
+    it('no pide notificaciones, no las consulta cada 20 s y no pide el plan', () => {
+      vi.useFakeTimers();
+      try {
+        iniciarSesion(['superadministrador'], ['plataforma.gestionar', 'empresa.gestionar'], null);
+        const { fixture } = crear();
+        vi.advanceTimersByTime(60_000);
+
+        http.expectNone((req) => req.url.includes('/notificaciones'));
+        http.expectNone((req) => req.url.includes('/mi-empresa'));
+        fixture.destroy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('no tiene campana de notificaciones ni franja de suscripción', () => {
+      iniciarSesion(['superadministrador'], ['plataforma.gestionar'], null);
+      plan.marcarBloqueada('vencida');
+      const { fixture, el } = crear();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.layout__campana')).toBeNull();
+      expect(el.querySelector('app-aviso-suscripcion')).toBeNull();
+      fixture.destroy();
+    });
+  });
+
+  describe('menú agrupado como el canvas', () => {
+    const seccionesVista = (comp: any) =>
+      Object.fromEntries(
+        (comp.secciones() as { etiqueta: string; items: { etiqueta: string }[] }[]).map((s) => [
+          s.etiqueta,
+          etiquetas(s.items),
+        ]),
+      );
+
+    it('un administrador ve las mismas opciones repartidas en General, Catálogo, Comercial, Análisis y Organización', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, comp } = crear();
+
+      expect(seccionesVista(comp)).toEqual({
+        General: ['Dashboard', 'Caja'],
+        Catálogo: [
+          'Productos',
+          'Inventario',
+          'Categorías',
+          'Tallas',
+          'Colores',
+          'Temporadas',
+          'Colecciones',
+          'Proveedores',
+          'Assets del probador',
+        ],
+        Comercial: ['Reservas', 'Envíos', 'Zonas de envío', 'Promociones'],
+        Análisis: ['Reportes'],
+        Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa'],
+      });
+      fixture.destroy();
+    });
+
+    it('cada opción solo aparece si la persona tiene su permiso (no se pierde ni se agrega ninguna)', () => {
+      iniciarSesion(['cajero'], ['ventas.presencial', 'inventario.ver'], 7);
+      const { fixture, comp } = crear();
+
+      expect(seccionesVista(comp)).toEqual({
+        General: ['Dashboard', 'Caja'],
+        Catálogo: ['Inventario'],
+      });
+      fixture.destroy();
+    });
+
+    it('las secciones plegables arrancan cerradas y se abren con su rótulo; las fijas siempre están abiertas', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, comp, el } = crear();
+
+      expect(comp.estaAbierto('general')).toBe(true);
+      expect(comp.estaAbierto('analisis')).toBe(true);
+      expect(comp.estaAbierto('catalogo')).toBe(false);
+      const catalogo = el.querySelector('#menu-seccion-catalogo') as HTMLElement;
+      expect(catalogo.hasAttribute('hidden')).toBe(true);
+
+      const rotulo = el.querySelector('button.layout__rotulo--boton') as HTMLButtonElement;
+      expect(rotulo.textContent).toContain('Catálogo');
+      rotulo.click();
+      fixture.detectChanges();
+
+      expect(comp.estaAbierto('catalogo')).toBe(true);
+      expect(catalogo.hasAttribute('hidden')).toBe(false);
+      expect(rotulo.getAttribute('aria-expanded')).toBe('true');
+      fixture.destroy();
+    });
+
+    it('el pie muestra a la persona y su rol, y la marca lleva el nombre de la empresa', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+
+      expect(el.querySelector('.layout__usuario-nombre')?.textContent).toContain('Ana Paz');
+      expect(el.querySelector('.layout__usuario-rol')?.textContent?.trim()).toBe('Administrador');
+      expect(el.querySelector('fs-marca')).not.toBeNull();
+      fixture.destroy();
+    });
+
+    it('en pantallas angostas el botón de la barra abre y cierra el menú', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      const raiz = el.querySelector('.layout') as HTMLElement;
+      const boton = el.querySelector('.layout__hamburguesa') as HTMLButtonElement;
+
+      expect(boton.getAttribute('aria-label')).toBe('Abrir el menú');
+      boton.click();
+      fixture.detectChanges();
+      expect(raiz.classList).toContain('layout--menu-abierto');
+      expect(boton.getAttribute('aria-expanded')).toBe('true');
+
+      (el.querySelector('.layout__fondo') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(raiz.classList).not.toContain('layout--menu-abierto');
+      fixture.destroy();
+    });
+
+    it('el superadministrador ve solo Plataforma, con "Modo plataforma" bajo la marca', () => {
+      iniciarSesion(['superadministrador'], ['plataforma.gestionar'], null);
+      const { fixture, comp, el } = crear();
+
+      expect(seccionesVista(comp)).toEqual({ Plataforma: ['Empresas', 'Planes', 'Suscripciones'] });
+      expect(el.querySelector('.layout__marca-sub')?.textContent).toContain('Modo plataforma');
+      fixture.destroy();
+    });
+  });
+
+  describe('cajón del menú en pantallas angostas', () => {
+    const pulsarEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    it('al abrir: el cajón es un diálogo modal, el resto de la página queda inert y el foco va a la primera opción', () => {
+      simularAncho(true);
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      const aside = el.querySelector('aside') as HTMLElement;
+      const contenido = el.querySelector('.layout__contenido') as HTMLElement;
+
+      expect(aside.getAttribute('role')).toBeNull();
+      expect(contenido.hasAttribute('inert')).toBe(false);
+
+      (el.querySelector('.layout__hamburguesa') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(aside.getAttribute('role')).toBe('dialog');
+      expect(aside.getAttribute('aria-modal')).toBe('true');
+      expect(contenido.hasAttribute('inert')).toBe(true);
+      expect(document.activeElement).toBe(aside.querySelector('a.layout__enlace'));
+      expect(document.activeElement?.textContent).toContain('Dashboard');
+      fixture.destroy();
+    });
+
+    it('Escape lo cierra y devuelve el foco a la hamburguesa', () => {
+      simularAncho(true);
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      const boton = el.querySelector('.layout__hamburguesa') as HTMLButtonElement;
+      boton.click();
+      fixture.detectChanges();
+
+      pulsarEscape();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.layout')?.classList).not.toContain('layout--menu-abierto');
+      expect(el.querySelector('.layout__contenido')?.hasAttribute('inert')).toBe(false);
+      expect(document.activeElement).toBe(boton);
+      fixture.destroy();
+    });
+
+    it('el fondo es un botón real que cierra el cajón', () => {
+      simularAncho(true);
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      (el.querySelector('.layout__hamburguesa') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      const fondo = el.querySelector('.layout__fondo') as HTMLButtonElement;
+      expect(fondo.tagName).toBe('BUTTON');
+      expect(fondo.getAttribute('aria-label')).toBe('Cerrar el menú');
+      fondo.click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('.layout')?.classList).not.toContain('layout--menu-abierto');
+      fixture.destroy();
+    });
+
+    it('se cierra al navegar a otra opción', async () => {
+      simularAncho(true);
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      TestBed.inject(Router).resetConfig([{ path: '**', component: PaginaVaciaComponent }]);
+      const { fixture, el } = crear();
+      (el.querySelector('.layout__hamburguesa') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(el.querySelector('.layout')?.classList).toContain('layout--menu-abierto');
+
+      await TestBed.inject(Router).navigateByUrl('/usuarios');
+      fixture.detectChanges();
+
+      expect(el.querySelector('.layout')?.classList).not.toContain('layout--menu-abierto');
+      fixture.destroy();
+    });
+
+    it('en pantalla ancha el menú no es un diálogo ni deja nada inert', () => {
+      simularAncho(false);
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      (el.querySelector('.layout__hamburguesa') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(el.querySelector('aside')?.getAttribute('role')).toBeNull();
+      expect(el.querySelector('.layout__contenido')?.hasAttribute('inert')).toBe(false);
+      fixture.destroy();
+    });
+  });
+
+  describe('accesibilidad del menú y de la barra', () => {
+    it('la opción de la ruta activa lleva aria-current="page"', async () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      TestBed.inject(Router).resetConfig([{ path: '**', component: PaginaVaciaComponent }]);
+      const { fixture, el } = crear();
+
+      await TestBed.inject(Router).navigateByUrl('/usuarios');
+      fixture.detectChanges();
+
+      const activos = Array.from(el.querySelectorAll('nav a[aria-current="page"]'));
+      expect(activos.map((a) => a.textContent?.trim())).toEqual(['Usuarios']);
+      fixture.destroy();
+    });
+
+    it('la campana dice cuántas notificaciones hay sin leer', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      const campana = () => el.querySelector('.layout__campana') as HTMLButtonElement;
+      expect(campana().getAttribute('aria-label')).toBe('Notificaciones');
+
+      http
+        .expectOne((req) => req.url.includes('/notificaciones'))
+        .flush([
+          { id: 1, titulo: 'a', mensaje: null, leida: false },
+          { id: 2, titulo: 'b', mensaje: null, leida: false },
+          { id: 3, titulo: 'c', mensaje: null, leida: true },
+        ]);
+      fixture.detectChanges();
+
+      expect(campana().getAttribute('aria-label')).toBe('Notificaciones, 2 sin leer');
+      fixture.destroy();
+    });
+
+    it('el motivo de una opción deshabilitada por el plan se lee con aria-describedby, no solo con title', () => {
+      const itemIa: ItemMenu = { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', funcion: 'reportes_ia' };
+      ITEMS_FIN.push(itemIa);
+      try {
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        plan.suscripcion.set(suscripcion([]));
+        const { fixture, el } = crear();
+        fixture.detectChanges();
+
+        const enlace = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+          (a.textContent ?? '').includes('Reportes con IA'),
+        ) as HTMLElement;
+        const motivo = el.querySelector(`#${enlace.getAttribute('aria-describedby')}`);
+        expect(motivo?.textContent).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
+        fixture.destroy();
+      } finally {
+        ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemIa), 1);
+      }
+    });
+
+    it('un administrador ve el logo de su empresa en la marca; sin logo queda el monograma', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+      expect(el.querySelector('fs-marca .marca__monograma')).not.toBeNull();
+
+      http.expectOne(`${API}/mi-empresa`).flush({
+        id: 7,
+        codigo: 'boutique-andina',
+        nombre: 'Boutique Andina',
+        logo_url: 'https://cdn.example/logo.png',
+        color_acento: null,
+        activo: true,
+      });
+      fixture.detectChanges();
+
+      const logo = el.querySelector('fs-marca img.marca__logo') as HTMLImageElement;
+      expect(logo.getAttribute('src')).toBe('https://cdn.example/logo.png');
+      fixture.destroy();
+    });
+
+    it('quien no administra la empresa no pide /mi-empresa', () => {
+      iniciarSesion(['cajero'], ['inventario.ver'], 7);
+      const { fixture } = crear();
+
+      http.expectNone(`${API}/mi-empresa`);
+      fixture.destroy();
+    });
+  });
+
+  describe('personal de una empresa', () => {
+    it('pide notificaciones y su plan, y tiene campana', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+
+      http.expectOne((req) => req.url.includes('/notificaciones')).flush([]);
+      http.expectOne(`${API}/mi-empresa/suscripcion`).flush(suscripcion(['operacion_offline']));
+      fixture.detectChanges();
+
+      expect(el.querySelector('.layout__campana')).not.toBeNull();
+      expect(el.querySelector('app-aviso-suscripcion')).not.toBeNull();
+      fixture.destroy();
+    });
+
+    it('con la suscripción vencida muestra la franja entre la barra y el contenido', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set({ ...suscripcion([]), estado: 'vencida', fecha_vencimiento: '2026-10-12' });
+      const { fixture, el } = crear();
+      fixture.detectChanges();
+
+      const franja = el.querySelector('.aviso-suscripcion');
+      expect(franja?.textContent).toContain('vencida desde el 12/10/2026');
+      const contenido = el.querySelector('.layout__contenido') as HTMLElement;
+      const hijos = Array.from(contenido.children).map((h) => h.tagName.toLowerCase() + '.' + h.className);
+      expect(hijos.indexOf('app-aviso-suscripcion.')).toBeGreaterThan(hijos.indexOf('header.layout__barra'));
+      expect(hijos.indexOf('app-aviso-suscripcion.')).toBeLessThan(hijos.indexOf('main.layout__panel'));
+      fixture.destroy();
+    });
+  });
+
+  it('exporta las listas de ítems (las usan las pruebas de orden)', () => {
+    expect(ITEMS_INICIO.length).toBe(2);
+  });
+});

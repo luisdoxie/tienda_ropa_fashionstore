@@ -1,23 +1,42 @@
-<div class="compras">
-  <h1>Mis compras</h1>
+<div class="cuenta">
+  <div class="encabezado">
+    <div>
+      <span class="fs-eyebrow">Mi cuenta</span>
+      <h1 class="fs-display">Mis compras</h1>
+    </div>
+  </div>
+
+  <nav class="fs-tabs pestanas" aria-label="Mi cuenta">
+    <a class="fs-tab fs-tab--activa" [routerLink]="tienda.ruta('mis-compras')" aria-current="page">Compras</a>
+    <a class="fs-tab" [routerLink]="tienda.ruta('mis-reservas')">Reservas</a>
+  </nav>
 
   @if (cargando()) {
-    <p class="fs-caption">Cargando...</p>
+    <p class="fs-estado-vacio" role="status">Cargando…</p>
+  } @else if (error()) {
+    <div class="fs-aviso fs-aviso--error estado-error" role="alert">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span class="estado-error__texto">No se pudieron cargar tus compras.</span>
+      <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="cargar()">Reintentar</button>
+    </div>
   } @else if (compras().length === 0) {
     <div class="vacio">
-      <p class="fs-caption">Todavía no hiciste ninguna compra.</p>
-      <a class="auth-enlace" [routerLink]="tienda.ruta()">Ver catálogo</a>
+      <span class="vacio__icono"><fs-icono nombre="carrito" [tam]="40" /></span>
+      <p>Todavía no has hecho ninguna compra.</p>
+      <a class="fs-btn fs-btn--secundario fs-btn--sm" [routerLink]="tienda.ruta()">Ver catálogo</a>
     </div>
   } @else {
     <div class="lista">
       @for (venta of compras(); track venta.id) {
-        <a class="fs-card fila" [routerLink]="tienda.ruta('mis-compras', '' + venta.id)">
-          <div>
-            <strong>{{ venta.codigo }}</strong>
-            <div class="fs-caption">{{ venta.fecha | date: 'medium' }}</div>
+        <a class="fila" [routerLink]="tienda.ruta('mis-compras', '' + venta.id)">
+          <span class="fila__icono"><fs-icono nombre="carrito" [tam]="30" /></span>
+          <div class="fila__datos">
+            <div class="fila__codigo fs-num">{{ venta.codigo }}</div>
+            <div class="fila__fecha">{{ venta.fecha | date: 'medium' }}</div>
           </div>
-          <span class="chip" [class]="'chip--' + venta.estado">{{ etiquetaEstado(venta.estado) }}</span>
-          <span class="fs-num total">{{ venta.total | number: '1.2-2' }}</span>
+          <span [class]="'fs-chip ' + claseEstado(venta.estado)">{{ etiquetaEstado(venta.estado) }}</span>
+          <span class="fila__total fs-num">Bs {{ venta.total | number: '1.2-2' }}</span>
+          <fs-icono class="fila__chevron" nombre="chevron-derecha" [tam]="28" />
         </a>
       }
     </div>

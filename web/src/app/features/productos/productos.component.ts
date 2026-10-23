@@ -1,12 +1,15 @@
+import { DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
-import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ConfirmationService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
-import { CheckboxModule } from 'primeng/checkbox';
+import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { DialogModule } from 'primeng/dialog';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { InputTextModule } from 'primeng/inputtext';
 import { SelectModule } from 'primeng/select';
+import { ToggleSwitchModule } from 'primeng/toggleswitch';
 import { environment } from '../../../environments/environment';
 import {
   Categoria,
@@ -24,6 +27,7 @@ import {
   VarianteAdmin,
   VariantesGenerarRequest,
 } from '../../core/models/catalogo.models';
+import { IconoComponent } from '../../shared/icono/icono.component';
 import { ColumnaTabla, TablaGenericaComponent } from '../../shared/tabla-generica/tabla-generica.component';
 
 const COLUMNAS: ColumnaTabla<Producto>[] = [
@@ -45,16 +49,20 @@ const OPCIONES_GENERO: { label: string; value: Genero }[] = [
   selector: 'app-productos',
   standalone: true,
   imports: [
+    DecimalPipe,
     ReactiveFormsModule,
     FormsModule,
     ButtonModule,
-    CheckboxModule,
+    ConfirmDialogModule,
     DialogModule,
+    IconoComponent,
     InputNumberModule,
     InputTextModule,
     SelectModule,
     TablaGenericaComponent,
+    ToggleSwitchModule,
   ],
+  providers: [ConfirmationService],
   templateUrl: './productos.component.html',
   styleUrl: './productos.component.scss',
 })
@@ -82,6 +90,7 @@ export class ProductosComponent implements OnInit {
 
   private readonly fb = inject(FormBuilder);
   private readonly http = inject(HttpClient);
+  private readonly confirmationService = inject(ConfirmationService);
 
   protected readonly formulario = this.fb.nonNullable.group({
     codigo: ['', Validators.required],
@@ -117,6 +126,28 @@ export class ProductosComponent implements OnInit {
     this.http.get<Color[]>(`${environment.apiUrl}/colores?pagina=1&tamanio=100`).subscribe((v) => this.colores.set(v));
   }
 
+  /** Error de un campo obligatorio del formulario del producto, una vez tocado. */
+  protected invalido(campo: 'codigo' | 'nombre' | 'categoria_id'): boolean {
+    const control = this.formulario.controls[campo];
+    return control.invalid && control.touched;
+  }
+
+  // Tallas y colores se eligen como chips: cada uno alterna su id en el arreglo del control.
+  /** Tallas o colores sin elegir, una vez que el usuario los tocó o intentó guardar. */
+  protected sinElegir(control: FormControl<number[]>): boolean {
+    return control.touched && control.value.length === 0;
+  }
+
+  protected tieneId(control: FormControl<number[]>, id: number): boolean {
+    return control.value.includes(id);
+  }
+
+  protected alternarId(control: FormControl<number[]>, id: number): void {
+    const actual = control.value;
+    control.setValue(actual.includes(id) ? actual.filter((valor) => valor !== id) : [...actual, id]);
+    control.markAsTouched();
+  }
+
   abrirCrear(): void {
     this.editando.set(null);
     this.variantes.set([]);
@@ -144,7 +175,7 @@ export class ProductosComponent implements OnInit {
     this.editando.set(producto);
     // tallas_ids/colores_ids solo existen en ProductoCrear (la combinatoria
     // de variantes se arma una sola vez, al crear) -- sin deshabilitarlos
-    // acá, sus validadores `required` con el array vacío invalidan el
+    // aquí, sus validadores `required` con el array vacío invalidan el
     // formulario entero y "Guardar" no hace nada (mismo gotcha que ya
     // resuelve promociones.component.ts con las líneas de alcance).
     this.formulario.controls.tallas_ids.disable();
@@ -304,6 +335,17 @@ export class ProductosComponent implements OnInit {
   }
 
   eliminarImagen(imagen: ImagenProducto): void {
+    this.confirmationService.confirm({
+      header: 'Confirmar',
+      icon: 'pi pi-exclamation-triangle',
+      message: '¿Eliminar esta imagen del producto?',
+      acceptLabel: 'Sí, eliminar',
+      rejectLabel: 'Cancelar',
+      accept: () => this.borrarImagen(imagen),
+    });
+  }
+
+  private borrarImagen(imagen: ImagenProducto): void {
     const producto = this.editando();
     this.http.delete(`${environment.apiUrl}/imagenes/${imagen.id}`).subscribe(() => {
       if (producto) this.cargarImagenes(producto.id);
