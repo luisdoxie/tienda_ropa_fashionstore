@@ -34,6 +34,22 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.auditoria import (
+    ACCION_ACTUALIZAR,
+    ACCION_ASIGNAR_PLAN,
+    ACCION_CAMBIAR_ESTADO,
+    ACCION_CAMBIAR_PLAN,
+    ACCION_CREAR,
+    ACCION_DESACTIVAR,
+    ACCION_RENOVAR,
+    ENTIDAD_EMPRESA,
+    ENTIDAD_PLAN,
+    ENTIDAD_SUCURSAL,
+    ENTIDAD_SUSCRIPCION,
+    ENTIDAD_USUARIO,
+    ContextoAuditoria,
+    diff_campos,
+)
 from app.core.config import get_settings
 from app.core.deps import ParametrosPaginacion
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
@@ -216,7 +232,9 @@ class GestionarEmpresas:
 
     # -- Registro ----------------------------------------------------------------
 
-    def registrar(self, db: Session, datos: EmpresaRegistrar) -> EmpresaRespuesta:
+    def registrar(
+        self, db: Session, datos: EmpresaRegistrar, contexto: ContextoAuditoria | None = None
+    ) -> EmpresaRespuesta:
         """Alta de una empresa en UNA transacción: la empresa, su suscripción
         activa, su administrador y los catálogos base (tallas, materiales,
         ciudades). Cualquier error revierte todo y no queda nada a medias. La
@@ -242,6 +260,12 @@ class GestionarEmpresas:
                 administrador = self._crear_administrador(db, datos.administrador)
                 correo = administrador.email
             inicializar_empresa(db, empresa_id)
+            # Actor: el superadministrador (sin empresa en la sesión), así que la
+            # empresa afectada va explícita. Sin el correo del administrador.
+            politicas.registrar_bitacora_de(
+                db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_CREAR,
+                {"codigo": codigo, "plan": plan_codigo}, empresa_id=empresa_id,
+            )  # fmt: skip
             respuesta = EmpresaRespuesta(
                 id=empresa_id,
                 codigo=codigo,
@@ -265,14 +289,29 @@ class GestionarEmpresas:
 
     # -- Cambios -----------------------------------------------------------------
 
-    def actualizar(self, db: Session, empresa_id: int, datos: EmpresaActualizar) -> EmpresaRespuesta:
+    def actualizar(
+        self, db: Session, empresa_id: int, datos: EmpresaActualizar, contexto: ContextoAuditoria | None = None
+    ) -> EmpresaRespuesta:
         """Nombre comercial, logo, color de acento y estado. El código NO cambia."""
-        self._repo.actualizar(db, empresa_id, _sin_nulos(datos, anulables=CAMPOS_ANULABLES_EMPRESA))
+        cambios = _sin_nulos(datos, anulables=CAMPOS_ANULABLES_EMPRESA)
+        actual = self._repo.buscar(db, empresa_id)
+        detalle = diff_campos(actual, cambios.model_dump(exclude_unset=True), ("activo",)) if actual else {}
+        self._repo.actualizar(db, empresa_id, cambios, commit=False)
+        politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_ACTUALIZAR, detalle, empresa_id=empresa_id
+        )
+        db.commit()
         return self.obtener(db, empresa_id)
 
-    def desactivar(self, db: Session, empresa_id: int) -> EmpresaRespuesta:
+    def desactivar(
+        self, db: Session, empresa_id: int, contexto: ContextoAuditoria | None = None
+    ) -> EmpresaRespuesta:
         """Baja lógica: bloquea el login y los tokens ya emitidos de la empresa."""
-        self._repo.desactivar(db, empresa_id)
+        self._repo.desactivar(db, empresa_id, commit=False)
+        politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_DESACTIVAR, {}, empresa_id=empresa_id
+        )
+        db.commit()
         return self.obtener(db, empresa_id)
 
     # -- Asociar usuarios y sucursales a una empresa ajena -----------------------------
@@ -281,15 +320,24 @@ class GestionarEmpresas:
         if not self._buscar(db, empresa_id).activo:
             raise ConflictoError("La empresa está inactiva")
 
-    def agregar_administrador(self, db: Session, empresa_id: int, datos: AdministradorRegistrar) -> UsuarioRespuesta:
+    def agregar_administrador(
+        self, db: Session, empresa_id: int, datos: AdministradorRegistrar, contexto: ContextoAuditoria | None = None
+    ) -> UsuarioRespuesta:
         """Otro administrador para la empresa (solo con el rol administrador)."""
         self._exigir_activa(db, empresa_id)
         with _transaccion(db, "Ya existe un usuario con ese email"):
             with en_empresa(db, empresa_id):
-                respuesta = UsuarioRespuesta.from_modelo(self._crear_administrador(db, datos))
+                administrador = self._crear_administrador(db, datos)
+                respuesta = UsuarioRespuesta.from_modelo(administrador)
+                politicas.registrar_bitacora_de(
+                    db, contexto, ENTIDAD_USUARIO, administrador.id, ACCION_CREAR,
+                    {"reactivado": False, "rol": ROL_ADMINISTRADOR}, empresa_id=empresa_id,
+                )  # fmt: skip
         return respuesta
 
-    def agregar_sucursal(self, db: Session, empresa_id: int, datos: SucursalCrear) -> SucursalRespuesta:
+    def agregar_sucursal(
+        self, db: Session, empresa_id: int, datos: SucursalCrear, contexto: ContextoAuditoria | None = None
+    ) -> SucursalRespuesta:
         """Una sucursal para la empresa. Pasa por el mismo repositorio que el
         alta de la propia empresa, así que respeta el límite de su plan."""
         self._exigir_activa(db, empresa_id)
@@ -297,6 +345,10 @@ class GestionarEmpresas:
             with en_empresa(db, empresa_id):
                 sucursal = self._sucursales.crear(db, datos, commit=False)
                 respuesta = SucursalRespuesta.model_validate(sucursal)
+                politicas.registrar_bitacora_de(
+                    db, contexto, ENTIDAD_SUCURSAL, sucursal.id, ACCION_CREAR,
+                    {"codigo": sucursal.codigo}, empresa_id=empresa_id,
+                )  # fmt: skip
         return respuesta
 
     # -- Tiendas públicas ----------------------------------------------------------------
@@ -336,24 +388,48 @@ class GestionarPlanes:
             raise NoEncontradoError("Plan no encontrado")
         return plan
 
-    def crear(self, db: Session, datos: PlanCrear) -> Plan:
+    # El plan es global (sin empresa): sus filas de bitácora quedan sin empresa y
+    # solo las ve el superadministrador.
+
+    def crear(self, db: Session, datos: PlanCrear, contexto: ContextoAuditoria | None = None) -> Plan:
         if self._repo.obtener_por_codigo(db, datos.codigo) is not None:
             raise ConflictoError("Ya existe un plan con ese código")
-        return self._repo.crear(db, datos)
+        plan = self._repo.crear(db, datos, commit=False)
+        politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_PLAN, plan.id, ACCION_CREAR,
+            {"codigo": plan.codigo, "max_sucursales": plan.max_sucursales},
+        )  # fmt: skip
+        db.commit()
+        db.refresh(plan)
+        return plan
 
-    def actualizar(self, db: Session, plan_id: int, datos: PlanActualizar) -> Plan:
+    def actualizar(
+        self, db: Session, plan_id: int, datos: PlanActualizar, contexto: ContextoAuditoria | None = None
+    ) -> Plan:
         """Límites y funcionalidades. Bajar `max_sucursales` por debajo del uso de
         una empresa NO desactiva nada: solo impide crear o reactivar sucursales
         hasta quedar dentro del límite."""
-        self.obtener(db, plan_id)
+        actual = self.obtener(db, plan_id)
         cambios = _sin_nulos(datos)
         if cambios.activo is False:
             self._exigir_sin_uso(db, plan_id)
-        return self._repo.actualizar(db, plan_id, cambios)
+        campos = diff_campos(actual, cambios.model_dump(exclude_unset=True), ("activo",))
+        plan = self._repo.actualizar(db, plan_id, cambios, commit=False)
+        politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_PLAN, plan.id, ACCION_ACTUALIZAR,
+            {"codigo": plan.codigo, **campos, "max_sucursales": plan.max_sucursales},
+        )  # fmt: skip
+        db.commit()
+        db.refresh(plan)
+        return plan
 
-    def desactivar(self, db: Session, plan_id: int) -> Plan:
+    def desactivar(self, db: Session, plan_id: int, contexto: ContextoAuditoria | None = None) -> Plan:
         self._exigir_sin_uso(db, plan_id)
-        return self._repo.desactivar(db, plan_id)
+        plan = self._repo.desactivar(db, plan_id, commit=False)
+        politicas.registrar_bitacora_de(db, contexto, ENTIDAD_PLAN, plan.id, ACCION_DESACTIVAR, {"codigo": plan.codigo})
+        db.commit()
+        db.refresh(plan)
+        return plan
 
     def _exigir_sin_uso(self, db: Session, plan_id: int) -> None:
         if self._repo.en_uso(db, plan_id):
@@ -394,7 +470,9 @@ class GestionarSuscripciones:
 
     # -- Asignar o cambiar de plan ------------------------------------------------------
 
-    def asignar_o_cambiar_plan(self, db: Session, datos: SuscripcionAsignar) -> SuscripcionRespuesta:
+    def asignar_o_cambiar_plan(
+        self, db: Session, datos: SuscripcionAsignar, contexto: ContextoAuditoria | None = None
+    ) -> SuscripcionRespuesta:
         """Asigna un plan a una empresa sin suscripción o LO CAMBIA: la vigente
         pasa a `cancelada` (con su vencimiento recortado a hoy) y se crea otra
         activa. Mismo plan: 409. Un plan cuyo límite de sucursales es menor que el
@@ -416,17 +494,35 @@ class GestionarSuscripciones:
                 actual = politicas.contar_sucursales_activas(db)
                 if actual > plan.max_sucursales:
                     raise politicas.error_limite_sucursales(plan, actual)
+                plan_antes = None
                 if vigente is not None:
+                    plan_antes = self._planes.buscar(db, vigente.plan_id).codigo
                     politicas.cerrar_suscripcion(vigente, hoy)
                     db.flush()  # libera el índice de la vigente antes de insertar la nueva
                 nueva = self._repo.insertar(db, datos.empresa_id, plan.id, inicio, vencimiento)
                 db.refresh(nueva)
                 respuesta = _respuesta_suscripcion(nueva, plan)
+                # Actor: el superadministrador. La empresa afectada va explícita
+                # (dentro de `en_empresa` coincide con la de la sesión).
+                if vigente is None:
+                    politicas.registrar_bitacora_de(
+                        db, contexto, ENTIDAD_SUSCRIPCION, nueva.id, ACCION_ASIGNAR_PLAN,
+                        {"plan_despues": plan.codigo, "suscripcion_nueva_id": nueva.id},
+                        empresa_id=datos.empresa_id,
+                    )  # fmt: skip
+                else:
+                    politicas.registrar_bitacora_de(
+                        db, contexto, ENTIDAD_SUSCRIPCION, nueva.id, ACCION_CAMBIAR_PLAN,
+                        {"plan_antes": plan_antes, "plan_despues": plan.codigo, "suscripcion_nueva_id": nueva.id},
+                        empresa_id=datos.empresa_id,
+                    )  # fmt: skip
         return respuesta
 
     # -- Renovar ------------------------------------------------------------------------------
 
-    def renovar(self, db: Session, suscripcion_id: int, datos: SuscripcionRenovar) -> SuscripcionRespuesta:
+    def renovar(
+        self, db: Session, suscripcion_id: int, datos: SuscripcionRenovar, contexto: ContextoAuditoria | None = None
+    ) -> SuscripcionRespuesta:
         """Fija un nuevo vencimiento (futuro). Si la suscripción estaba vencida
         vuelve a `activa`; si estaba suspendida solo cambia la fecha; una
         cancelada no se renueva."""
@@ -444,15 +540,25 @@ class GestionarSuscripciones:
                 if politicas.estado_efectivo(suscripcion, hoy) == "vencida":
                     politicas.validar_transicion("vencida", "activa")
                     suscripcion.estado = "activa"
+                vencimiento_antes = suscripcion.fecha_vencimiento
                 suscripcion.fecha_vencimiento = datos.fecha_vencimiento
                 db.flush()
                 respuesta = _respuesta_suscripcion(suscripcion, self._planes.buscar(db, suscripcion.plan_id))
+                politicas.registrar_bitacora_de(
+                    db, contexto, ENTIDAD_SUSCRIPCION, suscripcion_id, ACCION_RENOVAR,
+                    {"vencimiento_antes": vencimiento_antes, "vencimiento_despues": datos.fecha_vencimiento},
+                    empresa_id=empresa_id,
+                )  # fmt: skip
         return respuesta
 
     # -- Suspender, reactivar, cancelar --------------------------------------------------------
 
     def cambiar_estado(
-        self, db: Session, suscripcion_id: int, datos: SuscripcionEstadoActualizar
+        self,
+        db: Session,
+        suscripcion_id: int,
+        datos: SuscripcionEstadoActualizar,
+        contexto: ContextoAuditoria | None = None,
     ) -> SuscripcionRespuesta:
         """Suspender, reactivar o cancelar. La transición se valida contra el
         estado EFECTIVO. Reactivar solo vale si la fecha de vencimiento no pasó
@@ -469,6 +575,11 @@ class GestionarSuscripciones:
                 suscripcion.estado = datos.estado
                 db.flush()
                 respuesta = _respuesta_suscripcion(suscripcion, self._planes.buscar(db, suscripcion.plan_id))
+                politicas.registrar_bitacora_de(
+                    db, contexto, ENTIDAD_SUSCRIPCION, suscripcion_id, ACCION_CAMBIAR_ESTADO,
+                    {"estado_antes": origen, "estado_despues": datos.estado},
+                    empresa_id=empresa_id,
+                )  # fmt: skip
         return respuesta
 
     # -- Tarea periódica --------------------------------------------------------------------------
@@ -510,12 +621,21 @@ class ConsultarMiEmpresa:
     def obtener(self, db: Session) -> MiEmpresaRespuesta:
         return self._respuesta(self._empresa(db))
 
-    def actualizar(self, db: Session, datos: MiEmpresaActualizar) -> MiEmpresaRespuesta:
+    def actualizar(
+        self, db: Session, datos: MiEmpresaActualizar, contexto: ContextoAuditoria | None = None
+    ) -> MiEmpresaRespuesta:
         """Nombre comercial, logo y color de acento. Plan, estado y código no se
         tocan desde aquí."""
         empresa = self._empresa(db)
+        empresa_id = empresa.id
         cambios = _sin_nulos(datos, EmpresaActualizar, CAMPOS_ANULABLES_EMPRESA)
-        return self._respuesta(self._repo.actualizar(db, empresa.id, cambios))
+        detalle = diff_campos(empresa, cambios.model_dump(exclude_unset=True), ("activo",))
+        actualizada = self._repo.actualizar(db, empresa_id, cambios, commit=False)
+        # La empresa es la de la sesión (el administrador que la edita).
+        politicas.registrar_bitacora_de(db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_ACTUALIZAR, detalle)
+        db.commit()
+        db.refresh(actualizada)
+        return self._respuesta(actualizada)
 
     def obtener_suscripcion(self, db: Session) -> MiSuscripcionRespuesta:
         """Plan, estado efectivo, fechas, límite y uso de sucursales, y las

@@ -37,7 +37,7 @@ from app.comercial.models import (
 from app.core.security import crear_access_token, permisos_de_usuario
 from app.core.tenant import fijar_empresa
 from app.inteligencia.models import ConsultaVoz, HistorialNavegacion, Recomendacion
-from app.plataforma.models import Cliente, Notificacion, Usuario
+from app.plataforma.models import Bitacora, Cliente, Notificacion, Usuario
 from app.plataforma.repository import ClienteRepository, UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 
@@ -281,9 +281,18 @@ class Universo:
             historial = HistorialNavegacion(cliente_id=self.cliente.id, producto_id=ids["producto"], variante_id=ids["variante"], tipo_evento="vista")
             recomendacion = Recomendacion(cliente_id=self.cliente.id, variante_id=ids["variante"], puntaje=Decimal("0.9"), motivo=m("recomendacion"))
             notificacion = Notificacion(usuario_id=self.empresa.admin_id, titulo=m("notificacion"), mensaje=m("notificacion-mensaje"), tipo="aviso")
-            db.add_all([voz, historial, recomendacion, notificacion])
+            # La bitácora (E06) ya recibe filas de las acciones de arriba; esta lleva la marca
+            # para que una fuga se vea en el cuerpo de una respuesta.
+            bitacora = Bitacora(
+                empresa_id=self.id, usuario_id=self.empresa.admin_id, entidad="universo", entidad_id=0,
+                accion="crear", datos={"marca": m("bitacora")}, ip="127.0.0.1",
+            )
+            db.add_all([voz, historial, recomendacion, notificacion, bitacora])
             db.flush()
-            ids.update(consulta_voz=voz.id, historial=historial.id, recomendacion=recomendacion.id, notificacion=notificacion.id)
+            ids.update(
+                consulta_voz=voz.id, historial=historial.id, recomendacion=recomendacion.id,
+                notificacion=notificacion.id, bitacora=bitacora.id,
+            )
         return self
 
     # -- piezas ---------------------------------------------------------------------

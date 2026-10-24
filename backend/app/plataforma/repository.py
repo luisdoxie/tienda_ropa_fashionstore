@@ -1,4 +1,6 @@
-from sqlalchemy import func, select
+import datetime as dt
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.crud_base import CRUDBase, CRUDBaseSinActivo
@@ -8,6 +10,7 @@ from app.core.permisos import ROL_ADMINISTRADOR, ROL_SUPERADMINISTRADOR
 from app.core.security import hash_password
 from app.core.tenant import empresa_de, sin_filtro
 from app.plataforma.models import (
+    Bitacora,
     Ciudad,
     Cliente,
     Empleado,
@@ -24,6 +27,7 @@ from app.plataforma.models import (
 )
 from app.plataforma.schemas import (
     CiudadActualizar,
+    FiltrosBitacora,
     CiudadCrear,
     ClientePerfilActualizar,
     EmpleadoActualizar,
@@ -420,7 +424,7 @@ class EmpleadoRepository(CRUDBase[Empleado, EmpleadoCrear, EmpleadoActualizar]):
     def obtener_por_usuario(self, db: Session, usuario_id: int) -> Empleado | None:
         return db.scalar(select(Empleado).where(Empleado.usuario_id == usuario_id))
 
-    def reactivar(self, db: Session, empleado: Empleado, datos: EmpleadoCrear) -> Empleado:
+    def reactivar(self, db: Session, empleado: Empleado, datos: EmpleadoCrear, commit: bool = True) -> Empleado:
         """Reusa la fila de un empleado dado de baja en vez de dejar un
         duplicado: `obtener_por_usuario` no filtra por `activo`, así que un
         usuario solo puede tener una fila de empleado en toda su historia."""
@@ -429,7 +433,7 @@ class EmpleadoRepository(CRUDBase[Empleado, EmpleadoCrear, EmpleadoActualizar]):
         empleado.cargo = datos.cargo
         empleado.ci = datos.ci
         empleado.fecha_ingreso = datos.fecha_ingreso
-        db.commit()
+        confirmar(db, commit)
         db.refresh(empleado)
         return empleado
 
@@ -624,3 +628,98 @@ class SuscripcionRepository(CRUDBaseSinActivo[Suscripcion, SuscripcionAsignar, S
         if empresa_id is None:
             raise NoEncontradoError("Suscripción no encontrada")
         return empresa_id
+
+
+# ---- Bitácora ----
+
+
+class BitacoraRepository:
+    """Sin `activo` y sin filtro automático: la tabla admite `empresa_id` NULL y
+    el superadministrador la lee entera, así que CADA consulta lleva su
+    restricción de forma explícita (`empresa_id` de la empresa, o `plataforma=True`
+    solo desde la ruta del superadministrador)."""
+
+    def crear(self, db: Session, fila: Bitacora) -> Bitacora:
+        db.add(fila)
+        db.flush()
+        return fila
+
+    @staticmethod
+    def _condiciones(filtros: FiltrosBitacora, empresa_id: int | None, plataforma: bool) -> list:
+        if plataforma:
+            if filtros.sin_empresa:
+                condiciones = [Bitacora.empresa_id.is_(None)]
+            elif filtros.empresa_id is not None:
+                condiciones = [Bitacora.empresa_id == filtros.empresa_id]
+            else:
+                condiciones = []
+        else:
+            if empresa_id is None:  # defensa en profundidad: nunca una consulta sin restricción
+                raise ValueError("La consulta de una empresa exige su empresa_id")
+            condiciones = [Bitacora.empresa_id == empresa_id]
+        # Fechas inclusivas: de las 00:00 del `desde` a las 00:00 del día siguiente al `hasta`.
+        condiciones.append(Bitacora.creado_en >= dt.datetime.combine(filtros.desde, dt.time.min))
+        condiciones.append(Bitacora.creado_en < dt.datetime.combine(filtros.hasta + dt.timedelta(days=1), dt.time.min))
+        if filtros.entidad is not None:
+            condiciones.append(Bitacora.entidad == filtros.entidad)
+        if filtros.accion is not None:
+            condiciones.append(Bitacora.accion == filtros.accion)
+        if filtros.usuario_id is not None:
+            condiciones.append(Bitacora.usuario_id == filtros.usuario_id)
+        return condiciones
+
+    def listar(
+        self,
+        db: Session,
+        filtros: FiltrosBitacora,
+        paginacion,
+        *,
+        empresa_id: int | None = None,
+        plataforma: bool = False,
+    ) -> tuple[list[Bitacora], int]:
+        condiciones = self._condiciones(filtros, empresa_id, plataforma)
+        total = db.scalar(select(func.count()).select_from(Bitacora).where(*condiciones)) or 0
+        filas = db.scalars(
+            select(Bitacora)
+            .where(*condiciones)
+            .order_by(Bitacora.creado_en.desc(), Bitacora.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.tamanio)
+        )
+        return list(filas), total
+
+    def obtener(
+        self, db: Session, bitacora_id: int, *, empresa_id: int | None = None, plataforma: bool = False
+    ) -> Bitacora | None:
+        consulta = select(Bitacora).where(Bitacora.id == bitacora_id)
+        if not plataforma:
+            if empresa_id is None:
+                raise ValueError("La consulta de una empresa exige su empresa_id")
+            consulta = consulta.where(Bitacora.empresa_id == empresa_id)
+        return db.scalar(consulta)
+
+    def actores(self, db: Session, usuario_ids) -> dict[int, tuple[str, int | None]]:
+        """Nombre completo y empresa de cada usuario, en un solo SELECT. Va sin
+        filtro de empresa (permitido para `Usuario`) porque el actor puede ser un
+        superadministrador, que no tiene empresa."""
+        ids = {i for i in usuario_ids if i is not None}
+        if not ids:
+            return {}
+        filas = db.execute(
+            sin_filtro(select(Usuario.id, Usuario.nombre, Usuario.apellido, Usuario.empresa_id).where(Usuario.id.in_(ids)))
+        )
+        return {fila.id: (f"{fila.nombre} {fila.apellido}", fila.empresa_id) for fila in filas}
+
+    def purgar_anteriores_a(self, db: Session, limite: dt.datetime, lote: int = 5000) -> int:
+        """Borra a lo sumo `lote` filas anteriores a `limite` (DELETE de SQL, que no
+        pasa por la guardia de solo anexar) y devuelve cuántas. Quien llama repite
+        hasta que devuelva 0, confirmando cada lote."""
+        ids = list(
+            db.scalars(
+                select(Bitacora.id).where(Bitacora.creado_en < limite).order_by(Bitacora.id).limit(lote)
+            )
+        )
+        if not ids:
+            return 0
+        db.execute(delete(Bitacora.__table__).where(Bitacora.__table__.c.id.in_(ids)))
+        return len(ids)

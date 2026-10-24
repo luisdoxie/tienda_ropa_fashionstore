@@ -4,12 +4,14 @@ import datetime as dt
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
     Date,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     String,
@@ -20,10 +22,12 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.tenant import EmpresaMixin, EmpresaOpcionalMixin
+from app.core.tipos import TipoJson
 
 
 # ---- Seguridad ----
@@ -261,3 +265,41 @@ class Suscripcion(EmpresaMixin, Base):
     fecha_inicio: Mapped[dt.date] = mapped_column(Date, nullable=False)
     fecha_vencimiento: Mapped[dt.date] = mapped_column(Date, nullable=False)
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+# ---- Bitácora ----
+
+
+class Bitacora(Base):
+    """Registro de solo anexar de las acciones sensibles. `empresa_id` admite
+    NULL a propósito (acciones de la plataforma sin empresa, como un login
+    fallido con una empresa inexistente), por eso NO usa el mixin de empresa:
+    el filtro automático la cerraría al superadministrador. Todas sus consultas
+    filtran por empresa de forma explícita en `BitacoraRepository`.
+
+    `creado_en` es naive en UTC, como el resto de los modelos."""
+
+    __tablename__ = "bitacora"
+    __table_args__ = (
+        Index("ix_bitacora_empresa_fecha", "empresa_id", "creado_en"),
+        Index("ix_bitacora_empresa_entidad", "empresa_id", "entidad", "entidad_id"),
+        Index("ix_bitacora_usuario_fecha", "usuario_id", "creado_en"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    empresa_id: Mapped[int | None] = mapped_column(ForeignKey("empresa.id"))
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuario.id"))
+    entidad: Mapped[str] = mapped_column(String(60), nullable=False)
+    entidad_id: Mapped[int | None] = mapped_column(BigInteger)
+    accion: Mapped[str] = mapped_column(String(40), nullable=False)
+    datos: Mapped[dict | None] = mapped_column(TipoJson)
+    ip: Mapped[str | None] = mapped_column(String(45))
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+
+
+@event.listens_for(Bitacora, "before_update")
+@event.listens_for(Bitacora, "before_delete")
+def _bitacora_solo_anexar(mapper, connection, fila) -> None:
+    """La bitácora no se edita ni se borra desde el código. La única salida es
+    la purga por retención, que borra con DELETE de SQL y no pasa por aquí."""
+    raise RuntimeError("La bitácora es de solo anexar")

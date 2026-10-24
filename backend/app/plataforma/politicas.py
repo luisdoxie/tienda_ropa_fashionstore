@@ -3,13 +3,19 @@ Organización), a los demás paquetes y a core.security, sin ser casos de uso
 del catálogo: consultas y validaciones sobre las tablas de este paquete, para
 que nadie más tenga que tocarlas directamente."""
 
+import datetime as dt
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.auditoria import ENTIDAD_BITACORA, ACCION_PURGAR, ContextoAuditoria, sanear_datos
+from app.core.config import get_settings
+from app.core.deps import ParametrosPaginacion
 from app.core.exceptions import (
     ConflictoError,
     DomainError,
@@ -19,9 +25,10 @@ from app.core.exceptions import (
 )
 from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_ADMINISTRADOR, ROL_SUPERADMINISTRADOR
 from app.core.planes import FUNCIONALIDADES
-from app.core.tenant import exigir_empresa, registrar_inicializador, sin_filtro
-from app.core.tiempo import hoy_utc
+from app.core.tenant import empresa_de, exigir_empresa, registrar_inicializador, sin_filtro
+from app.core.tiempo import ahora_utc_naive, hoy_utc
 from app.plataforma.models import (
+    Bitacora,
     Ciudad,
     Cliente,
     Empleado,
@@ -37,7 +44,9 @@ from app.plataforma.models import (
     rol_permiso,
     usuario_rol,
 )
+from app.plataforma.schemas import BitacoraPagina, BitacoraRespuesta, FiltrosBitacora
 from app.plataforma.repository import (
+    BitacoraRepository,
     CiudadRepository,
     ClienteRepository,
     EmpleadoRepository,
@@ -529,3 +538,159 @@ def obtener_empleado_por_usuario(db: Session, usuario_id: int) -> Empleado | Non
     """Para que `comercial` (ventas y pagos) resuelva el cajero (empleado) a partir
     del usuario logueado, sin consultar `empleado` directamente."""
     return empleado_repo.obtener_por_usuario(db, usuario_id)
+
+
+# ---- Bitácora ----
+# Funciones de política, no un caso de uso: el catálogo de CU no incluye la
+# bitácora. Cualquier paquete audita con `registrar_bitacora_de`.
+
+logger = logging.getLogger(__name__)
+
+bitacora_repo = BitacoraRepository()
+
+LOTE_PURGA_BITACORA = 5000
+ACTOR_PLATAFORMA = "Administrador de la plataforma"
+
+
+def registrar_bitacora(
+    db: Session,
+    usuario_id: int | None,
+    entidad: str,
+    entidad_id: int | None,
+    accion: str,
+    datos: dict[str, Any] | None = None,
+    ip: str | None = None,
+    *,
+    empresa_id: int | None = None,
+) -> Bitacora | None:
+    """Anota una acción sensible en la MISMA transacción de quien la llama.
+
+    - La empresa es la de la sesión: `empresa_id` solo cuenta cuando la sesión no
+      tiene ninguna (el superadministrador que actúa sobre la empresa 7, o un
+      login sin empresa). Un usuario de la empresa A no escribe en la B.
+    - Nunca confirma ni revierte lo del llamador. Primero vuelca (`flush`) fuera
+      del try: si lo pendiente del llamador es inválido, ese error es SUYO y se
+      propaga. Después inserta en un SAVEPOINT: si la fila falla (datos que no se
+      pueden guardar, tabla caída) se revierte solo ella, se deja el error en el
+      log y se devuelve `None` (auditoría de mejor esfuerzo: no tumba una venta).
+    - `datos` pasa por `sanear_datos`: sin secretos ni datos personales.
+    - Si el llamador revierte, la fila se va con él."""
+    de_la_sesion = empresa_de(db)
+    empresa_efectiva = de_la_sesion if de_la_sesion is not None else empresa_id
+    db.flush()
+    try:
+        fila = Bitacora(
+            empresa_id=empresa_efectiva,
+            usuario_id=usuario_id,
+            entidad=entidad,
+            entidad_id=entidad_id,
+            accion=accion,
+            datos=sanear_datos(datos),
+            ip=ip[:45] if ip else None,
+        )
+        with db.begin_nested():
+            bitacora_repo.crear(db, fila)
+        return fila
+    except Exception:
+        logger.exception("No se pudo registrar en la bitácora: %s/%s", entidad, accion)
+        return None
+
+
+def registrar_bitacora_de(
+    db: Session,
+    contexto: ContextoAuditoria | None,
+    entidad: str,
+    entidad_id: int | None,
+    accion: str,
+    datos: dict[str, Any] | None = None,
+    *,
+    empresa_id: int | None = None,
+) -> Bitacora | None:
+    """Atajo con el `ContextoAuditoria` de la petición. Sin contexto (un caso de
+    uso llamado directo, sin router) no registra nada."""
+    if contexto is None:
+        return None
+    return registrar_bitacora(
+        db,
+        contexto.usuario_id,
+        entidad,
+        entidad_id,
+        accion,
+        datos,
+        contexto.ip,
+        empresa_id=empresa_id if empresa_id is not None else contexto.empresa_id,
+    )
+
+
+def _a_respuesta(fila: Bitacora, actores: dict[int, tuple[str, int | None]], *, de_plataforma: bool) -> BitacoraRespuesta:
+    actor = actores.get(fila.usuario_id) if fila.usuario_id is not None else None
+    nombre = actor[0] if actor else None
+    ip = fila.ip
+    if not de_plataforma and actor is not None and actor[1] is None:
+        # Un superadministrador actuó sobre esta empresa: no se le muestran su
+        # nombre ni su IP.
+        nombre, ip = ACTOR_PLATAFORMA, None
+    return BitacoraRespuesta(
+        id=fila.id,
+        empresa_id=fila.empresa_id if de_plataforma else None,
+        usuario_id=fila.usuario_id,
+        usuario_nombre=nombre,
+        entidad=fila.entidad,
+        entidad_id=fila.entidad_id,
+        accion=fila.accion,
+        datos=fila.datos,
+        ip=ip,
+        creado_en=fila.creado_en,
+    )
+
+
+def listar_bitacora(
+    db: Session, filtros: FiltrosBitacora, paginacion: ParametrosPaginacion
+) -> BitacoraPagina:
+    """Las filas de la empresa de la sesión. `empresa_id` y `sin_empresa` de los
+    filtros se IGNORAN: la empresa sale siempre de la sesión."""
+    empresa_id = exigir_empresa(db)
+    filas, total = bitacora_repo.listar(db, filtros, paginacion, empresa_id=empresa_id)
+    actores = bitacora_repo.actores(db, [f.usuario_id for f in filas])
+    items = [_a_respuesta(f, actores, de_plataforma=False) for f in filas]
+    return BitacoraPagina(total=total, pagina=paginacion.pagina, tamanio=paginacion.tamanio, items=items)
+
+
+def obtener_bitacora(db: Session, bitacora_id: int) -> BitacoraRespuesta:
+    """Una fila de la empresa de la sesión; la de otra empresa es 404, igual que
+    una inexistente."""
+    fila = bitacora_repo.obtener(db, bitacora_id, empresa_id=exigir_empresa(db))
+    if fila is None:
+        raise NoEncontradoError("Registro de bitácora no encontrado")
+    return _a_respuesta(fila, bitacora_repo.actores(db, [fila.usuario_id]), de_plataforma=False)
+
+
+def listar_bitacora_plataforma(
+    db: Session, filtros: FiltrosBitacora, paginacion: ParametrosPaginacion
+) -> BitacoraPagina:
+    """Todas las empresas (y las filas sin empresa). Solo para el
+    superadministrador: la ruta lo exige con `plataforma.gestionar`."""
+    filas, total = bitacora_repo.listar(db, filtros, paginacion, plataforma=True)
+    actores = bitacora_repo.actores(db, [f.usuario_id for f in filas])
+    items = [_a_respuesta(f, actores, de_plataforma=True) for f in filas]
+    return BitacoraPagina(total=total, pagina=paginacion.pagina, tamanio=paginacion.tamanio, items=items)
+
+
+def purgar_bitacora(
+    db: Session, retencion_dias: int | None = None, lote: int = LOTE_PURGA_BITACORA
+) -> int:
+    """Borra lo anterior a la retención (365 días por defecto), por lotes y
+    confirmando cada uno para no sostener una transacción larga. Deja UNA fila
+    `bitacora/purgar` sin empresa con lo borrado."""
+    dias = retencion_dias if retencion_dias is not None else get_settings().bitacora_retencion_dias
+    limite = ahora_utc_naive() - dt.timedelta(days=dias)
+    total = 0
+    while True:
+        borradas = bitacora_repo.purgar_anteriores_a(db, limite, lote)
+        db.commit()
+        if borradas == 0:
+            break
+        total += borradas
+    registrar_bitacora(db, None, ENTIDAD_BITACORA, None, ACCION_PURGAR, {"hasta": limite, "filas": total})
+    db.commit()
+    return total

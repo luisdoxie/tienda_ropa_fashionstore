@@ -683,18 +683,26 @@ CREATE TABLE recomendacion (
 -- PAQUETE 12: NUCLEO / AUDITORIA
 -- =====================================================================
 
--- NOTA: tabla de referencia NO implementada (sin modelo ni migracion); la base
--- real tiene 59 tablas.
+-- Implementada en la E06 (segundo parcial): registro de SOLO ANEXAR de las
+-- acciones sensibles. Cambios respecto al primer parcial: empresa_id (NULL =
+-- accion de la plataforma sin empresa), accion VARCHAR(40) (hay acciones como
+-- 'contrasena_restablecida') y los tres indices de consulta. En los modelos
+-- creado_en es TIMESTAMP sin zona, en UTC, como el resto de las tablas.
+-- La base real tiene 63 tablas.
 CREATE TABLE bitacora (
     id              BIGSERIAL PRIMARY KEY,
+    empresa_id      INT REFERENCES empresa(id),
     usuario_id      INT REFERENCES usuario(id),
     entidad         VARCHAR(60) NOT NULL,
-    entidad_id      INT,
-    accion          VARCHAR(20) NOT NULL,
+    entidad_id      BIGINT,
+    accion          VARCHAR(40) NOT NULL,
     datos           JSONB,
     ip              VARCHAR(45),
     creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX ix_bitacora_empresa_fecha   ON bitacora (empresa_id, creado_en);
+CREATE INDEX ix_bitacora_empresa_entidad ON bitacora (empresa_id, entidad, entidad_id);
+CREATE INDEX ix_bitacora_usuario_fecha   ON bitacora (usuario_id, creado_en);
 
 CREATE TABLE notificacion (
     id              SERIAL PRIMARY KEY,

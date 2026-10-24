@@ -39,6 +39,7 @@ from app.catalogo.repository import (
     TransferenciaRepository,
 )
 from app.catalogo.schemas import MovimientoCrear, TransferenciaCrear
+from app.core.auditoria import ACCION_AJUSTE, ENTIDAD_MOVIMIENTO_INVENTARIO, ContextoAuditoria
 from app.core.exceptions import DomainError, ConflictoError, PermisoDenegadoError
 from app.plataforma import politicas as plataforma_politicas
 
@@ -148,12 +149,38 @@ class RegistrarMovimientoInventario:
 
     # -- Movimientos y ajustes ----------------------------------------------------
 
-    def registrar_movimiento(self, db: Session, usuario_id: int, datos: MovimientoCrear) -> MovimientoInventario:
+    def _confirmar_movimiento(
+        self, db: Session, movimiento: MovimientoInventario, tipo_codigo: str, contexto: ContextoAuditoria | None
+    ) -> MovimientoInventario:
+        """Cierra la transacción del movimiento. Solo los ajustes se auditan
+        (los demás tipos ya están en el kardex); la fila de bitácora queda en el
+        mismo commit que el movimiento. La observación libre no se copia."""
+        if tipo_codigo.startswith("ajuste"):
+            plataforma_politicas.registrar_bitacora_de(
+                db,
+                contexto,
+                ENTIDAD_MOVIMIENTO_INVENTARIO,
+                movimiento.id,
+                ACCION_AJUSTE,
+                {
+                    "variante_id": movimiento.variante_id,
+                    "sucursal_id": movimiento.sucursal_id,
+                    "cantidad": movimiento.cantidad,  # con signo: -3 es un faltante
+                    "tipo": tipo_codigo,
+                },
+            )
+        db.commit()
+        db.refresh(movimiento)
+        return movimiento
+
+    def registrar_movimiento(
+        self, db: Session, usuario_id: int, datos: MovimientoCrear, contexto: ContextoAuditoria | None = None
+    ) -> MovimientoInventario:
         """POST /inventario/movimientos. Antes el router llamaba directo a
         actualizar_stock_operacion (regla 5); acá además se valida que la
         sucursal sea la del empleado."""
         plataforma_politicas.validar_acceso_sucursal(db, usuario_id, datos.sucursal_id)
-        return actualizar_stock_operacion(
+        movimiento = actualizar_stock_operacion(
             db,
             variante_id=datos.variante_id,
             sucursal_id=datos.sucursal_id,
@@ -164,7 +191,9 @@ class RegistrarMovimientoInventario:
             referencia_id=datos.referencia_id,
             usuario_id=usuario_id,
             observacion=datos.observacion,
+            commit=False,
         )
+        return self._confirmar_movimiento(db, movimiento, datos.tipo_movimiento_codigo, contexto)
 
     def registrar_ajuste(
         self,
@@ -174,6 +203,7 @@ class RegistrarMovimientoInventario:
         cantidad: int,
         usuario_id: int,
         observacion: str | None,
+        contexto: ContextoAuditoria | None = None,
     ) -> MovimientoInventario:
         """Envoltorio delgado sobre actualizar_stock_operacion(): traduce el
         signo de `cantidad` (positivo = sobrante, negativo = faltante) al
@@ -182,7 +212,7 @@ class RegistrarMovimientoInventario:
             raise DomainError("cantidad no puede ser cero")
         plataforma_politicas.validar_acceso_sucursal(db, usuario_id, sucursal_id)
         tipo_codigo = "ajuste_positivo" if cantidad > 0 else "ajuste_negativo"
-        return actualizar_stock_operacion(
+        movimiento = actualizar_stock_operacion(
             db,
             variante_id=variante_id,
             sucursal_id=sucursal_id,
@@ -191,7 +221,9 @@ class RegistrarMovimientoInventario:
             referencia_tipo="ajuste",
             usuario_id=usuario_id,
             observacion=observacion,
+            commit=False,
         )
+        return self._confirmar_movimiento(db, movimiento, tipo_codigo, contexto)
 
     # -- Transferencias -----------------------------------------------------------
 

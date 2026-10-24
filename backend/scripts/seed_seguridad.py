@@ -48,6 +48,7 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("probador.gestionar", "probador", "Subir y validar assets del probador"),
     ("plataforma.gestionar", "plataforma", "Gestionar empresas, planes y suscripciones de la plataforma"),
     ("empresa.gestionar", "plataforma", "Gestionar la empresa propia y su suscripción"),
+    ("bitacora.ver", "bitacora", "Consultar la bitácora de auditoría de la empresa"),
 ]
 
 # Permisos que NO recibe el administrador de una empresa: son del

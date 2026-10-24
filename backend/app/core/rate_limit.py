@@ -29,6 +29,10 @@ def _direccion_cliente(request: Request) -> str:
     return request.client.host
 
 
+# Nombre público de la misma función, para quien la reutiliza fuera de este
+# módulo (la auditoría guarda la IP real del cliente).
+direccion_cliente = _direccion_cliente
+
 limiter = Limiter(key_func=_direccion_cliente)
 
 

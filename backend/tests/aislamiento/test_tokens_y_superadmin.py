@@ -156,8 +156,9 @@ def test_superadmin_no_alcanza_datos_de_negocio(mundo, clave):
 PLATAFORMA_RUTAS = rutas_de({PLATAFORMA})
 
 
-def test_hay_18_rutas_de_plataforma():
-    assert len(PLATAFORMA_RUTAS) == 18
+def test_hay_19_rutas_de_plataforma():
+    # 18 de CU-04 (E04) + GET /plataforma/bitacora (E06).
+    assert len(PLATAFORMA_RUTAS) == 19
 
 
 @pytest.mark.parametrize("clave", PLATAFORMA_RUTAS, ids=[nombre_corto(c) for c in PLATAFORMA_RUTAS])

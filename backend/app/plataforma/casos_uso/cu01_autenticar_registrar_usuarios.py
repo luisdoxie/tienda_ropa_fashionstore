@@ -24,6 +24,14 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.core.auditoria import (
+    ACCION_CONTRASENA_RESTABLECIDA,
+    ACCION_LOGIN_EXITOSO,
+    ACCION_LOGIN_FALLIDO,
+    ENTIDAD_SESION,
+    ENTIDAD_USUARIO,
+    ContextoAuditoria,
+)
 from app.core.config import get_settings
 from app.core.exceptions import DemasiadosIntentosError, NoAutenticadoError
 from app.core.rate_limit import limitador_intentos
@@ -45,6 +53,7 @@ from app.plataforma.politicas import (
     obtener_perfil_cliente,
     obtener_usuario_para_auth,
     permisos_de_usuario,
+    registrar_bitacora,
 )
 from app.plataforma.repository import ClienteRepository, UsuarioRepository
 from app.plataforma.schemas import (
@@ -120,14 +129,23 @@ def _usuario_de_empresa_por_correo(db: Session, usuarios: UsuarioRepository, emp
     """El usuario de esa empresa (por nombre o código) con ese correo, o None
     si la empresa no existe, está inactiva o el correo no es suyo. Deja la
     sesión trabajando en esa empresa solo si existe y está activa."""
+    return _buscar_en_empresa(db, usuarios, empresa, email)[1]
+
+
+def _buscar_en_empresa(
+    db: Session, usuarios: UsuarioRepository, empresa: str, email: str
+) -> tuple[bool, Usuario | None]:
+    """(la empresa existe y está activa, el usuario con ese correo en ella). El
+    primer valor deja distinguir "empresa inexistente" de "correo ajeno" en la
+    bitácora sin cambiar lo que ve quien llama al endpoint."""
     codigo = normalizar_nombre_empresa(empresa)
     if not codigo:
-        return None
+        return False, None
     registro = obtener_empresa_por_codigo(db, codigo)
     if registro is None or not registro.activo:
-        return None
+        return False, None
     fijar_empresa(db, registro.id)
-    return usuarios.obtener_por_email(db, email)
+    return True, usuarios.obtener_por_email(db, email)
 
 
 class IniciarSesion:
@@ -145,7 +163,9 @@ class IniciarSesion:
             refresh_token=crear_refresh_token(usuario.id, empresa_id=usuario.empresa_id),
         )
 
-    def ejecutar(self, db: Session, datos: LoginRequest) -> TokenRespuesta:
+    def ejecutar(
+        self, db: Session, datos: LoginRequest, contexto: ContextoAuditoria | None = None
+    ) -> TokenRespuesta:
         # La clave del bloqueo no depende de que la cuenta exista: bloquear no
         # revela nada. Una empresa que normaliza a vacío cuenta como cualquier
         # otro intento fallido.
@@ -153,14 +173,17 @@ class IniciarSesion:
         clave = f"{_CLAVE_PLATAFORMA if codigo is None else codigo}|{datos.email}"
         reintentar_en = limitador_intentos.bloqueado(clave)
         if reintentar_en is not None:
+            # Un bloqueo no es un intento nuevo: no deja fila (el intento que lo
+            # provocó ya la dejó).
             raise DemasiadosIntentosError(reintentar_en)
 
+        empresa_valida = True
         if datos.empresa is None:
             # Sin empresa: solo un superadministrador entra por aquí; un
             # usuario de empresa NUNCA, aunque su clave sea correcta.
             usuario = self._usuarios.obtener_de_plataforma_por_email(db, datos.email)
         else:
-            usuario = _usuario_de_empresa_por_correo(db, self._usuarios, datos.empresa, datos.email)
+            empresa_valida, usuario = _buscar_en_empresa(db, self._usuarios, datos.empresa, datos.email)
 
         # bcrypt SIEMPRE, con el mismo costo exista o no el usuario: sin esto el
         # tiempo de respuesta delataría qué empresas y correos existen.
@@ -168,6 +191,7 @@ class IniciarSesion:
         password_valida = verificar_password(datos.password, hash_a_verificar)
         if usuario is None or not usuario.activo or not password_valida:
             limitador_intentos.registrar_fallo(clave)
+            self._anotar_fallo(db, contexto, usuario, empresa_valida)
             raise NoAutenticadoError("Credenciales inválidas")
 
         limitador_intentos.limpiar(clave)
@@ -176,8 +200,32 @@ class IniciarSesion:
         fijar_empresa_de_usuario(db, usuario)
         tokens = self._emitir_tokens(db, usuario)
         usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
+        if contexto is not None:
+            registrar_bitacora(db, usuario.id, ENTIDAD_SESION, usuario.id, ACCION_LOGIN_EXITOSO, {}, contexto.ip)
         db.commit()
         return tokens
+
+    @staticmethod
+    def _anotar_fallo(
+        db: Session, contexto: ContextoAuditoria | None, usuario: Usuario | None, empresa_valida: bool
+    ) -> None:
+        """Deja la fila del intento fallido y la CONFIRMA en el acto: el
+        endpoint responde 401 y `get_db` revertiría cualquier cosa pendiente. Es
+        el único evento de la bitácora que se confirma solo. Nunca guarda el
+        correo ni la contraseña: solo el motivo."""
+        if contexto is None:
+            return
+        if not empresa_valida:
+            motivo = "empresa_inexistente"
+        elif usuario is not None and not usuario.activo:
+            motivo = "usuario_inactivo"
+        else:
+            motivo = "credenciales"
+        usuario_id = usuario.id if usuario is not None else None
+        registrar_bitacora(
+            db, usuario_id, ENTIDAD_SESION, usuario_id, ACCION_LOGIN_FALLIDO, {"motivo": motivo}, contexto.ip
+        )
+        db.commit()
 
     def refrescar(self, db: Session, refresh_token: str) -> TokenRespuesta:
         payload = decodificar_token(refresh_token, tipo="refresh")
@@ -224,7 +272,7 @@ class RecuperarContrasena:
             logger.info("Token de recuperación para %s: %s", email, token)
         return token
 
-    def confirmar(self, db: Session, token: str, password: str) -> None:
+    def confirmar(self, db: Session, token: str, password: str, contexto: ContextoAuditoria | None = None) -> None:
         payload = decodificar_token(token, tipo="reset")
         usuario_id = usuario_id_de_payload(payload)
         usuario = obtener_usuario_para_auth(db, usuario_id) if usuario_id is not None else None
@@ -238,4 +286,9 @@ class RecuperarContrasena:
             raise NoAutenticadoError("Token inválido")
 
         fijar_empresa_de_usuario(db, usuario)
-        self._usuarios.actualizar_password(db, usuario, password)
+        self._usuarios.actualizar_password(db, usuario, password, commit=False)
+        if contexto is not None:  # el actor es el propio usuario: el contexto es anónimo (solo trae la IP)
+            registrar_bitacora(
+                db, usuario.id, ENTIDAD_USUARIO, usuario.id, ACCION_CONTRASENA_RESTABLECIDA, {}, contexto.ip
+            )
+        db.commit()

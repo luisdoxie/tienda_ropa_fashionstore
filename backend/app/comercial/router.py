@@ -65,6 +65,7 @@ from app.comercial.schemas import (
     ZonaEnvioCrear,
     ZonaEnvioRespuesta,
 )
+from app.core.auditoria import ContextoAuditoria, obtener_contexto_auditoria
 from app.core.database import get_db
 from app.core.deps import ParametrosPaginacion, parametros_paginacion
 from app.core.permisos import (
@@ -310,9 +311,12 @@ devoluciones_router = APIRouter(
 
 @devoluciones_router.post("", response_model=DevolucionRespuesta, status_code=status.HTTP_201_CREATED)
 def registrar_devolucion(
-    datos: DevolucionCrear, usuario=Depends(get_current_user), db: Session = Depends(get_db)
+    datos: DevolucionCrear,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> DevolucionRespuesta:
-    return cu_registrar_devolucion.ejecutar(db, usuario.id, datos)
+    return cu_registrar_devolucion.ejecutar(db, usuario.id, datos, contexto)
 
 
 # ---- /api/v1/promociones -------------------------------------------------------------
@@ -419,8 +423,13 @@ def cancelar_compra(venta_id: int, usuario=Depends(get_current_user), db: Sessio
 @pagos_router.post(
     "/{pago_id}/anular", response_model=PagoRespuesta, dependencies=[plan_gestion_ventas, gestionar_pagos_requerido]
 )
-def anular_pago(pago_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> PagoRespuesta:
-    pago = cu_confirmar_rechazar.anular(db, usuario.id, pago_id)
+def anular_pago(
+    pago_id: int,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> PagoRespuesta:
+    pago = cu_confirmar_rechazar.anular(db, usuario.id, pago_id, contexto)
     return _pago_respuesta(db, pago)
 
 

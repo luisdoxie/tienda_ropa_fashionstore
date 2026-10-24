@@ -16,6 +16,15 @@ Sucursal con sus horarios, Empleado), cada una con su propia clase."""
 
 from sqlalchemy.orm import Session
 
+from app.core.auditoria import (
+    ACCION_ACTUALIZAR,
+    ACCION_CREAR,
+    ACCION_DESACTIVAR,
+    ENTIDAD_EMPLEADO,
+    ENTIDAD_SUCURSAL,
+    ContextoAuditoria,
+    diff_campos,
+)
 from app.core.deps import ParametrosPaginacion
 from app.core.exceptions import ConflictoError, NoEncontradoError
 from app.plataforma import politicas as plataforma_politicas
@@ -81,14 +90,38 @@ class GestionarSucursales:
     def obtener(self, db: Session, sucursal_id: int) -> Sucursal:
         return self._sucursales.obtener(db, sucursal_id)
 
-    def crear(self, db: Session, datos: SucursalCrear) -> Sucursal:
-        return self._sucursales.crear(db, datos)
+    def crear(self, db: Session, datos: SucursalCrear, contexto: ContextoAuditoria | None = None) -> Sucursal:
+        # commit=False: la sucursal y su fila de bitácora se confirman juntas (y
+        # el bloqueo del límite del plan dura hasta ese commit).
+        sucursal = self._sucursales.crear(db, datos, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_SUCURSAL, sucursal.id, ACCION_CREAR, {"codigo": sucursal.codigo}
+        )
+        db.commit()
+        db.refresh(sucursal)
+        return sucursal
 
-    def actualizar(self, db: Session, sucursal_id: int, datos: SucursalActualizar) -> Sucursal:
-        return self._sucursales.actualizar(db, sucursal_id, datos)
+    def actualizar(
+        self, db: Session, sucursal_id: int, datos: SucursalActualizar, contexto: ContextoAuditoria | None = None
+    ) -> Sucursal:
+        actual = self._sucursales.buscar(db, sucursal_id)
+        cambios = diff_campos(actual, datos.model_dump(exclude_unset=True), ("activo",)) if actual else {}
+        sucursal = self._sucursales.actualizar(db, sucursal_id, datos, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_SUCURSAL, sucursal.id, ACCION_ACTUALIZAR, {"codigo": sucursal.codigo, **cambios}
+        )
+        db.commit()
+        db.refresh(sucursal)
+        return sucursal
 
-    def desactivar(self, db: Session, sucursal_id: int) -> Sucursal:
-        return self._sucursales.desactivar(db, sucursal_id)
+    def desactivar(self, db: Session, sucursal_id: int, contexto: ContextoAuditoria | None = None) -> Sucursal:
+        sucursal = self._sucursales.desactivar(db, sucursal_id, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_SUCURSAL, sucursal.id, ACCION_DESACTIVAR, {"codigo": sucursal.codigo}
+        )
+        db.commit()
+        db.refresh(sucursal)
+        return sucursal
 
     # -- Horarios de atención ----------------------------------------------
 
@@ -168,24 +201,62 @@ class GestionarEmpleados:
             raise NoEncontradoError("Este usuario no tiene un registro de empleado")
         return self._enriquecer(db, [empleado])[0]
 
-    def crear(self, db: Session, datos: EmpleadoCrear) -> Empleado:
+    def crear(self, db: Session, datos: EmpleadoCrear, contexto: ContextoAuditoria | None = None) -> Empleado:
         plataforma_politicas.obtener_usuario(db, datos.usuario_id)  # valida que el usuario exista
 
         if datos.sucursal_id is not None:
             self._sucursales.obtener(db, datos.sucursal_id)  # 404 si no existe / está inactiva
 
         existente = self._empleados.obtener_por_usuario(db, datos.usuario_id)
+        sucursal_antes = None
         if existente is not None:
             if existente.activo:
                 raise ConflictoError("Ese usuario ya es empleado")
-            return self._empleados.reactivar(db, existente, datos)
+            sucursal_antes = existente.sucursal_id
+            empleado = self._empleados.reactivar(db, existente, datos, commit=False)
+        else:
+            empleado = self._empleados.crear(db, datos, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_EMPLEADO, empleado.id, ACCION_CREAR,
+            self._datos_bitacora(empleado, sucursal_antes),
+        )  # fmt: skip
+        db.commit()
+        db.refresh(empleado)
+        return empleado
 
-        return self._empleados.crear(db, datos)
-
-    def actualizar(self, db: Session, empleado_id: int, datos: EmpleadoActualizar) -> Empleado:
+    def actualizar(
+        self, db: Session, empleado_id: int, datos: EmpleadoActualizar, contexto: ContextoAuditoria | None = None
+    ) -> Empleado:
         if datos.sucursal_id is not None:
             self._sucursales.obtener(db, datos.sucursal_id)  # 404 si no existe / está inactiva
-        return self._empleados.actualizar(db, empleado_id, datos)
+        actual = self._empleados.buscar(db, empleado_id)
+        sucursal_antes = actual.sucursal_id if actual else None
+        cambios = diff_campos(actual, datos.model_dump(exclude_unset=True), ("activo",)) if actual else {}
+        empleado = self._empleados.actualizar(db, empleado_id, datos, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_EMPLEADO, empleado.id, ACCION_ACTUALIZAR,
+            {**self._datos_bitacora(empleado, sucursal_antes), **cambios},
+        )  # fmt: skip
+        db.commit()
+        db.refresh(empleado)
+        return empleado
 
-    def desactivar(self, db: Session, empleado_id: int) -> Empleado:
-        return self._empleados.desactivar(db, empleado_id)
+    def desactivar(self, db: Session, empleado_id: int, contexto: ContextoAuditoria | None = None) -> Empleado:
+        empleado = self._empleados.desactivar(db, empleado_id, commit=False)
+        plataforma_politicas.registrar_bitacora_de(
+            db, contexto, ENTIDAD_EMPLEADO, empleado.id, ACCION_DESACTIVAR,
+            self._datos_bitacora(empleado, empleado.sucursal_id),
+        )  # fmt: skip
+        db.commit()
+        db.refresh(empleado)
+        return empleado
+
+    @staticmethod
+    def _datos_bitacora(empleado: Empleado, sucursal_antes: int | None) -> dict:
+        """Ids y cargo; nunca el CI ni el nombre de la persona."""
+        return {
+            "usuario_id": empleado.usuario_id,
+            "sucursal_id_antes": sucursal_antes,
+            "sucursal_id_despues": empleado.sucursal_id,
+            "cargo": empleado.cargo,
+        }

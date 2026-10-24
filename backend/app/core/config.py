@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Vigencia de una suscripcion nueva cuando no se indica fecha de vencimiento.
     suscripcion_dias_por_defecto: int = 30
 
+    # Dias que se conserva la bitacora de auditoria; POST /tareas/purgar-bitacora
+    # borra lo anterior.
+    bitacora_retencion_dias: int = 365
+
     # Orígenes del front Angular autorizados a llamar esta API desde el
     # navegador (CORS es una restricción que solo aplica a peticiones desde
     # un browser). La app Flutter (mobile/lib/core/network/dio_client.dart)

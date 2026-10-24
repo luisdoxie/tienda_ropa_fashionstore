@@ -51,6 +51,7 @@ from app.comercial.repository import (
     TransaccionPasarelaRepository,
 )
 from app.comercial.schemas import PagoCajaRequest, PagoIniciarRequest
+from app.core.auditoria import ACCION_ANULAR_PAGO, ENTIDAD_VENTA, ContextoAuditoria
 from app.core.config import get_settings
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError, PermisoDenegadoError
 from app.core.tenant import fijar_empresa
@@ -228,22 +229,35 @@ class ConfirmarRechazarTransaccion:
             commit=True,
         )
 
-    def anular(self, db: Session, usuario_id: int, pago_id: int) -> Pago:
+    def anular(self, db: Session, usuario_id: int, pago_id: int, contexto: ContextoAuditoria | None = None) -> Pago:
         """El permiso ('pagos.gestionar') ya lo gatea el router, como el
         resto de las acciones de staff en este proyecto -- acá no se
         revalida. Sí se valida que la venta sea de la sucursal del empleado
         (anular reingresa stock en esa sucursal)."""
         pago = self._pagos.obtener_bloqueado(db, pago_id)  # mismo lock que resolver_pago: evita pisar un webhook concurrente
-        plataforma_politicas.validar_acceso_sucursal(db, usuario_id, obtener_venta(db, pago.venta_id).sucursal_id)
+        venta = obtener_venta(db, pago.venta_id)
+        plataforma_politicas.validar_acceso_sucursal(db, usuario_id, venta.sucursal_id)
         estado_actual = self._estados.obtener(db, pago.estado_id)
         if estado_actual.codigo != "aprobado":
             raise ConflictoError(f"Solo se puede anular un pago 'aprobado' (está '{estado_actual.codigo}')")
 
+        estado_venta_anterior = obtener_estado_codigo(db, venta.estado_id)
         estado_reembolsado = self._estados.obtener_por_codigo(db, "reembolsado")
         pago.estado_id = estado_reembolsado.id
 
         anular_venta(db, pago.venta_id, commit=False)
 
+        # Se audita aquí y no en `anular_venta`: esa función también la llaman el
+        # vencimiento automático y el rechazo de la pasarela, que no son acciones
+        # de una persona. Misma transacción que la anulación.
+        plataforma_politicas.registrar_bitacora_de(
+            db,
+            contexto,
+            ENTIDAD_VENTA,
+            pago.venta_id,
+            ACCION_ANULAR_PAGO,
+            {"pago_id": pago.id, "estado_anterior": estado_venta_anterior},
+        )
         db.commit()
         db.refresh(pago)
         return pago

@@ -19,6 +19,7 @@ from app.catalogo.politicas import actualizar_stock_operacion, bloquear_stock_en
 from app.comercial.models import Devolucion, DevolucionDetalle
 from app.comercial.repository import DevolucionRepository, EstadoVentaRepository, VentaRepository
 from app.comercial.schemas import DevolucionCrear
+from app.core.auditoria import ACCION_REGISTRAR, ENTIDAD_DEVOLUCION, ContextoAuditoria
 from app.core.codigos import generar_codigo
 from app.core.exceptions import DomainError, NoEncontradoError
 from app.plataforma import politicas as plataforma_politicas
@@ -29,7 +30,9 @@ class RegistrarDevolucion:
         self._estados = EstadoVentaRepository()
         self._devoluciones = DevolucionRepository()
 
-    def ejecutar(self, db: Session, usuario_id: int, datos: DevolucionCrear) -> Devolucion:
+    def ejecutar(
+        self, db: Session, usuario_id: int, datos: DevolucionCrear, contexto: ContextoAuditoria | None = None
+    ) -> Devolucion:
         # Bloqueada hasta el commit: dos devoluciones simultáneas de la misma
         # venta se ponen en fila y la segunda suma lo que la primera ya
         # devolvió (y una anulación concurrente espera a que termine).
@@ -92,6 +95,16 @@ class RegistrarDevolucion:
                 commit=False,
             )
 
+        # Misma transacción que la devolución y el stock: si algo falló antes,
+        # no queda fila. El motivo (texto libre) no se copia a la bitácora.
+        plataforma_politicas.registrar_bitacora_de(
+            db,
+            contexto,
+            ENTIDAD_DEVOLUCION,
+            devolucion.id,
+            ACCION_REGISTRAR,
+            {"venta_id": venta.id, "unidades": sum(linea.cantidad for linea in datos.detalle)},
+        )
         db.commit()
         db.refresh(devolucion)
         return devolucion

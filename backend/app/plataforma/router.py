@@ -3,10 +3,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.auditoria import ContextoAuditoria, contexto_anonimo, obtener_contexto_auditoria
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.deps import ParametrosPaginacion, parametros_paginacion
+from app.core.deps import ParametrosPaginacion, ParametrosPeriodo, parametros_paginacion, periodo_reportes
 from app.core.permisos import (
+    PERMISO_BITACORA_VER,
     PERMISO_EMPRESA,
     PERMISO_ORGANIZACION,
     PERMISO_PLATAFORMA,
@@ -41,6 +43,8 @@ from app.plataforma.schemas import (
     AdministradorRegistrar,
     AsignarPermisosRequest,
     AsignarRolesRequest,
+    BitacoraPagina,
+    BitacoraRespuesta,
     CiudadActualizar,
     CiudadCrear,
     CiudadRespuesta,
@@ -53,6 +57,7 @@ from app.plataforma.schemas import (
     EmpresaRegistrar,
     EmpresaRespuesta,
     EmpresaResumenRespuesta,
+    FiltrosBitacora,
     HorarioActualizar,
     HorarioCrear,
     HorarioRespuesta,
@@ -116,7 +121,8 @@ auth_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 @auth_router.post("/login", response_model=TokenRespuesta)
 @limiter.limit("10/minute")
 def login(request: Request, datos: LoginRequest, db: Session = Depends(get_db)) -> TokenRespuesta:
-    return cu_iniciar_sesion.ejecutar(db, datos)
+    # Sin sesión: el contexto solo trae la IP; el usuario y la empresa de la fila salen del intento.
+    return cu_iniciar_sesion.ejecutar(db, datos, contexto_anonimo(request))
 
 
 @auth_router.post("/refresh", response_model=TokenRespuesta)
@@ -155,7 +161,7 @@ def recuperar(request: Request, datos: RecuperarRequest, db: Session = Depends(g
 def recuperar_confirmar(
     request: Request, datos: RecuperarConfirmarRequest, db: Session = Depends(get_db)
 ) -> dict[str, str]:
-    cu_recuperar_contrasena.confirmar(db, datos.token, datos.password)
+    cu_recuperar_contrasena.confirmar(db, datos.token, datos.password, contexto_anonimo(request))
     return {"detail": "Contraseña actualizada."}
 
 
@@ -181,21 +187,30 @@ def obtener_rol(rol_id: int, db: Session = Depends(get_db)) -> RolRespuesta:
     "", response_model=RolRespuesta, status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
-def crear_rol(datos: RolCrear, db: Session = Depends(get_db)) -> RolRespuesta:
-    return cu_gestionar_roles.crear(db, datos)
+def crear_rol(
+    datos: RolCrear, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> RolRespuesta:
+    return cu_gestionar_roles.crear(db, datos, contexto)
 
 
 @roles_router.put("/{rol_id}", response_model=RolRespuesta, dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))])
-def actualizar_rol(rol_id: int, datos: RolActualizar, db: Session = Depends(get_db)) -> RolRespuesta:
-    return cu_gestionar_roles.actualizar(db, rol_id, datos)
+def actualizar_rol(
+    rol_id: int,
+    datos: RolActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> RolRespuesta:
+    return cu_gestionar_roles.actualizar(db, rol_id, datos, contexto)
 
 
 @roles_router.delete(
     "/{rol_id}", status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
-def desactivar_rol(rol_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_roles.desactivar(db, rol_id)
+def desactivar_rol(
+    rol_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_roles.desactivar(db, rol_id, contexto)
 
 
 @roles_router.put(
@@ -203,9 +218,12 @@ def desactivar_rol(rol_id: int, db: Session = Depends(get_db)) -> None:
     dependencies=[Depends(require_permission(PERMISO_PLATAFORMA))],
 )
 def asignar_permisos(
-    rol_id: int, datos: AsignarPermisosRequest, db: Session = Depends(get_db)
+    rol_id: int,
+    datos: AsignarPermisosRequest,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> RolRespuesta:
-    return cu_gestionar_roles.asignar_permisos(db, rol_id, datos.codigos_permiso)
+    return cu_gestionar_roles.asignar_permisos(db, rol_id, datos.codigos_permiso, contexto)
 
 
 # ---- /api/v1/permisos --------------------------------------------------------
@@ -256,8 +274,10 @@ def obtener_usuario_endpoint(usuario_id: int, db: Session = Depends(get_db)) -> 
     "", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_permission(PERMISO_USUARIOS))],
 )
-def crear_usuario(datos: UsuarioCrear, db: Session = Depends(get_db)) -> UsuarioRespuesta:
-    return UsuarioRespuesta.from_modelo(cu_gestionar_usuarios.crear(db, datos))
+def crear_usuario(
+    datos: UsuarioCrear, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> UsuarioRespuesta:
+    return UsuarioRespuesta.from_modelo(cu_gestionar_usuarios.crear(db, datos, contexto))
 
 
 @usuarios_router.put(
@@ -265,17 +285,22 @@ def crear_usuario(datos: UsuarioCrear, db: Session = Depends(get_db)) -> Usuario
     dependencies=[Depends(require_permission(PERMISO_USUARIOS))],
 )
 def actualizar_usuario(
-    usuario_id: int, datos: UsuarioActualizar, db: Session = Depends(get_db)
+    usuario_id: int,
+    datos: UsuarioActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> UsuarioRespuesta:
-    return UsuarioRespuesta.from_modelo(cu_gestionar_usuarios.actualizar(db, usuario_id, datos))
+    return UsuarioRespuesta.from_modelo(cu_gestionar_usuarios.actualizar(db, usuario_id, datos, contexto))
 
 
 @usuarios_router.delete(
     "/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_permission(PERMISO_USUARIOS))],
 )
-def desactivar_usuario(usuario_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_usuarios.desactivar(db, usuario_id)
+def desactivar_usuario(
+    usuario_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_usuarios.desactivar(db, usuario_id, contexto)
 
 
 @usuarios_router.put(
@@ -283,9 +308,14 @@ def desactivar_usuario(usuario_id: int, db: Session = Depends(get_db)) -> None:
     dependencies=[Depends(require_permission(PERMISO_USUARIOS))],
 )
 def asignar_roles(
-    usuario_id: int, datos: AsignarRolesRequest, db: Session = Depends(get_db)
+    usuario_id: int,
+    datos: AsignarRolesRequest,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> UsuarioRespuesta:
-    return UsuarioRespuesta.from_modelo(cu_gestionar_usuarios.asignar_roles(db, usuario_id, datos.nombres_rol))
+    return UsuarioRespuesta.from_modelo(
+        cu_gestionar_usuarios.asignar_roles(db, usuario_id, datos.nombres_rol, contexto)
+    )
 
 
 # ---- /api/v1/clientes/perfil --------------------------------------------------
@@ -390,24 +420,31 @@ def obtener_sucursal(sucursal_id: int, db: Session = Depends(get_db)) -> Sucursa
 @sucursales_router.post(
     "", response_model=SucursalRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_requerido]
 )
-def crear_sucursal(datos: SucursalCrear, db: Session = Depends(get_db)) -> SucursalRespuesta:
-    return cu_gestionar_sucursales.crear(db, datos)
+def crear_sucursal(
+    datos: SucursalCrear, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> SucursalRespuesta:
+    return cu_gestionar_sucursales.crear(db, datos, contexto)
 
 
 @sucursales_router.put(
     "/{sucursal_id}", response_model=SucursalRespuesta, dependencies=[admin_requerido]
 )
 def actualizar_sucursal(
-    sucursal_id: int, datos: SucursalActualizar, db: Session = Depends(get_db)
+    sucursal_id: int,
+    datos: SucursalActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> SucursalRespuesta:
-    return cu_gestionar_sucursales.actualizar(db, sucursal_id, datos)
+    return cu_gestionar_sucursales.actualizar(db, sucursal_id, datos, contexto)
 
 
 @sucursales_router.delete(
     "/{sucursal_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_requerido]
 )
-def desactivar_sucursal(sucursal_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_sucursales.desactivar(db, sucursal_id)
+def desactivar_sucursal(
+    sucursal_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_sucursales.desactivar(db, sucursal_id, contexto)
 
 
 # ---- /api/v1/sucursales/{id}/horarios --------------------------------------
@@ -469,20 +506,27 @@ def obtener_empleado(empleado_id: int, db: Session = Depends(get_db)) -> Emplead
 
 
 @empleados_router.post("", response_model=EmpleadoRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[admin_requerido])
-def crear_empleado(datos: EmpleadoCrear, db: Session = Depends(get_db)) -> EmpleadoRespuesta:
-    return cu_gestionar_empleados.crear(db, datos)
+def crear_empleado(
+    datos: EmpleadoCrear, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> EmpleadoRespuesta:
+    return cu_gestionar_empleados.crear(db, datos, contexto)
 
 
 @empleados_router.put("/{empleado_id}", response_model=EmpleadoRespuesta, dependencies=[admin_requerido])
 def actualizar_empleado(
-    empleado_id: int, datos: EmpleadoActualizar, db: Session = Depends(get_db)
+    empleado_id: int,
+    datos: EmpleadoActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> EmpleadoRespuesta:
-    return cu_gestionar_empleados.actualizar(db, empleado_id, datos)
+    return cu_gestionar_empleados.actualizar(db, empleado_id, datos, contexto)
 
 
 @empleados_router.delete("/{empleado_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[admin_requerido])
-def desactivar_empleado(empleado_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_empleados.desactivar(db, empleado_id)
+def desactivar_empleado(
+    empleado_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_empleados.desactivar(db, empleado_id, contexto)
 
 
 # ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
@@ -556,18 +600,27 @@ def obtener_plan(plan_id: int, db: Session = Depends(get_db)) -> PlanRespuesta:
 
 
 @plataforma_router.post("/planes", response_model=PlanRespuesta, status_code=status.HTTP_201_CREATED)
-def crear_plan(datos: PlanCrear, db: Session = Depends(get_db)) -> PlanRespuesta:
-    return cu_gestionar_planes.crear(db, datos)
+def crear_plan(
+    datos: PlanCrear, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> PlanRespuesta:
+    return cu_gestionar_planes.crear(db, datos, contexto)
 
 
 @plataforma_router.put("/planes/{plan_id}", response_model=PlanRespuesta)
-def actualizar_plan(plan_id: int, datos: PlanActualizar, db: Session = Depends(get_db)) -> PlanRespuesta:
-    return cu_gestionar_planes.actualizar(db, plan_id, datos)
+def actualizar_plan(
+    plan_id: int,
+    datos: PlanActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> PlanRespuesta:
+    return cu_gestionar_planes.actualizar(db, plan_id, datos, contexto)
 
 
 @plataforma_router.delete("/planes/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
-def desactivar_plan(plan_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_planes.desactivar(db, plan_id)
+def desactivar_plan(
+    plan_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_planes.desactivar(db, plan_id, contexto)
 
 
 @plataforma_router.get("/empresas", response_model=list[EmpresaRespuesta])
@@ -586,18 +639,27 @@ def obtener_empresa(empresa_id: int, db: Session = Depends(get_db)) -> EmpresaRe
 
 
 @plataforma_router.post("/empresas", response_model=EmpresaRespuesta, status_code=status.HTTP_201_CREATED)
-def registrar_empresa(datos: EmpresaRegistrar, db: Session = Depends(get_db)) -> EmpresaRespuesta:
-    return cu_gestionar_empresas.registrar(db, datos)
+def registrar_empresa(
+    datos: EmpresaRegistrar, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> EmpresaRespuesta:
+    return cu_gestionar_empresas.registrar(db, datos, contexto)
 
 
 @plataforma_router.put("/empresas/{empresa_id}", response_model=EmpresaRespuesta)
-def actualizar_empresa(empresa_id: int, datos: EmpresaActualizar, db: Session = Depends(get_db)) -> EmpresaRespuesta:
-    return cu_gestionar_empresas.actualizar(db, empresa_id, datos)
+def actualizar_empresa(
+    empresa_id: int,
+    datos: EmpresaActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> EmpresaRespuesta:
+    return cu_gestionar_empresas.actualizar(db, empresa_id, datos, contexto)
 
 
 @plataforma_router.delete("/empresas/{empresa_id}", status_code=status.HTTP_204_NO_CONTENT)
-def desactivar_empresa(empresa_id: int, db: Session = Depends(get_db)) -> None:
-    cu_gestionar_empresas.desactivar(db, empresa_id)
+def desactivar_empresa(
+    empresa_id: int, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> None:
+    cu_gestionar_empresas.desactivar(db, empresa_id, contexto)
 
 
 @plataforma_router.get("/empresas/{empresa_id}/resumen", response_model=EmpresaResumenRespuesta)
@@ -609,16 +671,24 @@ def resumen_empresa(empresa_id: int, db: Session = Depends(get_db)) -> EmpresaRe
     "/empresas/{empresa_id}/usuarios", response_model=UsuarioRespuesta, status_code=status.HTTP_201_CREATED
 )
 def agregar_administrador(
-    empresa_id: int, datos: AdministradorRegistrar, db: Session = Depends(get_db)
+    empresa_id: int,
+    datos: AdministradorRegistrar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> UsuarioRespuesta:
-    return cu_gestionar_empresas.agregar_administrador(db, empresa_id, datos)
+    return cu_gestionar_empresas.agregar_administrador(db, empresa_id, datos, contexto)
 
 
 @plataforma_router.post(
     "/empresas/{empresa_id}/sucursales", response_model=SucursalRespuesta, status_code=status.HTTP_201_CREATED
 )
-def agregar_sucursal(empresa_id: int, datos: SucursalCrear, db: Session = Depends(get_db)) -> SucursalRespuesta:
-    return cu_gestionar_empresas.agregar_sucursal(db, empresa_id, datos)
+def agregar_sucursal(
+    empresa_id: int,
+    datos: SucursalCrear,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> SucursalRespuesta:
+    return cu_gestionar_empresas.agregar_sucursal(db, empresa_id, datos, contexto)
 
 
 @plataforma_router.get("/suscripciones", response_model=list[SuscripcionRespuesta])
@@ -637,22 +707,85 @@ def obtener_suscripcion(suscripcion_id: int, db: Session = Depends(get_db)) -> S
 
 
 @plataforma_router.post("/suscripciones", response_model=SuscripcionRespuesta, status_code=status.HTTP_201_CREATED)
-def asignar_plan(datos: SuscripcionAsignar, db: Session = Depends(get_db)) -> SuscripcionRespuesta:
-    return cu_gestionar_suscripciones.asignar_o_cambiar_plan(db, datos)
+def asignar_plan(
+    datos: SuscripcionAsignar, db: Session = Depends(get_db), contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria)
+) -> SuscripcionRespuesta:
+    return cu_gestionar_suscripciones.asignar_o_cambiar_plan(db, datos, contexto)
 
 
 @plataforma_router.put("/suscripciones/{suscripcion_id}/renovar", response_model=SuscripcionRespuesta)
 def renovar_suscripcion(
-    suscripcion_id: int, datos: SuscripcionRenovar, db: Session = Depends(get_db)
+    suscripcion_id: int,
+    datos: SuscripcionRenovar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> SuscripcionRespuesta:
-    return cu_gestionar_suscripciones.renovar(db, suscripcion_id, datos)
+    return cu_gestionar_suscripciones.renovar(db, suscripcion_id, datos, contexto)
 
 
 @plataforma_router.put("/suscripciones/{suscripcion_id}/estado", response_model=SuscripcionRespuesta)
 def cambiar_estado_suscripcion(
-    suscripcion_id: int, datos: SuscripcionEstadoActualizar, db: Session = Depends(get_db)
+    suscripcion_id: int,
+    datos: SuscripcionEstadoActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> SuscripcionRespuesta:
-    return cu_gestionar_suscripciones.cambiar_estado(db, suscripcion_id, datos)
+    return cu_gestionar_suscripciones.cambiar_estado(db, suscripcion_id, datos, contexto)
+
+
+# ---- Bitácora de auditoría ----
+# El router solo lee los filtros y llama a `politicas` (la bitácora no es un CU).
+
+
+def filtros_bitacora(
+    periodo: ParametrosPeriodo = Depends(periodo_reportes),
+    entidad: str | None = Query(default=None, max_length=60),
+    accion: str | None = Query(default=None, max_length=40),
+    usuario_id: int | None = None,
+) -> FiltrosBitacora:
+    return FiltrosBitacora(
+        desde=periodo.desde, hasta=periodo.hasta, entidad=entidad, accion=accion, usuario_id=usuario_id
+    )
+
+
+def filtros_bitacora_plataforma(
+    filtros: FiltrosBitacora = Depends(filtros_bitacora),
+    empresa_id: int | None = None,
+    sin_empresa: bool = False,
+) -> FiltrosBitacora:
+    return filtros.model_copy(update={"empresa_id": empresa_id, "sin_empresa": sin_empresa})
+
+
+@plataforma_router.get("/bitacora", response_model=BitacoraPagina)
+def listar_bitacora_plataforma(
+    filtros: FiltrosBitacora = Depends(filtros_bitacora_plataforma),
+    paginacion: ParametrosPaginacion = Depends(parametros_paginacion),
+    db: Session = Depends(get_db),
+) -> BitacoraPagina:
+    return politicas.listar_bitacora_plataforma(db, filtros, paginacion)
+
+
+# ---- /api/v1/bitacora (administrador de la empresa) ----------------------------------------
+
+bitacora_router = APIRouter(
+    prefix="/api/v1/bitacora",
+    tags=["bitacora"],
+    dependencies=[Depends(require_permission(PERMISO_BITACORA_VER))],
+)
+
+
+@bitacora_router.get("", response_model=BitacoraPagina)
+def listar_bitacora(
+    filtros: FiltrosBitacora = Depends(filtros_bitacora),
+    paginacion: ParametrosPaginacion = Depends(parametros_paginacion),
+    db: Session = Depends(get_db),
+) -> BitacoraPagina:
+    return politicas.listar_bitacora(db, filtros, paginacion)
+
+
+@bitacora_router.get("/{bitacora_id}", response_model=BitacoraRespuesta)
+def obtener_bitacora(bitacora_id: int, db: Session = Depends(get_db)) -> BitacoraRespuesta:
+    return politicas.obtener_bitacora(db, bitacora_id)
 
 
 # ---- /api/v1/mi-empresa (administrador de la empresa) ------------------------------------
@@ -672,8 +805,12 @@ def obtener_mi_empresa(db: Session = Depends(get_db)) -> MiEmpresaRespuesta:
 
 
 @mi_empresa_router.put("", response_model=MiEmpresaRespuesta)
-def actualizar_mi_empresa(datos: MiEmpresaActualizar, db: Session = Depends(get_db)) -> MiEmpresaRespuesta:
-    return cu_mi_empresa.actualizar(db, datos)
+def actualizar_mi_empresa(
+    datos: MiEmpresaActualizar,
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> MiEmpresaRespuesta:
+    return cu_mi_empresa.actualizar(db, datos, contexto)
 
 
 @mi_empresa_router.get("/suscripcion", response_model=MiSuscripcionRespuesta)
@@ -721,6 +858,11 @@ def vencer_suscripciones(db: Session = Depends(get_db)) -> dict:
     return {"vencidas": cu_gestionar_suscripciones.vencer_pendientes(db)}
 
 
+@tareas_plataforma_router.post("/purgar-bitacora")
+def purgar_bitacora(db: Session = Depends(get_db)) -> dict:
+    return {"eliminadas": politicas.purgar_bitacora(db)}
+
+
 routers = [
     auth_router,
     roles_router,
@@ -733,6 +875,7 @@ routers = [
     horarios_router,
     empleados_router,
     plataforma_router,
+    bitacora_router,
     mi_empresa_router,
     publico_tiendas_router,
     tareas_plataforma_router,

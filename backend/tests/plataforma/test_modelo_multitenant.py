@@ -30,6 +30,10 @@ GLOBALES = {
 }
 RAIZ = {"empresa"}
 HEREDA = {"usuario_rol"}
+# E06: la bitácora lleva `empresa_id` NULL permitido y SIN índice propio (sus
+# índices compuestos empiezan por empresa_id) y no hereda el mixin: se filtra
+# de forma explícita en BitacoraRepository.
+BITACORA = "bitacora"
 
 # Las 50 tablas EMPRESA de la sección 4.1 (49 con empresa_id NOT NULL más
 # `usuario`, que lo admite NULL: NULL = superadministrador).
@@ -81,19 +85,21 @@ def test_los_conjuntos_coinciden_con_la_seccion_4_1():
     assert len(EMPRESA_4_1) + len(GLOBALES_4_1) + len(HEREDA) == 59
 
     nombres = {t.name for t in Base.metadata.sorted_tables}
-    # 59 tablas del primer parcial + empresa, plan, suscripcion.
-    assert nombres == EMPRESA_4_1 | GLOBALES_4_1 | HEREDA | {"empresa", "plan", "suscripcion"}
-    assert len(nombres) == 62
-    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion.
-    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion"}
-    assert len(_con_empresa_id()) == 51
+    # 59 tablas del primer parcial + empresa, plan, suscripcion + bitacora (E06).
+    assert nombres == EMPRESA_4_1 | GLOBALES_4_1 | HEREDA | {"empresa", "plan", "suscripcion", BITACORA}
+    assert len(nombres) == 63
+    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion y bitacora.
+    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion", BITACORA}
+    assert len(_con_empresa_id()) == 52
 
 
 def test_empresa_id_es_not_null_salvo_en_usuario_y_apunta_a_empresa():
     for nombre in _con_empresa_id():
         columna = Base.metadata.tables[nombre].c.empresa_id
-        assert columna.nullable == (nombre == "usuario"), nombre
+        assert columna.nullable == (nombre in ("usuario", BITACORA)), nombre
         assert [fk.target_fullname for fk in columna.foreign_keys] == ["empresa.id"], nombre
+        if nombre == BITACORA:
+            continue  # sus índices compuestos (empresa_id, ...) cubren la consulta por empresa
         assert columna.index, f"{nombre}: falta el índice ix_{nombre}_empresa_id"
 
 

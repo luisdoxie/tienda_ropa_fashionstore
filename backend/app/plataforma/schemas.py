@@ -537,3 +537,44 @@ class TiendaPublicaDetalle(TiendaPublicaRespuesta):
     de tiendas no lleva el campo (solo muestra las disponibles)."""
 
     disponible: bool = True
+
+
+# ---- Bitácora ----
+
+
+class BitacoraRespuesta(BaseModel):
+    """Una fila de la bitácora. `empresa_id` solo se informa al superadministrador;
+    al administrador de una empresa, una acción de la plataforma le llega con el
+    actor enmascarado y sin IP."""
+
+    id: int
+    empresa_id: int | None = None
+    usuario_id: int | None = None
+    usuario_nombre: str | None = None
+    entidad: str
+    entidad_id: int | None = None
+    accion: str
+    datos: dict | None = None
+    ip: str | None = None
+    creado_en: dt.datetime
+
+
+class BitacoraPagina(BaseModel):
+    total: int
+    pagina: int
+    tamanio: int
+    items: list[BitacoraRespuesta]
+
+
+class FiltrosBitacora(BaseModel):
+    """Filtros de la consulta. `empresa_id` y `sin_empresa` solo los usa el
+    superadministrador: en la consulta de una empresa se ignoran."""
+
+    desde: dt.date
+    hasta: dt.date
+    entidad: str | None = None
+    accion: str | None = None
+    usuario_id: int | None = None
+    empresa_id: int | None = None
+    sin_empresa: bool = False
+

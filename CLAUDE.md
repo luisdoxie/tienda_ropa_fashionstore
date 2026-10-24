@@ -159,10 +159,10 @@ que CU-08 referencia de forma opcional). Se implementan con su CRUD normal.
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(60 tablas en el SQL, que es el del primer parcial). La base real tiene 62:
-las 59 de antes (`bitacora` está en el SQL pero nunca se implementó, y
-`sesion_probador` se eliminó con el modo espejo) más `empresa`, `plan` y
-`suscripcion` del segundo parcial, que no están en el SQL. No inventar
+(60 tablas en el SQL, que es el del primer parcial). La base real tiene 63:
+las 59 de antes (`sesion_probador` se eliminó con el modo espejo) más
+`empresa`, `plan` y `suscripcion` del segundo parcial, que no están en el SQL,
+y `bitacora` (E06; el SQL ya trae su bloque actualizado). No inventar
 tablas ni columnas nuevas sin pedirlo explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
@@ -171,15 +171,17 @@ Las tablas las crea Alembic a partir de los modelos.
 Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
 NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01),
 filtrado automático por empresa (E02), login con empresa y claim `empresa_id`
-en el token (E03) y CU-04 con planes y suscripciones (E04) hechos. El backend NO
+en el token (E03), CU-04 con planes y suscripciones (E04), las pruebas de
+aislamiento (E05) y la bitácora de auditoría (E06) hechos. El backend NO
 se despliega solo: tras la E03 el login de la web y del móvil actuales no
 funciona hasta que se adapten (E15, E16, E18).
-- Clasificación de las 62 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
+- Clasificación de las 63 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
   `estado_reserva`, `estado_venta`, `metodo_pago`, `estado_pago`), `plan`
-  (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario) y
-  `suscripcion` (de la empresa, con historial).
+  (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario),
+  `suscripcion` (de la empresa, con historial) y `bitacora` (`empresa_id` NULL
+  permitido y SIN el mixin: ver "Bitácora de auditoría").
 - Toda tabla nueva de negocio hereda `EmpresaMixin` (`core/tenant.py`) y se
   clasifica en `tests/plataforma/test_modelo_multitenant.py`: una tabla sin
   clasificar hace fallar esa prueba.
@@ -329,6 +331,45 @@ clasificarla. Un recurso de otra empresa se ve IGUAL que uno inexistente (404, m
   motivo: las etapas que las implementen quitan el skip y agregan sus rutas a `RUTAS`.
 - Hallazgos de la etapa: ninguna fuga de aislamiento. Defecto previo ajeno (CU-08):
   `PUT /ordenes-compra/{id}` con una línea de una variante que la orden ya tiene da 500.
+
+### Bitácora de auditoría (E06)
+Registro de SOLO ANEXAR de las acciones sensibles (tabla `bitacora`, modelo en
+`plataforma/models.py`). Quién (`usuario_id`), qué (`entidad`, `entidad_id`, `accion`),
+datos mínimos (`datos` JSONB), IP y fecha. No duplica los libros que ya existen
+(kardex, `reserva_historial`, `transaccion_pasarela`): guarda la acción y la referencia.
+- **Cómo auditar una acción nueva.** El caso de uso recibe `contexto: ContextoAuditoria | None = None`
+  como ÚLTIMO parámetro (el router lo pasa con `Depends(obtener_contexto_auditoria)`; el login usa
+  `contexto_anonimo(request)`). Hace la operación con `commit=False`, llama a
+  `plataforma.politicas.registrar_bitacora_de(db, contexto, ENTIDAD_X, id, ACCION_Y, datos)` y recién
+  entonces `db.commit()`: la fila queda en el MISMO commit que el cambio; si la operación falla o el
+  llamador revierte, no queda fila. Con `contexto=None` no se registra nada. Los nombres de entidades y
+  acciones están en `core/auditoria.py` (una sola fuente; ya reservados los de E07, E08, E21 y E22).
+- **`registrar_bitacora` nunca confirma ni revierte al llamador.** Vuelca (`flush`) fuera del try (un error
+  de datos del llamador se propaga) y inserta en un SAVEPOINT: si la fila falla, devuelve `None` y deja
+  `logger.exception` (auditoría de mejor esfuerzo: no tumba una venta ni un login). Un evento nuevo importante
+  que NO deba perderse puede cambiar eso a "fallar cerrado".
+- **La empresa de la fila es la de la sesión.** El argumento `empresa_id` solo cuenta si la sesión no tiene
+  empresa (superadministrador que actúa sobre la empresa 7; login con empresa inexistente → NULL).
+- **`datos` pasa por `core.auditoria.sanear_datos`**: claves de secretos y de datos personales quedan en
+  "[omitido]", textos con forma de JWT, hash bcrypt o correo se omiten, y hay límites de profundidad (4),
+  texto (200), lista (50) y tamaño (4096 bytes). Convención: pasar IDS y CÓDIGOS, nunca nombres ni correos;
+  para cambios de campos usar `diff_campos` (nombres de campo, y valores solo de los no sensibles).
+- **Sin filtro automático.** `bitacora` NO hereda `EmpresaMixin`: admite NULL y el superadministrador la lee
+  entera, así que `BitacoraRepository` filtra SIEMPRE de forma explícita (`empresa_id` de la sesión, o
+  `plataforma=True` solo desde la ruta del superadministrador). No se agregó a `TABLAS_SIN_ALCANCE`.
+- **Consulta.** `GET /bitacora` y `GET /bitacora/{id}` (permiso `bitacora.ver`, solo el administrador; el
+  `empresa_id` que mande el cliente se ignora y una fila de otra empresa es 404). `GET /plataforma/bitacora`
+  (superadministrador, con `empresa_id` y `sin_empresa`). Al administrador de una empresa, lo que hizo el
+  superadministrador le llega como "Administrador de la plataforma" y sin IP. Paginada (máx. 100), por defecto
+  los últimos 30 días, orden más reciente primero.
+- **Eventos enganchados:** login (exitoso y fallido; el fallido se confirma solo y NO guarda el correo),
+  recuperación de contraseña, usuarios y roles, sucursales y empleados, empresas, planes y suscripciones
+  (CU-04), anular un pago, registrar una devolución y los ajustes de inventario.
+- **Retención.** 365 días (`BITACORA_RETENCION_DIAS`); `POST /tareas/purgar-bitacora` (token de servicio) borra
+  por lotes y deja una fila `bitacora/purgar`. No está en la tarea periódica interna: la dispara un cron.
+- Pruebas: `tests/core/test_auditoria.py`, `tests/plataforma/test_bitacora*.py`,
+  `tests/comercial/test_bitacora_eventos_comercial.py` y `tests/postgres/test_bitacora_postgres.py`. Las 4
+  rutas están en `tests/aislamiento/rutas_esperadas.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

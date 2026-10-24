@@ -23,6 +23,8 @@ PERMISO_ALCANCE_GLOBAL = "organizacion.gestionar"
 # administrador de cada empresa para gestionar la suya.
 PERMISO_PLATAFORMA = "plataforma.gestionar"
 PERMISO_EMPRESA = "empresa.gestionar"
+# Consultar la bitácora de auditoría de la propia empresa (administrador).
+PERMISO_BITACORA_VER = "bitacora.ver"
 
 # ---- catalogo ----
 PERMISO_CATALOGO = "catalogo.gestionar"

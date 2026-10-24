@@ -15,6 +15,7 @@ VALORES_ESPERADOS = {
     "PERMISO_ALCANCE_GLOBAL": "organizacion.gestionar",
     "PERMISO_PLATAFORMA": "plataforma.gestionar",
     "PERMISO_EMPRESA": "empresa.gestionar",
+    "PERMISO_BITACORA_VER": "bitacora.ver",
     "PERMISO_CATALOGO": "catalogo.gestionar",
     "PERMISO_CATALOGO_VER": "catalogo.ver",
     "PERMISO_INVENTARIO_VER": "inventario.ver",

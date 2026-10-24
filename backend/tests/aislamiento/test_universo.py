@@ -13,7 +13,7 @@ RECURSOS_ESPERADOS = [
     "producto", "variante", "medida", "imagen", "activo_probador", "generacion", "stock", "movimiento",
     "transferencia", "proveedor", "orden_compra", "recepcion", "zona_envio", "regla_tarifa", "promocion",
     "reserva", "venta", "venta_detalle", "pago", "devolucion", "venta_pendiente", "pago_pasarela",
-    "transaccion", "envio", "consulta_voz", "historial", "recomendacion", "notificacion",
+    "transaccion", "envio", "consulta_voz", "historial", "recomendacion", "notificacion", "bitacora",
 ]
 
 

@@ -23,6 +23,9 @@ from app.core.tenant import fijar_empresa
 from tests.postgres.conftest import ejecutar_alembic, recrear_esquema
 
 REVISION_ANTERIOR = "a4c8e1f2b7d3"
+# La migración de multitenant (E01). Las posteriores (bitácora, E06) agregan tablas y
+# permisos propios y se prueban en su archivo: aquí se mide solo lo que hace E01.
+REVISION_MULTITENANT = "bab547335648"
 CODIGO_SEMILLA = "fashionstore"
 
 # Las 50 tablas propias de una empresa (E01, sección 4.1) más `suscripcion`,
@@ -266,7 +269,7 @@ def test_migracion_con_datos_existentes(engine_pg, url_pg, esquema_en_revision):
     # Las 25 tablas encadenadas tienen al menos una fila antes de migrar.
     assert all(antes[tabla] >= 1 for tabla, _ in DATOS_EXISTENTES)
 
-    resultado = ejecutar_alembic(url_pg, "upgrade", "head")
+    resultado = ejecutar_alembic(url_pg, "upgrade", REVISION_MULTITENANT)
     assert resultado.returncode == 0, f"{resultado.stdout}\n{resultado.stderr}"
 
     despues = _conteos(engine_pg)

@@ -89,6 +89,7 @@ from app.catalogo.schemas import (
     VarianteRespuesta,
     VariantesGenerarRequest,
 )
+from app.core.auditoria import ContextoAuditoria, obtener_contexto_auditoria
 from app.core.database import get_db
 from app.core.deps import ParametrosPaginacion, parametros_paginacion
 from app.core.permisos import (
@@ -745,9 +746,12 @@ def listar_kardex(
     dependencies=[gestionar_requerido],
 )
 def registrar_movimiento(
-    datos: MovimientoCrear, usuario=Depends(get_current_user), db: Session = Depends(get_db)
+    datos: MovimientoCrear,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> MovimientoRespuesta:
-    movimiento = cu_registrar_movimiento.registrar_movimiento(db, usuario.id, datos)
+    movimiento = cu_registrar_movimiento.registrar_movimiento(db, usuario.id, datos, contexto)
     # actualizar_stock_operacion ya validó que el código exista (si no,
     # hubiera lanzado antes de llegar acá): se reusa el mismo valor en vez
     # de volver a consultar `tipo_movimiento` desde el inventario_router.
@@ -764,10 +768,13 @@ def registrar_movimiento(
     "/ajustes", response_model=MovimientoRespuesta, status_code=status.HTTP_201_CREATED, dependencies=[gestionar_requerido]
 )
 def registrar_ajuste(
-    datos: AjusteCrear, usuario=Depends(get_current_user), db: Session = Depends(get_db)
+    datos: AjusteCrear,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> MovimientoRespuesta:
     movimiento = cu_registrar_movimiento.registrar_ajuste(
-        db, datos.variante_id, datos.sucursal_id, datos.cantidad, usuario.id, datos.observacion
+        db, datos.variante_id, datos.sucursal_id, datos.cantidad, usuario.id, datos.observacion, contexto
     )
     codigo = "ajuste_positivo" if datos.cantidad > 0 else "ajuste_negativo"
     return MovimientoRespuesta.from_modelo(movimiento, codigo)

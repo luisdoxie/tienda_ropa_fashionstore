@@ -87,7 +87,7 @@ def test_seed_operativo_crea_todo_consistente_e_idempotente(db_session):
     # superadministrador); el cajero queda en su sucursal.
     admin = db_session.scalar(select(Usuario).where(Usuario.email == "admin@fashionstore.bo"))
     permisos_admin = permisos_de_usuario(db_session, admin.id)
-    assert len(permisos_admin) == 20
+    assert len(permisos_admin) == 21  # los 20 de antes más bitacora.ver (E06)
     assert "plataforma.gestionar" not in permisos_admin
     cajero = db_session.scalar(select(Usuario).where(Usuario.email == "cajero.centro@fashionstore.bo"))
     empleado = db_session.scalar(select(Empleado).where(Empleado.usuario_id == cajero.id))

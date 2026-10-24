@@ -731,6 +731,8 @@ EXENTOS_DE_PLAN: list[tuple[tuple[str, ...] | None, tuple[str, ...], str]] = [
      "búsqueda por voz y recomendador (CU-20, CU-21): base del producto; el plan solo distingue reportes_ia (CU-23)"),
     (None, (f"{API}/probador",),
      "probador virtual (CU-10, CU-11): la tabla `plan` no tiene una columna para él; no es funcionalidad de plan"),
+    (None, (f"{API}/bitacora",),
+     "bitácora de auditoría (E06): la ven los administradores de cualquier plan; la tabla `plan` no tiene columna para ella"),
 ]
 
 
