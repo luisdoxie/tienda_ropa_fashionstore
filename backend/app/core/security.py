@@ -238,6 +238,8 @@ def require_permission(codigo: str):
             raise PermisoDenegadoError(f"Falta el permiso '{codigo}'")
         return usuario
 
+    # Solo lectura: permite auditar cada ruta por introspección (tests/aislamiento).
+    verificador.permiso = codigo
     return verificador
 
 

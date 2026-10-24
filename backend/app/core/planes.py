@@ -141,4 +141,6 @@ def exigir_funcionalidad(funcionalidad: str):
         _exigir(_situacion(db, request), funcionalidad)
         return usuario
 
+    # Solo lectura: permite auditar cada ruta por introspección (tests/aislamiento).
+    verificador.funcionalidad = funcionalidad
     return verificador

@@ -289,6 +289,47 @@ funciona hasta que se adapten (E15, E16, E18).
 - Semilla de demostración: `python -m scripts.seed_empresas_prueba` (dry-run por
   defecto): FashionStore (Profesional) y Boutique Andina (Básico).
 
+### Pruebas de aislamiento (E05, `backend/tests/aislamiento/`)
+Demuestran en el backend (no en la interfaz) que un usuario de la empresa A no lee,
+modifica ni borra datos de la B, y hacen fallar la suite si alguien agrega una ruta sin
+clasificarla. Un recurso de otra empresa se ve IGUAL que uno inexistente (404, mismo cuerpo).
+- `rutas_esperadas.py` (`RUTAS`): una entrada por cada (método, ruta) de la app, con
+  `Ruta(clase, permiso, funcionalidad, cobertura, nota)`. Clases: POR_ID, LISTADO,
+  CREA_O_ACCION, PROPIA, PUBLICA, PLATAFORMA, MI_EMPRESA, PASARELA, SERVICIO, AUTH.
+  Cobertura MATRIZ (la recorre una prueba parametrizada) o EXENTA (máximo 12; la nota con
+  la razón, de 20 caracteres o más, es obligatoria). Una ruta de negocio sin permiso lleva
+  la nota "solo autenticado". Las guardianas (`test_registro_de_rutas.py`) fallan si una
+  ruta nueva no está clasificada, si sobra una entrada, o si el permiso o la funcionalidad
+  declarados no coinciden con lo que la ruta exige (se leen de `.permiso` y `.funcionalidad`
+  que dejan `require_permission` y `exigir_funcionalidad`).
+- Para agregar una ruta: (1) añadirla a `RUTAS` (`python -m tests.aislamiento.generar_rutas`
+  imprime un borrador; nunca pisa el archivo); (2) si es POR_ID con cuerpo, su cuerpo de
+  ejemplo en `plantillas.py` (`CUERPOS`) y el recurso de cada parámetro en `PARAMETROS`;
+  (3) si recibe ids en el cuerpo, un caso en `casos_fk.py`; (4) si es un listado que exige
+  parámetros, su consulta en `test_matriz_listados.py` (`CONSULTA_BASE`).
+- `universo.py` crea dos empresas (A Profesional, B Básico) con UNA instancia de cada recurso
+  por la API, con marcas `MARCA-A-…`/`MARCA-B-…` y datos solapados (mismo código de
+  producto y SKU, de sucursal y correo). `conftest.py` lo arma una vez por paquete sobre un
+  motor SQLite propio (fixture `mundo`). `Universo.nuevo(recurso)` da instancias desechables
+  para las pruebas que borran o cambian de estado. Las pruebas que alteren plan,
+  suscripción o estado de una empresa usan empresas descartables, nunca A ni B.
+- Oráculo de cada intento cruzado (`oraculo.py`): O1 404; O2 mismo estado y cuerpo que con
+  un id inexistente; O3 sin "MARCA-B-" en cuerpo ni cabeceras; O4 la instantánea de B
+  (filas y huella de cada tabla suya) no cambia; O5 la misma petición con ids propios sí
+  funciona (evita pruebas verdes por una ruta mal armada).
+- Archivos: `test_matriz_por_id`, `_listados`, `_fk_en_cuerpo` (69 campos con id),
+  `_relaciones`; `test_tokens_y_superadmin`; `test_publico` (tienda, pasarela);
+  `test_reportes_y_vistas`; `test_planes_y_suscripcion`; `test_zz_consistencia_final` (corre
+  al final: ninguna FK entre tablas de empresa apunta a otra empresa, 90 relaciones). En
+  PostgreSQL: `tests/postgres/test_aislamiento_pg.py` (matriz reducida, bloqueos
+  `FOR UPDATE`, concurrencia, vistas V2 y la misma consulta de consistencia).
+- Correr: `python -m pytest -q -p no:cacheprovider tests/aislamiento` (≈90 s) y, con
+  `TEST_DATABASE_URL` apuntando a `fashionstore_test`, `tests/postgres`. Las funcionalidades
+  sin rutas aún (`operacion_offline`, `analitica_ml`, `copias_seguridad`) se saltan con
+  motivo: las etapas que las implementen quitan el skip y agregan sus rutas a `RUTAS`.
+- Hallazgos de la etapa: ninguna fuga de aislamiento. Defecto previo ajeno (CU-08):
+  `PUT /ordenes-compra/{id}` con una línea de una variante que la orden ya tiene da 500.
+
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`
 
