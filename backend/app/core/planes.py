@@ -62,6 +62,9 @@ RUTAS_SIN_SUSCRIPCION = (
     "/api/v1/pagos/webhook/",
     "/api/v1/pagos/qr/",
     "/api/v1/tareas/",
+    # El lote offline se atiende aunque la suscripción o el plan no alcancen, para GUARDAR
+    # el rechazo de cada operación con su motivo (D16). Las consultas (GET) sí exigen ambos.
+    "/api/v1/sincronizacion/lote",
 )
 # /api/v1/public/{codigo}/tienda: los datos públicos de la tienda.
 _RUTA_TIENDA_PUBLICA = re.compile(r"^/api/v1/public/[^/]+/tienda$")

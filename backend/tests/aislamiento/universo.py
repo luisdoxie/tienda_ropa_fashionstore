@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import itertools
+import uuid
 from contextlib import contextmanager
 from decimal import Decimal
 from types import SimpleNamespace
@@ -40,6 +41,7 @@ from app.inteligencia.models import ConsultaVoz, HistorialNavegacion, Recomendac
 from app.plataforma.models import Bitacora, Cliente, Notificacion, Usuario
 from app.plataforma.repository import ClienteRepository, UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
+from app.sincronizacion.models import OperacionSync
 
 API = "/api/v1"
 CLAVE = "claveSegura123"
@@ -287,11 +289,19 @@ class Universo:
                 empresa_id=self.id, usuario_id=self.empresa.admin_id, entidad="universo", entidad_id=0,
                 accion="crear", datos={"marca": m("bitacora")}, ip="127.0.0.1",
             )
-            db.add_all([voz, historial, recomendacion, notificacion, bitacora])
+            # Una operación offline ya resuelta (E07): su mensaje lleva la marca.
+            operacion_id = uuid.uuid4()
+            operacion_sync = OperacionSync(
+                sucursal_id=ids["sucursal"], usuario_id=self.empresa.admin_id, operacion_id=operacion_id,
+                tipo="venta_contado", estado="rechazada", motivo="regla_de_negocio",
+                payload={"nota": "sin datos"}, resultado={"mensaje": m("operacion-sync")},
+                fecha_operacion=dt.datetime(2026, 10, 1, 12, 0, 0), procesada_en=dt.datetime(2026, 10, 1, 12, 0, 1),
+            )
+            db.add_all([voz, historial, recomendacion, notificacion, bitacora, operacion_sync])
             db.flush()
             ids.update(
                 consulta_voz=voz.id, historial=historial.id, recomendacion=recomendacion.id,
-                notificacion=notificacion.id, bitacora=bitacora.id,
+                notificacion=notificacion.id, bitacora=bitacora.id, operacion_sync=str(operacion_id),
             )
         return self
 

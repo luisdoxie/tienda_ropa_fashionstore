@@ -26,6 +26,7 @@ from app.catalogo import models as catalogo_models  # noqa: F401
 from app.comercial import models as comercial_models  # noqa: F401
 from app.inteligencia import models as inteligencia_models  # noqa: F401
 from app.plataforma import models as plataforma_models  # noqa: F401
+from app.sincronizacion import models as sincronizacion_models  # noqa: F401
 
 target_metadata = Base.metadata
 

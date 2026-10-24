@@ -34,6 +34,9 @@ HEREDA = {"usuario_rol"}
 # índices compuestos empiezan por empresa_id) y no hereda el mixin: se filtra
 # de forma explícita en BitacoraRepository.
 BITACORA = "bitacora"
+# E07: `operacion_sync` es de empresa (EmpresaMixin, NOT NULL), pero como `bitacora` no está en
+# las 50 de la sección 4.1 de E01: se cuenta aparte.
+OPERACION_SYNC = "operacion_sync"
 
 # Las 50 tablas EMPRESA de la sección 4.1 (49 con empresa_id NOT NULL más
 # `usuario`, que lo admite NULL: NULL = superadministrador).
@@ -86,11 +89,11 @@ def test_los_conjuntos_coinciden_con_la_seccion_4_1():
 
     nombres = {t.name for t in Base.metadata.sorted_tables}
     # 59 tablas del primer parcial + empresa, plan, suscripcion + bitacora (E06).
-    assert nombres == EMPRESA_4_1 | GLOBALES_4_1 | HEREDA | {"empresa", "plan", "suscripcion", BITACORA}
-    assert len(nombres) == 63
-    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion y bitacora.
-    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion", BITACORA}
-    assert len(_con_empresa_id()) == 52
+    assert nombres == EMPRESA_4_1 | GLOBALES_4_1 | HEREDA | {"empresa", "plan", "suscripcion", BITACORA, OPERACION_SYNC}
+    assert len(nombres) == 64
+    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion, bitacora y operacion_sync.
+    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion", BITACORA, OPERACION_SYNC}
+    assert len(_con_empresa_id()) == 53
 
 
 def test_empresa_id_es_not_null_salvo_en_usuario_y_apunta_a_empresa():
@@ -220,7 +223,9 @@ def test_las_17_unicas_por_empresa_estan_en_el_modelo():
         for c in t.constraints
         if isinstance(c, UniqueConstraint) and c.name and "empresa_id" in {x.name for x in c.columns}
     }
-    assert del_modelo == {u[1] for u in UNICAS}
+    # `operacion_sync` (E07) trae su propia única (empresa, operación) y su prueba está en
+    # tests/sincronizacion; aquí solo se reconoce.
+    assert del_modelo == {u[1] for u in UNICAS} | {"uq_operacion_sync_empresa_operacion"}
 
 
 # ---- Correo ----------------------------------------------------------------

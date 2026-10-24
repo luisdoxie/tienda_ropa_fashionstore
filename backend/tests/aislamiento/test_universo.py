@@ -14,6 +14,7 @@ RECURSOS_ESPERADOS = [
     "transferencia", "proveedor", "orden_compra", "recepcion", "zona_envio", "regla_tarifa", "promocion",
     "reserva", "venta", "venta_detalle", "pago", "devolucion", "venta_pendiente", "pago_pasarela",
     "transaccion", "envio", "consulta_voz", "historial", "recomendacion", "notificacion", "bitacora",
+    "operacion_sync",
 ]
 
 

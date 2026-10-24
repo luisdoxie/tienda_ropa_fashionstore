@@ -26,7 +26,7 @@ Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
 
 ## Arquitectura
 Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
-(más `sincronizacion`, pendiente de crear, para el offline del segundo parcial):
+(más `sincronizacion`, para el offline del segundo parcial, E07):
 - `plataforma`: seguridad (autenticación, usuarios, roles, permisos, clientes)
   y organización (ciudades, sucursales, empleados). Aquí viven también los
   modelos de empresa, plan y suscripción (multitenant) y su gestión (CU-04).
@@ -104,8 +104,9 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
   CU-22 Consultar reportes e indicadores · CU-23 Generar reportes con IA
   (hoy reporte por voz; se amplía) · CU-24 Analizar con Machine Learning
   (NUEVO, sin implementar).
-- sincronizacion: CU-25 Sincronizar operaciones offline (NUEVO, sin
-  implementar; paquete por crear).
+- sincronizacion: CU-25 Sincronizar operaciones offline (`cu25_...`, clases de
+  control `ProcesarLote` y `ConsultarOperaciones`; la E08 agrega la descarga de
+  datos y la resolución de conflictos en el mismo archivo).
 El antiguo CU-22 del primer parcial (modo espejo) se retiró. Una operación que no sea un caso de
 uso del catálogo no crea un CU nuevo: se resuelve en politicas.py o
 repository.py, o se pregunta.
@@ -159,11 +160,12 @@ que CU-08 referencia de forma opcional). Se implementan con su CRUD normal.
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(60 tablas en el SQL, que es el del primer parcial). La base real tiene 63:
+(60 tablas en el SQL, que es el del primer parcial). La base real tiene 64:
 las 59 de antes (`sesion_probador` se eliminó con el modo espejo) más
-`empresa`, `plan` y `suscripcion` del segundo parcial, que no están en el SQL,
-y `bitacora` (E06; el SQL ya trae su bloque actualizado). No inventar
-tablas ni columnas nuevas sin pedirlo explícitamente.
+`empresa`, `plan`, `suscripcion` y `operacion_sync` (E07) del segundo parcial,
+que no están en el SQL, y `bitacora` (E06; el SQL ya trae su bloque
+actualizado). No inventar tablas ni columnas nuevas sin pedirlo
+explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
 
@@ -172,16 +174,18 @@ Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
 NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01),
 filtrado automático por empresa (E02), login con empresa y claim `empresa_id`
 en el token (E03), CU-04 con planes y suscripciones (E04), las pruebas de
-aislamiento (E05) y la bitácora de auditoría (E06) hechos. El backend NO
+aislamiento (E05), la bitácora de auditoría (E06) y el paquete de
+sincronización (E07) hechos. El backend NO
 se despliega solo: tras la E03 el login de la web y del móvil actuales no
 funciona hasta que se adapten (E15, E16, E18).
-- Clasificación de las 63 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
+- Clasificación de las 64 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
   `estado_reserva`, `estado_venta`, `metodo_pago`, `estado_pago`), `plan`
   (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario),
-  `suscripcion` (de la empresa, con historial) y `bitacora` (`empresa_id` NULL
-  permitido y SIN el mixin: ver "Bitácora de auditoría").
+  `suscripcion` (de la empresa, con historial), `operacion_sync` (de la
+  empresa, `EmpresaMixin`; E07) y `bitacora` (`empresa_id` NULL permitido y SIN
+  el mixin: ver "Bitácora de auditoría").
 - Toda tabla nueva de negocio hereda `EmpresaMixin` (`core/tenant.py`) y se
   clasifica en `tests/plataforma/test_modelo_multitenant.py`: una tabla sin
   clasificar hace fallar esa prueba.
@@ -327,8 +331,9 @@ clasificarla. Un recurso de otra empresa se ve IGUAL que uno inexistente (404, m
   `FOR UPDATE`, concurrencia, vistas V2 y la misma consulta de consistencia).
 - Correr: `python -m pytest -q -p no:cacheprovider tests/aislamiento` (≈90 s) y, con
   `TEST_DATABASE_URL` apuntando a `fashionstore_test`, `tests/postgres`. Las funcionalidades
-  sin rutas aún (`operacion_offline`, `analitica_ml`, `copias_seguridad`) se saltan con
-  motivo: las etapas que las implementen quitan el skip y agregan sus rutas a `RUTAS`.
+  sin rutas aún (`analitica_ml`, `copias_seguridad`) se saltan con motivo: las etapas que
+  las implementen quitan el skip y agregan sus rutas a `RUTAS` (`operacion_offline` ya lo
+  hizo en la E07). Una ruta con un UUID en el path se arma con `inexistente_para(...)`.
 - Hallazgos de la etapa: ninguna fuga de aislamiento. Defecto previo ajeno (CU-08):
   `PUT /ordenes-compra/{id}` con una línea de una variante que la orden ya tiene da 500.
 
@@ -370,6 +375,44 @@ datos mínimos (`datos` JSONB), IP y fecha. No duplica los libros que ya existen
 - Pruebas: `tests/core/test_auditoria.py`, `tests/plataforma/test_bitacora*.py`,
   `tests/comercial/test_bitacora_eventos_comercial.py` y `tests/postgres/test_bitacora_postgres.py`. Las 4
   rutas están en `tests/aislamiento/rutas_esperadas.py`.
+
+### Sincronización offline (E07, CU-25, `backend/app/sincronizacion/`)
+Recibe las operaciones que la PWA y la app móvil registraron sin conexión (`venta_contado` y `reserva`),
+las aplica en el servidor con las reglas de `comercial` y devuelve un resultado por operación. Es el
+único paquete que se apoya en `comercial`; ningún otro importa `sincronizacion`.
+- **Rutas:** `POST /api/v1/sincronizacion/lote` (permiso `sincronizacion.operar`), `GET .../operaciones` y
+  `GET .../operaciones/{operacion_id}` (el UUID de la operación; plan con `operacion_offline`). Con
+  `sincronizacion.supervisar` (administrador, encargado) se ven las de la empresa o de la sucursal propia, y
+  el detalle incluye el `payload`; sin él, solo las propias. El contrato JSON v1 (montos en texto, fechas con
+  zona, hasta 50 operaciones por lote) está en la sección 4.2 de `E07_sincronizacion_cu25.txt` y congelado por
+  `tests/sincronizacion/contrato_v1.json`.
+- **Idempotencia (D12).** `operacion_id` (UUID del cliente) con UNIQUE `(empresa_id, operacion_id)`. Cada
+  operación reserva primero su clave: si ya existía es un reenvío y se devuelve lo guardado con
+  `duplicada=true`, sin repetir nada y sumando `intentos`. Con dos lotes simultáneos, el segundo INSERT espera
+  al primero (PostgreSQL) y cae en el error de unicidad.
+- **Orden y aislamiento de fallos (D14).** Las operaciones se toman por `fecha_operacion` (la más antigua
+  primero). Cada una corre en su SAVEPOINT y se CONFIRMA al terminar (commit por operación): una mala no tumba
+  a las demás. Un fallo inesperado NO se guarda (`error_temporal`): el cliente reintenta con la misma
+  `operacion_id`. Estados que se guardan: `confirmada`, `rechazada`, `en_conflicto`.
+- **Reglas (D15-D18).** Sin stock suficiente la operación se deshace entera y queda `en_conflicto` con
+  `faltantes`. Una venta es de contado en efectivo; se acepta el precio de la operación (D17) y, si difiere del
+  actual, sale el aviso `precio_distinto`. Los rechazos llevan un `motivo` estable (`politicas.py`).
+- **Suscripción y plan (D16).** El POST está en `RUTAS_SIN_SUSCRIPCION` y no usa `exigir_funcionalidad`: así
+  guarda el rechazo de cada operación con su motivo (`suscripcion_no_activa`, `plan_sin_operacion_offline`).
+  Ese rechazo es FINAL (reenviar la misma `operacion_id` devuelve el mismo rechazo); si se prefiere que sea
+  reintentable, se cambia en `ProcesarLote` (decisión pendiente para E14 y E20).
+- **Parámetros nuevos y opcionales en `comercial`:** `registrar_venta(fecha=, precios_pactados=)`,
+  `cobrar_en_caja(fecha=)` y `crear_reserva(cliente_id=, creado_en=)`; y `StockInsuficienteError` (un
+  `ConflictoError` 409, mismo mensaje) para distinguir "no alcanza el stock" de otros conflictos.
+- **Datos:** `operacion_sync.sucursal_id` admite NULL (la sucursal pedida no existe o es de otra empresa: la
+  operación se guarda rechazada y la FK no puede apuntar a una ajena). Un `tipo` desconocido se rechaza sin
+  guardar (la tabla solo admite los dos tipos). La tabla no se purga.
+- **Observabilidad.** Logger `app.sincronizacion`, una línea `clave=valor` por evento (`sync_lote_recibido`,
+  `sync_operacion`, `sync_lote_fin`), sin payload, montos ni datos personales; y una fila de bitácora
+  (`lote_sync/sincronizar_lote`) por lote.
+- Pruebas: `tests/comercial/test_registrar_venta_offline.py`, `tests/sincronizacion/` (con `ayudas.py` y el
+  escenario de `conftest.py`) y `tests/postgres/test_sincronizacion_concurrencia.py`. Las 3 rutas están en
+  `tests/aislamiento/rutas_esperadas.py` (el lote como EXENTA, con su razón).
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

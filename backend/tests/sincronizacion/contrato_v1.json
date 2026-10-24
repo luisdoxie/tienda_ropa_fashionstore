@@ -1,0 +1,396 @@
+{
+  "LoteEntrada": {
+    "$defs": {
+      "OperacionEntrada": {
+        "properties": {
+          "fecha_operacion": {
+            "format": "date-time",
+            "title": "Fecha Operacion",
+            "type": "string"
+          },
+          "operacion_id": {
+            "format": "uuid",
+            "title": "Operacion Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "sucursal_id": {
+            "title": "Sucursal Id",
+            "type": "integer"
+          },
+          "tipo": {
+            "maxLength": 20,
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operacion_id",
+          "tipo",
+          "sucursal_id",
+          "fecha_operacion",
+          "payload"
+        ],
+        "title": "OperacionEntrada",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "dispositivo": {
+        "anyOf": [
+          {
+            "maxLength": 60,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Dispositivo"
+      },
+      "empresa_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Empresa Id"
+      },
+      "operaciones": {
+        "items": {
+          "$ref": "#/$defs/OperacionEntrada"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "title": "Operaciones",
+        "type": "array"
+      },
+      "version_contrato": {
+        "maxLength": 10,
+        "title": "Version Contrato",
+        "type": "string"
+      }
+    },
+    "required": [
+      "version_contrato",
+      "operaciones"
+    ],
+    "title": "LoteEntrada",
+    "type": "object"
+  },
+  "LoteRespuesta": {
+    "$defs": {
+      "AvisoPrecio": {
+        "properties": {
+          "codigo": {
+            "const": "precio_distinto",
+            "default": "precio_distinto",
+            "title": "Codigo",
+            "type": "string"
+          },
+          "precio_actual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Precio Actual"
+          },
+          "precio_operacion": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Precio Operacion"
+          },
+          "variante_id": {
+            "title": "Variante Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "variante_id",
+          "precio_operacion",
+          "precio_actual"
+        ],
+        "title": "AvisoPrecio",
+        "type": "object"
+      },
+      "Faltante": {
+        "properties": {
+          "disponible": {
+            "title": "Disponible",
+            "type": "integer"
+          },
+          "solicitado": {
+            "title": "Solicitado",
+            "type": "integer"
+          },
+          "variante_id": {
+            "title": "Variante Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "variante_id",
+          "solicitado",
+          "disponible"
+        ],
+        "title": "Faltante",
+        "type": "object"
+      },
+      "RecursoCreado": {
+        "properties": {
+          "codigo": {
+            "title": "Codigo",
+            "type": "string"
+          },
+          "fecha_expiracion": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Fecha Expiracion"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "tipo": {
+            "enum": [
+              "venta",
+              "reserva"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          }
+        },
+        "required": [
+          "tipo",
+          "id",
+          "codigo"
+        ],
+        "title": "RecursoCreado",
+        "type": "object"
+      },
+      "ResultadoOperacion": {
+        "properties": {
+          "avisos": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/AvisoPrecio"
+            },
+            "title": "Avisos",
+            "type": "array"
+          },
+          "cambio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Cambio"
+          },
+          "duplicada": {
+            "default": false,
+            "title": "Duplicada",
+            "type": "boolean"
+          },
+          "estado": {
+            "enum": [
+              "confirmada",
+              "rechazada",
+              "en_conflicto",
+              "error_temporal"
+            ],
+            "title": "Estado",
+            "type": "string"
+          },
+          "faltantes": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/Faltante"
+            },
+            "title": "Faltantes",
+            "type": "array"
+          },
+          "mensaje": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mensaje"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Motivo"
+          },
+          "operacion_id": {
+            "format": "uuid",
+            "title": "Operacion Id",
+            "type": "string"
+          },
+          "procesada_en": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Procesada En"
+          },
+          "recurso": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RecursoCreado"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "operacion_id",
+          "estado"
+        ],
+        "title": "ResultadoOperacion",
+        "type": "object"
+      },
+      "ResumenLote": {
+        "properties": {
+          "confirmadas": {
+            "title": "Confirmadas",
+            "type": "integer"
+          },
+          "duplicadas": {
+            "title": "Duplicadas",
+            "type": "integer"
+          },
+          "en_conflicto": {
+            "title": "En Conflicto",
+            "type": "integer"
+          },
+          "errores_temporales": {
+            "title": "Errores Temporales",
+            "type": "integer"
+          },
+          "rechazadas": {
+            "title": "Rechazadas",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "confirmadas",
+          "rechazadas",
+          "en_conflicto",
+          "errores_temporales",
+          "duplicadas"
+        ],
+        "title": "ResumenLote",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "procesado_en": {
+        "format": "date-time",
+        "title": "Procesado En",
+        "type": "string"
+      },
+      "resultados": {
+        "items": {
+          "$ref": "#/$defs/ResultadoOperacion"
+        },
+        "title": "Resultados",
+        "type": "array"
+      },
+      "resumen": {
+        "$ref": "#/$defs/ResumenLote"
+      },
+      "version_contrato": {
+        "default": "1.0",
+        "title": "Version Contrato",
+        "type": "string"
+      }
+    },
+    "required": [
+      "procesado_en",
+      "resumen",
+      "resultados"
+    ],
+    "title": "LoteRespuesta",
+    "type": "object"
+  },
+  "version_contrato": "1.0"
+}

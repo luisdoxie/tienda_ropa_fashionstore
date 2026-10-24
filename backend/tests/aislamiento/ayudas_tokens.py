@@ -27,7 +27,7 @@ from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from tests.conftest import EmpresaDePrueba, crear_empresa, crear_superadmin_de_prueba, token_de
 
-from .oraculo import ID_INEXISTENTE, parametros_de
+from .oraculo import ID_INEXISTENTE, inexistente_para, parametros_de
 from .plantillas import PARAMETROS
 from .rutas_esperadas import RUTAS
 
@@ -67,7 +67,7 @@ def armar_ruta(ruta: str, universo=None, *, inexistente: bool = False, codigo: s
         elif not inexistente and universo is not None and nombre in PARAMETROS:
             valor = universo.ids[PARAMETROS[nombre]]
         else:
-            valor = ID_INEXISTENTE
+            valor = inexistente_para(nombre)
         ruta = ruta.replace("{" + nombre + "}", str(valor))
     return ruta
 

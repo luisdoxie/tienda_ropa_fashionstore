@@ -123,6 +123,7 @@ def test_las_rutas_exentas_de_suscripcion_son_las_documentadas():
         "/api/v1/pagos/webhook/",
         "/api/v1/pagos/qr/",
         "/api/v1/tareas/",
+        "/api/v1/sincronizacion/lote",  # E07: para guardar el rechazo de cada operación (D16)
     )
 
 

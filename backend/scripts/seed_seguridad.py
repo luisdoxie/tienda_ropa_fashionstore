@@ -49,6 +49,8 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("plataforma.gestionar", "plataforma", "Gestionar empresas, planes y suscripciones de la plataforma"),
     ("empresa.gestionar", "plataforma", "Gestionar la empresa propia y su suscripción"),
     ("bitacora.ver", "bitacora", "Consultar la bitácora de auditoría de la empresa"),
+    ("sincronizacion.operar", "sincronizacion", "Enviar operaciones hechas sin conexión y consultar las propias"),
+    ("sincronizacion.supervisar", "sincronizacion", "Ver las operaciones sin conexión de la empresa o de la sucursal"),
 ]
 
 # Permisos que NO recibe el administrador de una empresa: son del
@@ -67,6 +69,8 @@ PERMISOS_POR_ROL: dict[str, list[str]] = {
         "ventas.gestionar_sucursal",
         "entregas.gestionar",
         "reportes.ver",
+        "sincronizacion.operar",
+        "sincronizacion.supervisar",
     ],
     "cajero": [
         "catalogo.ver",
@@ -78,6 +82,7 @@ PERMISOS_POR_ROL: dict[str, list[str]] = {
         # cajero necesita ver las reservas de su sucursal para convertirlas
         # en venta, no solo el encargado del depósito.
         "reservas.gestionar_sucursal",
+        "sincronizacion.operar",
     ],
     # Sin abastecimiento.gestionar: ese permiso protege TODA la sección de Abastecimiento
     # (proveedores ajenos, órdenes de compra y recepciones, que suben stock

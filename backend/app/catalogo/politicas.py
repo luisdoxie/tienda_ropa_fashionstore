@@ -41,7 +41,7 @@ from app.catalogo.repository import (
 from app.catalogo.schemas import CatalogoItemRespuesta, FiltrosCatalogo, Genero, ValoresReferenciaCatalogo
 from app.core import storage
 from app.core.deps import ParametrosPeriodo
-from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
+from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError, StockInsuficienteError
 from app.core.tenant import registrar_inicializador
 from app.plataforma import politicas as plataforma_politicas
 
@@ -426,7 +426,12 @@ def reservar_stock(
     stock = stock_repo.obtener_o_crear_bloqueado(db, variante_id, sucursal_id)
     disponible = stock.cantidad_fisica - stock.cantidad_reservada
     if cantidad > disponible:
-        raise ConflictoError("No hay stock disponible suficiente para reservar")
+        raise StockInsuficienteError(
+            "No hay stock disponible suficiente para reservar",
+            variante_id=variante_id,
+            solicitado=cantidad,
+            disponible=max(disponible, 0),
+        )
 
     stock.cantidad_reservada += cantidad
     if commit:

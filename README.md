@@ -51,7 +51,9 @@ tienda_ropa/
 │       ├── catalogo/        catálogo, inventario, abastecimiento y probador
 │       │                    virtual (modo generativo)
 │       ├── comercial/       reservas, ventas, pagos (Libélula, PayPal) y entregas
-│       └── inteligencia/    recomendador, búsqueda por voz, reportes e indicadores
+│       ├── inteligencia/    recomendador, búsqueda por voz, reportes e indicadores
+│       └── sincronizacion/  operaciones hechas sin conexión (ventas de contado y
+│                            reservas): lote idempotente y consulta de su estado
 │   └── alembic/             migraciones de base de datos
 │
 ├── web/             Angular — back office (admin/encargado/cajero) y tienda pública
@@ -76,7 +78,7 @@ Cada paquete del backend sigue siempre la misma estructura: `models.py`,
 archivo por caso de uso, `cuXX_nombre.py`). Un paquete nunca consulta
 directamente las tablas de otro: llama a sus casos de uso o a sus políticas.
 Orden de dependencias: `core` ← `plataforma` ← `catalogo` ← `comercial` ←
-`inteligencia`.
+`inteligencia` (y `sincronizacion` sobre `comercial`).
 
 ## Casos de uso del segundo parcial
 
@@ -86,7 +88,7 @@ Orden de dependencias: `core` ← `plataforma` ← `catalogo` ← `comercial` �
 | catalogo      | CU-05 Catálogo · CU-06 Consultar y buscar · CU-07 Favoritos · CU-08 Abastecimiento · CU-09 Inventario · CU-10 Assets del probador · CU-11 Probar prenda con IA |
 | comercial     | CU-12 Reservas · CU-13 Carrito y compra digital · CU-14 Venta presencial · CU-15 Consultar ventas · CU-16 Promociones · CU-17 Devoluciones y cambios · CU-18 Pagos · CU-19 Envíos y tarifas |
 | inteligencia  | CU-20 Recomendar productos · CU-21 Buscar por voz · CU-22 Reportes e indicadores · CU-23 Reportes con IA (hoy reporte por voz, se amplía) · **CU-24 Analizar con Machine Learning (por construir)** |
-| sincronizacion | **CU-25 Sincronizar operaciones offline (por construir; paquete por crear)** |
+| sincronizacion | CU-25 Sincronizar operaciones offline (backend hecho; la descarga de datos y los conflictos son de la E08) |
 
 ## Estado y hoja de ruta (segundo parcial)
 

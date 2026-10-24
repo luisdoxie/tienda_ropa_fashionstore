@@ -23,6 +23,13 @@ from .plantillas import (
 )
 
 ID_INEXISTENTE = 999_999_999
+# Los ids de operación de la sincronización son UUID: un entero daría 422, no 404.
+UUID_INEXISTENTE = "00000000-0000-4000-8000-000000000000"
+
+
+def inexistente_para(parametro: str):
+    """El valor de `parametro` que no existe en ninguna empresa."""
+    return UUID_INEXISTENTE if parametro == "operacion_id" else ID_INEXISTENTE
 
 
 def parametros_de(ruta: str) -> list[str]:
@@ -74,7 +81,7 @@ def intento_cruzado(mundo, metodo: str, ruta_plantilla: str, con_b: tuple[str, .
     """Ejecuta O1..O4. Devuelve la respuesta para que la prueba pueda mostrarla."""
     a, b = mundo.a, mundo.b
     valores = {p: (b.ids if p in con_b else a.ids)[PARAMETROS[p]] for p in parametros_de_recurso(ruta_plantilla)}
-    inexistentes = {p: (ID_INEXISTENTE if p in con_b else valor) for p, valor in valores.items()}
+    inexistentes = {p: (inexistente_para(p) if p in con_b else valor) for p, valor in valores.items()}
 
     antes = mundo.instantanea(b.id)
     respuesta = _pedir(mundo, metodo, ruta_plantilla, valores, a, a)
@@ -86,7 +93,7 @@ def intento_cruzado(mundo, metodo: str, ruta_plantilla: str, con_b: tuple[str, .
     assert control.status_code == respuesta.status_code, (
         f"O2 (estado distinto con un id inexistente): {detalle} / inexistente -> {control.status_code}"
     )
-    ids_usados = [ID_INEXISTENTE, *valores.values()]
+    ids_usados = [ID_INEXISTENTE, UUID_INEXISTENTE, *valores.values()]
     assert normalizar(control.text, ids_usados) == normalizar(respuesta.text, ids_usados), (
         f"O2 (cuerpo distinto con un id inexistente): {respuesta.text[:200]} / {control.text[:200]}"
     )

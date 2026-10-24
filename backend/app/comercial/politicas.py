@@ -63,7 +63,7 @@ from app.core.codigos import generar_codigo
 from app.core.permisos import PERMISO_STAFF_RESERVAS, PERMISO_STAFF_VENTAS
 from app.core.deps import ParametrosPeriodo
 from app.core.tiempo import ahora_utc_naive, hoy_utc
-from app.core.exceptions import ConflictoError, DomainError, PermisoDenegadoError
+from app.core.exceptions import ConflictoError, DomainError, PermisoDenegadoError, StockInsuficienteError
 from app.core.repository import confirmar
 from app.core.security import permisos_de_usuario
 from app.core.tenant import por_cada_empresa, sin_filtro
@@ -135,7 +135,15 @@ def validar_transicion(
     return reserva
 
 
-def crear_reserva(db: Session, usuario_id: int, datos: ReservaCrear, commit: bool = True) -> Reserva:
+def crear_reserva(
+    db: Session,
+    usuario_id: int,
+    datos: ReservaCrear,
+    commit: bool = True,
+    *,
+    cliente_id: int | None = None,
+    creado_en: dt.datetime | None = None,
+) -> Reserva:
     """Crea una reserva con el stock de cada línea apartado y avisa a la
     sucursal. Es la lógica de `ReservarPrendas` (CU-12), extraída para que la
     sincronización offline (CU-25) la use dentro de su propia unidad de
@@ -147,8 +155,17 @@ def crear_reserva(db: Session, usuario_id: int, datos: ReservaCrear, commit: boo
     lanza el error y nada de lo anterior debe confirmarse (con commit=True el
     error propaga y get_db revierte; con commit=False es responsabilidad del
     llamador hacer rollback). Los bloqueos de stock se toman en orden
-    (variante_id, sucursal_id) con `bloquear_stock_en_orden`."""
-    cliente = obtener_perfil_cliente(db, usuario_id)
+    (variante_id, sucursal_id) con `bloquear_stock_en_orden`.
+
+    Solo para la sincronización offline (CU-25), ambos opcionales:
+    - `cliente_id`: la reserva la registra el PERSONAL a nombre de ese cliente
+      (404 si no existe). `usuario_id` sigue siendo el ACTOR (historial y
+      notificaciones). Sin él, el cliente es el perfil del usuario logueado.
+    - `creado_en`: la fecha REAL de la reserva (UTC naive). Sin ella, la de la base."""
+    if cliente_id is not None:
+        cliente = plataforma_politicas.obtener_cliente(db, cliente_id)
+    else:
+        cliente = obtener_perfil_cliente(db, usuario_id)
     plataforma_politicas.obtener_sucursal(db, datos.sucursal_id)  # 404 si no existe
     plataforma_politicas.validar_horario_en_atencion(
         db, datos.sucursal_id, datos.fecha_visita, datos.hora_visita_desde, datos.hora_visita_hasta
@@ -171,6 +188,7 @@ def crear_reserva(db: Session, usuario_id: int, datos: ReservaCrear, commit: boo
         hora_visita_hasta=datos.hora_visita_hasta,
         fecha_expiracion=fecha_expiracion,
         observacion=datos.observacion,
+        **({"creado_en": creado_en} if creado_en is not None else {}),
     )
     reserva.detalle = [
         ReservaDetalle(variante_id=linea.variante_id, cantidad=linea.cantidad) for linea in datos.detalle
@@ -188,7 +206,10 @@ def crear_reserva(db: Session, usuario_id: int, datos: ReservaCrear, commit: boo
 
     db.add(
         ReservaHistorial(
-            reserva_id=reserva.id, estado_id=estado_pendiente.id, usuario_id=usuario_id, comentario="Reserva creada"
+            reserva_id=reserva.id,
+            estado_id=estado_pendiente.id,
+            usuario_id=usuario_id,
+            comentario="Reserva registrada por el personal" if cliente_id is not None else "Reserva creada",
         )
     )
 
@@ -395,13 +416,23 @@ def registrar_venta(
     usuario_id: int | None,
     carrito_a_vaciar: Carrito | None = None,
     commit: bool = True,
+    fecha: dt.datetime | None = None,
+    precios_pactados: list[tuple[Decimal, Decimal]] | None = None,
 ) -> Venta:
     """`commit=False`: deja la venta, sus líneas, el stock apartado y el
     vaciado del carrito en flush, sin confirmar; quien llama (la sincronización
     offline, CU-25, o un flujo que además cobra) decide el commit o el
-    rollback de todo. Ante un error el llamador debe hacer rollback."""
+    rollback de todo. Ante un error el llamador debe hacer rollback.
+
+    Solo para la sincronización offline (CU-25), ambos opcionales:
+    - `fecha`: la fecha REAL de la venta (UTC naive). Sin ella, la de la base.
+    - `precios_pactados`: (precio_unitario, descuento_unitario) de cada línea,
+      en el orden de `lineas`. Si vienen, NO se recalcula el precio ni la
+      promoción: el cliente pagó ese precio (D17)."""
     if not lineas:
         raise DomainError("La venta necesita al menos una línea")
+    if precios_pactados is not None and len(precios_pactados) != len(lineas):
+        raise DomainError("precios_pactados debe tener un precio por cada línea")
 
     plataforma_politicas.obtener_sucursal(db, sucursal_id)
     hoy = hoy_utc()
@@ -433,7 +464,12 @@ def registrar_venta(
             disponibilidad = _disponibilidad_cu.ejecutar(db, variante_id, sucursal_id)
             disponible = sum(s.cantidad_disponible for s in disponibilidad)
             if cantidad > disponible:
-                raise ConflictoError(f"No hay stock disponible suficiente de la variante {variante_id}")
+                raise StockInsuficienteError(
+                    f"No hay stock disponible suficiente de la variante {variante_id}",
+                    variante_id=variante_id,
+                    solicitado=cantidad,
+                    disponible=max(disponible, 0),
+                )
         else:
             # Venta de una reserva (CU-14): esas unidades ya están dentro de
             # cantidad_reservada desde CU-12, no compiten con el disponible
@@ -457,15 +493,21 @@ def registrar_venta(
         reserva_id=reserva_id,
         estado_id=estado_inicial.id,
         costo_envio=costo_envio,
+        # Solo si viene: pasar None dejaría el INSERT con NULL en vez del default de la base.
+        **({"fecha": fecha} if fecha is not None else {}),
     )
     venta_repo.crear(db, venta)  # flush: venta.id ya disponible
 
     subtotal_bruto = Decimal("0")
     descuento_total = Decimal("0")
 
-    for variante_id, cantidad in lineas:
+    for posicion, (variante_id, cantidad) in enumerate(lineas):
         variante = variantes[variante_id]
-        precio_unitario, descuento_unitario, subtotal_linea = calcular_linea(db, variante, cantidad, hoy)
+        if precios_pactados is not None:
+            precio_unitario, descuento_unitario = precios_pactados[posicion]
+            subtotal_linea = redondear((precio_unitario - descuento_unitario) * cantidad)
+        else:
+            precio_unitario, descuento_unitario, subtotal_linea = calcular_linea(db, variante, cantidad, hoy)
 
         # 2. costo_unitario queda NULL acá a propósito: recién se congela
         # en confirmar_venta(), cuando el pago se aprueba -- hasta
@@ -1043,13 +1085,17 @@ def cobrar_en_caja(
     metodo_pago: str,
     monto_recibido: Decimal | None = None,
     commit: bool = True,
+    fecha: dt.datetime | None = None,
 ) -> tuple[Pago, Decimal | None]:
     """Cobra una venta pendiente en caja: crea el pago aprobado y confirma la
     venta (descuenta el stock). Devuelve (pago, cambio); `cambio` solo existe
     en efectivo. Es la lógica de `ProcesarPagoCaja` (CU-18), sin cambios.
 
     `commit=False`: pago, confirmación de la venta y movimientos de stock
-    quedan en flush; quien llama decide el commit o el rollback de todo."""
+    quedan en flush; quien llama decide el commit o el rollback de todo.
+
+    `fecha` (solo la sincronización offline): la fecha REAL del cobro, UTC naive.
+    Sin ella, la de la base."""
     empleado = plataforma_politicas.obtener_empleado_por_usuario(db, usuario_id)
     if empleado is None:
         raise PermisoDenegadoError("Este usuario no es un empleado, no puede cobrar en caja")
@@ -1077,7 +1123,14 @@ def cobrar_en_caja(
     _exigir_pendiente_pago(db, venta)
 
     estado_aprobado = estado_pago_repo.obtener_por_codigo(db, "aprobado")
-    pago = Pago(venta_id=venta.id, metodo_pago_id=metodo.id, estado_id=estado_aprobado.id, monto=venta.total)
+    pago = Pago(
+        venta_id=venta.id,
+        metodo_pago_id=metodo.id,
+        estado_id=estado_aprobado.id,
+        monto=venta.total,
+        # Solo si viene: pasar None dejaría el INSERT con NULL en vez del default de la base.
+        **({"fecha": fecha} if fecha is not None else {}),
+    )
     pago_repo.crear(db, pago)  # flush
 
     # El pago en caja se aprueba en el momento: no hay pasarela ni webhook,

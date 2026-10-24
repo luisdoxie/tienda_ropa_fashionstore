@@ -44,6 +44,7 @@ PARAMETROS = {
     "venta_id": "venta",
     "notificacion_id": "notificacion",
     "bitacora_id": "bitacora",
+    "operacion_id": "operacion_sync",
     "pago_id": "pago",
     "recepcion_id": "recepcion",
     "activo_id": "activo_probador",

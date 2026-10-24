@@ -25,6 +25,26 @@ class ConflictoError(DomainError):
         super().__init__(mensaje, status_code=status.HTTP_409_CONFLICT)
 
 
+class StockInsuficienteError(ConflictoError):
+    """No alcanza el stock disponible. Es un ConflictoError (409, mismo mensaje
+    para el cliente): la sincronización offline la distingue de otros conflictos
+    para dejar la operación en_conflicto en vez de rechazada. Los atributos son
+    opcionales; llevan la variante y las unidades pedidas y disponibles."""
+
+    def __init__(
+        self,
+        mensaje: str = "No hay stock disponible suficiente",
+        *,
+        variante_id: int | None = None,
+        solicitado: int | None = None,
+        disponible: int | None = None,
+    ) -> None:
+        super().__init__(mensaje)
+        self.variante_id = variante_id
+        self.solicitado = solicitado
+        self.disponible = disponible
+
+
 class PermisoDenegadoError(DomainError):
     def __init__(self, mensaje: str = "No tiene permiso para realizar esta acción") -> None:
         super().__init__(mensaje, status_code=status.HTTP_403_FORBIDDEN)

@@ -26,6 +26,12 @@ PERMISO_EMPRESA = "empresa.gestionar"
 # Consultar la bitácora de auditoría de la propia empresa (administrador).
 PERMISO_BITACORA_VER = "bitacora.ver"
 
+# ---- sincronizacion ----
+# Enviar operaciones hechas sin conexión y consultar las propias.
+PERMISO_SINCRONIZAR = "sincronizacion.operar"
+# Ver las operaciones de toda la empresa (o de la sucursal propia) y su payload.
+PERMISO_SINCRONIZACION_SUPERVISAR = "sincronizacion.supervisar"
+
 # ---- catalogo ----
 PERMISO_CATALOGO = "catalogo.gestionar"
 PERMISO_CATALOGO_VER = "catalogo.ver"

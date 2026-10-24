@@ -39,7 +39,7 @@ from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from tests.conftest import EmpresaDePrueba, crear_empresa, crear_superadmin_de_prueba, token_de
 
-from .oraculo import ID_INEXISTENTE, armar, parametros_de
+from .oraculo import ID_INEXISTENTE, armar, inexistente_para, parametros_de
 from .plantillas import ARCHIVOS
 from .rutas_esperadas import (
     CREA_O_ACCION,
@@ -68,6 +68,7 @@ PREFIJOS_EXENTOS_DE_SUSCRIPCION = (
     "/api/v1/pagos/webhook/",
     "/api/v1/pagos/qr/",
     "/api/v1/tareas/",
+    "/api/v1/sincronizacion/lote",  # E07: guarda el rechazo de cada operación con su motivo (D16)
 )
 RUTA_TIENDA = re.compile(r"^/api/v1/public/[^/]+/tienda$")
 TOKEN_SERVICIO = {"X-Service-Token": "token-de-pruebas"}
@@ -222,7 +223,7 @@ PETICIONES_VALIDAS = {
 def _peticion(http, metodo: str, plantilla: str, headers: dict | None, codigo: str = "tienda-a"):
     """Una petición MÍNIMA e inofensiva a `plantilla`: ids inexistentes y cuerpo vacío. El 403 de
     suscripción y el de plan llegan antes que cualquier 404 o 422, así que basta."""
-    valores = {p: ID_INEXISTENTE for p in parametros_de(plantilla)}
+    valores = {p: inexistente_para(p) for p in parametros_de(plantilla)}
     valores.update(codigo=codigo, pasarela="libelula", id_transaccion="TXN-INEXISTENTE")
     argumentos: dict = {"headers": headers or {}}
     if (metodo, plantilla) in ARCHIVOS:
@@ -263,7 +264,6 @@ RUTAS_POR_FUNCIONALIDAD = {
     f: sorted(clave for clave, ruta in RUTAS.items() if ruta.funcionalidad == f) for f in FUNCIONALIDADES
 }
 ETAPA_QUE_AGREGA_LA_RUTA = {
-    "operacion_offline": "E07 (sincronización offline)",
     "analitica_ml": "E11 (analítica con ML)",
     "copias_seguridad": "E22 (copias de seguridad)",
 }
@@ -782,8 +782,10 @@ def test_cada_grupo_exento_tiene_razon_y_rutas_vivas(indice):
 
 def test_las_compuertas_declaradas_cubren_las_cinco_funcionalidades_con_rutas():
     cubiertas = {r.funcionalidad for r in RUTAS.values() if r.funcionalidad}
-    assert cubiertas == {"gestion_productos", "gestion_ventas", "reservas", "reportes_convencionales", "reportes_ia"}, (
-        "cambió el conjunto de funcionalidades con rutas: ¿E07, E11 o E22 agregaron las suyas? "
+    assert cubiertas == {
+        "gestion_productos", "gestion_ventas", "reservas", "reportes_convencionales", "reportes_ia", "operacion_offline",
+    }, (
+        "cambió el conjunto de funcionalidades con rutas: ¿E11 o E22 agregaron las suyas? "
         "Entonces quita el skip de la tabla de verdad y actualiza esta prueba"
     )
     sin_compuerta = len(RUTAS_DE_NEGOCIO) - sum(1 for k in RUTAS_DE_NEGOCIO if RUTAS[k].funcionalidad)

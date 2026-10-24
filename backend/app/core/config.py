@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Vigencia de una suscripcion nueva cuando no se indica fecha de vencimiento.
     suscripcion_dias_por_defecto: int = 30
 
+    # Sincronizacion offline (CU-25): una operacion con fecha mas alla de ahora + estos
+    # minutos se rechaza como "fecha_futura" (reloj del dispositivo adelantado).
+    sync_tolerancia_futuro_minutos: int = 5
+
     # Dias que se conserva la bitacora de auditoria; POST /tareas/purgar-bitacora
     # borra lo anterior.
     bitacora_retencion_dias: int = 365

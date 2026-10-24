@@ -27,6 +27,7 @@ from app.core.tenant import contexto_empresa
 from app.inteligencia.router import routers as inteligencia_routers
 from app.plataforma.politicas import vencer_suscripciones
 from app.plataforma.router import routers as plataforma_routers
+from app.sincronizacion.router import routers as sincronizacion_routers
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +116,13 @@ def health(db: Session = Depends(get_db)) -> JSONResponse:
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
-# Acá se registran los routers de cada paquete (plataforma, catalogo, comercial, inteligencia).
+# Acá se registran los routers de cada paquete (plataforma, catalogo, comercial, inteligencia,
+# sincronizacion).
 for router in (
     plataforma_routers
     + catalogo_routers
     + comercial_routers
     + inteligencia_routers
+    + sincronizacion_routers
 ):
     app.include_router(router)
