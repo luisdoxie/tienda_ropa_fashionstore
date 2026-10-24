@@ -29,6 +29,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import get_db
 from app.core.tenant import CLAVE_EMPRESA, fijar_empresa
+from app.core.tiempo import hoy_utc
 from app.main import app
 from app.plataforma.models import Empresa, Suscripcion
 from app.plataforma.repository import UsuarioRepository
@@ -115,7 +116,7 @@ def sembrar_empresa_de_pruebas(db) -> Empresa:
     empresa = Empresa(nombre="FashionStore", codigo=CODIGO_EMPRESA, activo=True)
     db.add(empresa)
     db.flush()
-    hoy = dt.date.today()
+    hoy = hoy_utc()  # la fecha de la aplicación es UTC
     db.add(
         Suscripcion(
             empresa_id=empresa.id,

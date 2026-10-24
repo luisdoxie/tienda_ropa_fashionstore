@@ -18,6 +18,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.security import crear_access_token
 from app.core.tenant import en_empresa
+from app.core.tiempo import hoy_utc
 from app.plataforma.models import Suscripcion
 from tests.comercial._datos_empresa import TOKEN_SERVICIO, iniciar_pago, sembrar_empresa
 from tests.conftest import crear_superadmin_de_prueba
@@ -49,7 +50,7 @@ def _webhook(client, id_transaccion: str):
     )
 
 
-AYER = dt.date.today() - dt.timedelta(days=1)
+AYER = hoy_utc() - dt.timedelta(days=1)  # UTC, como la aplicación
 
 # (cambios a la suscripción, estado que informa el 403)
 SIN_SUSCRIPCION_ACTIVA = [
@@ -185,7 +186,7 @@ def test_renovar_o_reactivar_restablece_el_acceso(client_por_peticion, db_sessio
 
 def test_una_activa_que_vence_hoy_todavia_opera_y_ayer_ya_no(client_por_peticion, db_session, dos_empresas, mundo):
     b = mundo["b"]
-    hoy = dt.date.today()
+    hoy = hoy_utc()
     _cambiar_suscripcion(db_session, dos_empresas.b.id, fecha_inicio=hoy - dt.timedelta(days=30), fecha_vencimiento=hoy)
     assert client_por_peticion.get("/api/v1/productos", headers=b["admin"]).status_code == 200
 

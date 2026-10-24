@@ -27,6 +27,7 @@ from app.comercial import models as _comercial_models  # noqa: F401  (registra l
 from app.plataforma import models as _plataforma_models  # noqa: F401  (registra las tablas)
 from app.core.security import crear_access_token, hash_password, permisos_de_usuario
 from app.core.tenant import CLAVE_EMPRESA, empresa_de, fijar_empresa, fijar_plataforma
+from app.core.tiempo import hoy_utc
 from app.plataforma.models import Empresa, Plan, Rol, Suscripcion, Usuario
 from app.plataforma.repository import UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
@@ -64,7 +65,7 @@ def crear_empresa(db, codigo: str, plan: str = "profesional", nombre: str | None
     db.flush()
     plan_id = db.scalar(select(Plan.id).where(Plan.codigo == plan))
     assert plan_id is not None, f"El plan '{plan}' no existe"
-    hoy = dt.date.today()
+    hoy = hoy_utc()  # la fecha de la aplicación es UTC: dt.date.today() desfasa de noche en Bolivia
     fijada = db.info.pop(CLAVE_EMPRESA, None)
     try:
         db.add(
@@ -118,7 +119,7 @@ def db_session():
     empresa = Empresa(nombre="FashionStore", codigo="fashionstore")
     session.add(empresa)
     session.flush()
-    hoy = dt.date.today()
+    hoy = hoy_utc()  # la fecha de la aplicación es UTC: dt.date.today() desfasa de noche en Bolivia
     session.add(
         Suscripcion(
             empresa_id=empresa.id,

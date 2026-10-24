@@ -196,6 +196,30 @@ def test_actualizar_orden_compra_solo_en_borrador(client, admin_headers, proveed
     assert bloqueada.status_code == 409
 
 
+def test_reemplazar_el_detalle_con_la_misma_variante_cambia_cantidad_y_total(
+    client, admin_headers, proveedor, producto_sucursal
+):
+    """Regresión: dar una línea de una variante que la orden ya tenía respondía 500
+    (el INSERT nuevo chocaba con la única (orden, variante) antes de borrar la vieja)."""
+    variante_id = producto_sucursal["variante_id"]
+    creada = _crear_orden(
+        client, admin_headers, proveedor["id"], producto_sucursal["sucursal_id"], variante_id,
+        codigo="OC-REEMPLAZO", cantidad=10, costo="20.00",
+    ).json()
+
+    respuesta = client.put(
+        f"/api/v1/ordenes-compra/{creada['id']}",
+        json={"detalle": [{"variante_id": variante_id, "cantidad": 3, "costo_unitario": "15.00"}]},
+        headers=admin_headers,
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    cuerpo = respuesta.json()
+    assert len(cuerpo["detalle"]) == 1
+    assert (cuerpo["detalle"][0]["variante_id"], cuerpo["detalle"][0]["cantidad"]) == (variante_id, 3)
+    assert Decimal(str(cuerpo["total"])) == Decimal("45.00")
+
+
 def test_enviar_orden_compra_cambia_estado(client, admin_headers, proveedor, producto_sucursal):
     creada = _crear_orden(
         client, admin_headers, proveedor["id"], producto_sucursal["sucursal_id"], producto_sucursal["variante_id"], codigo="OC-3"

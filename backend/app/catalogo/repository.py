@@ -941,6 +941,10 @@ class OrdenCompraRepository:
         return orden
 
     def reemplazar_detalle(self, db: Session, orden: OrdenCompra, lineas: list[OrdenCompraDetalle]) -> OrdenCompra:
+        # Las líneas viejas se borran ANTES de insertar las nuevas: SQLAlchemy hace los INSERT
+        # primero y una variante que la orden ya tenía chocaría con la única (orden, variante).
+        orden.detalle.clear()
+        db.flush()
         orden.detalle = lineas
         orden.total = sum((linea.cantidad * linea.costo_unitario for linea in lineas), Decimal("0"))
         db.commit()
