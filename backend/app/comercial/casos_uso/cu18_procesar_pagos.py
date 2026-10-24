@@ -26,6 +26,7 @@ from decimal import Decimal
 from html import escape
 
 import qrcode
+from qrcode.image.pil import PilImage
 from sqlalchemy.orm import Session
 
 from app.comercial.models import Pago, TransaccionPasarela
@@ -254,7 +255,8 @@ class ConfirmarRechazarTransaccion:
     # link de pago o que el propio webhook de las otras pasarelas.
 
     def _generar_qr_base64(self, contenido: str) -> str:
-        imagen = qrcode.make(contenido)
+        # Fábrica de PIL explícita: es la que usa qrcode[pil] y la única cuyo save() acepta `format`.
+        imagen = qrcode.make(contenido, image_factory=PilImage)
         buffer = io.BytesIO()
         imagen.save(buffer, format="PNG")
         return base64.b64encode(buffer.getvalue()).decode("ascii")
