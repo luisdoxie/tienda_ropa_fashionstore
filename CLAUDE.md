@@ -115,6 +115,37 @@ Algunas tablas del esquema (`docs/fashionstore_esquema.sql`) son soporte de
 un caso de uso del catálogo pero no tienen su propio CU (ej. `orden_compra`,
 que CU-08 referencia de forma opcional). Se implementan con su CRUD normal.
 
+## Diagramas ICONIX del segundo parcial
+No hay priorización de CU ni ciclos formales como en el primer parcial (PUDS):
+los CU se van agregando en cada presentación (25/10, 01/11, 08/11), pero el
+documento final de la defensa es uno solo, sin esa separación por ciclos.
+
+Mapeo fase ICONIX → artefacto (Capítulo III-V del documento):
+- Requisitos → diagrama de casos de uso.
+- Análisis → diagrama de robustez.
+- Diseño → diagrama de secuencia + diseño de clases + diseño de arquitectura
+  (diseño de despliegue + diseño de paquetes). Ya no se usa el modelo C4.
+- Implementación → despliegue, paquetes, componentes.
+- Pruebas → por CU, con las plantillas de la ingeniera.
+
+El "diseño de clases" reemplaza al diagrama de comunicación como entregable
+obligatorio (el de comunicación sigue siendo válido pero queda opcional): es
+como un diagrama de clases que además lista, dentro de cada clase, sus
+métodos/acciones. Corresponde 1:1 con el código ya existente:
+- Objeto frontera → acciones de la interfaz (endpoints del router / pantalla
+  del front).
+- Objeto de control → la clase de control en `casos_uso/<archivo>.py`, con
+  TODOS sus métodos públicos.
+- Objeto entidad → modelo SQLAlchemy en `models.py`, con sus atributos y
+  métodos, y las mismas relaciones y cantidad de clases que el modelo de
+  dominio (3.1).
+Los diagramas de secuencia derivan del diseño de clases y deben ser
+coherentes entre sí, sin contradecirse.
+
+También pueden hacer falta, dentro del diseño: diagrama de navegación
+(sistema y subsistema), y diagrama de tiempo / diagrama de estado, estos dos
+últimos solo si son necesarios para el caso de uso en cuestión.
+
 ## Reglas obligatorias
 1. Sin dependencias circulares entre paquetes.
    Orden de dependencias: `core` ← `plataforma` ← `catalogo` ← `comercial` ←
