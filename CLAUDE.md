@@ -105,8 +105,8 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
   (hoy reporte por voz; se amplía) · CU-24 Analizar con Machine Learning
   (NUEVO, sin implementar).
 - sincronizacion: CU-25 Sincronizar operaciones offline (`cu25_...`, clases de
-  control `ProcesarLote` y `ConsultarOperaciones`; la E08 agrega la descarga de
-  datos y la resolución de conflictos en el mismo archivo).
+  control `ProcesarLote`, `ConsultarOperaciones`, `DescargarPaquete` y
+  `ResolverConflicto`; las dos últimas son de la E08).
 El antiguo CU-22 del primer parcial (modo espejo) se retiró. Una operación que no sea un caso de
 uso del catálogo no crea un CU nuevo: se resuelve en politicas.py o
 repository.py, o se pregunta.
@@ -205,8 +205,9 @@ Una sola base compartida con aislamiento lógico por `empresa_id` (una sucursal
 NO es un tenant: una empresa tiene varias). Estado: modelo y migración (E01),
 filtrado automático por empresa (E02), login con empresa y claim `empresa_id`
 en el token (E03), CU-04 con planes y suscripciones (E04), las pruebas de
-aislamiento (E05), la bitácora de auditoría (E06) y el paquete de
-sincronización (E07) hechos. El backend NO
+aislamiento (E05), la bitácora de auditoría (E06), el paquete de
+sincronización (E07) y su descarga de datos, conflictos y plazo de cambio (E08)
+hechos. El backend NO
 se despliega solo: tras la E03 el login de la web y del móvil actuales no
 funciona hasta que se adapten (E15, E16, E18).
 - Clasificación de las 64 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
@@ -444,6 +445,49 @@ las aplica en el servidor con las reglas de `comercial` y devuelve un resultado 
 - Pruebas: `tests/comercial/test_registrar_venta_offline.py`, `tests/sincronizacion/` (con `ayudas.py` y el
   escenario de `conftest.py`) y `tests/postgres/test_sincronizacion_concurrencia.py`. Las 3 rutas están en
   `tests/aislamiento/rutas_esperadas.py` (el lote como EXENTA, con su razón).
+
+### Descarga, conflictos y cambios en 24 h (E08, `sincronizacion` y CU-17)
+Decisiones de diseño (D15, D17, D19):
+- **Cambios solo en línea (D19).** Devolver o cambiar prendas necesita la venta original y el stock
+  confirmado, así que NO se ofrece sin conexión. No existe un objeto "cambio": hoy un cambio es una
+  devolución más una venta nueva (D32), por eso el plazo se aplica a TODA devolución (CU-17
+  `RegistrarDevolucion`, 409 `PlazoCambioVencidoError`). El plazo se cuenta desde `Venta.fecha`, la fecha
+  REAL de la venta (en una venta offline, la `fecha_operacion` del dispositivo, no la de sincronización),
+  con el límite inclusivo: a las 24:00:00 exactas aún se acepta. El plazo sale de `empresa.plazo_cambio_horas`
+  (1 a 720, NULL = el del plan), luego `plan.plazo_cambio_horas_defecto` y, por último, el respaldo
+  `plazo_cambio_horas_respaldo` de `Settings` (24). El administrador lo cambia con `PUT /mi-empresa` (`plazo_cambio_horas`;
+  `null` vuelve al del plan; deja bitácora `empresa/cambiar_plazo_cambio`). `GET /ventas/{id}/plazo-cambio` dice
+  cuánto queda (fecha, plazo, vencimiento, vigente). El reloj de una venta offline es el del dispositivo: un
+  cajero que adelante la fecha extiende el plazo del cliente.
+- **Conflicto de stock: forzar = ajuste positivo + venta, nunca stock negativo (D15).**
+  `POST /sincronizacion/operaciones/{operacion_id}/resolver` con `{"accion": "forzar"|"rechazar", "motivo"}`
+  (permiso `sincronizacion.resolver`: administrador y encargado; el encargado solo las de su sucursal, otra
+  se ve como inexistente). `forzar` (solo ventas) significa que la prenda YA salió de la tienda: registra un
+  ajuste `ajuste_positivo` por el faltante exacto (referencia `sync_forzada`, actor el encargado) y luego
+  confirma la venta tal como la hizo el operador original (su fecha, sus precios, a su nombre). El disponible
+  queda en 0, nunca debajo; las unidades apartadas por reservas ajenas no se tocan (el CHECK de `stock` no
+  permite físico negativo). `rechazar` (ventas y reservas, motivo obligatorio) no deja efectos de stock: el
+  efectivo cobrado en tienda se devuelve fuera del sistema. Las reservas en conflicto solo se rechazan.
+  `confirmada` y `rechazada` son finales: repetir la MISMA acción devuelve lo guardado (idempotente), la
+  contraria da 409. La fila se lee con `FOR UPDATE`. Todo (ajuste, venta, estado, aviso al operador en sus
+  notificaciones y bitácora `operacion_sync/resolver_conflicto`) va en una sola transacción; si el operador
+  ya no está activo o la variante se dio de baja, forzar da 409 y la operación sigue en conflicto.
+- **Paquete de descarga y delta solo de stock.** `GET /sincronizacion/paquete` (manifiesto: empresa,
+  sucursales autorizadas con horario, referencias, promociones vigentes y reglas) y `/paquete/catalogo`,
+  `/paquete/stock`, `/paquete/clientes` (permiso `sincronizacion.operar`, plan con `operacion_offline`,
+  suscripción activa: aquí SÍ se responde 403). Catálogo y clientes se paginan por clave (`desde_id`); el
+  descuento de cada variante sale de UNA consulta de promociones por página con la misma regla que
+  `calcular_linea` (`mejor_descuento`). El stock trae solo `cantidad_disponible` de UNA sucursal (el
+  administrador debe indicarla) y es lo único con delta real: `?desde=` devuelve las filas modificadas
+  desde ese instante menos un solape de 120 s que fija el servidor. Los productos o variantes dados de
+  baja desaparecen: el cliente que completa una descarga borra de su copia lo que no llegó. Cada respuesta
+  lleva `generado_en` (con él el cliente decide mostrar "información desactualizada" pasadas
+  `sync_aviso_desactualizado_horas`), ETag (huella del cuerpo sin `generado_en`; `If-None-Match` igual da
+  304) y gzip. Nunca salen costos, márgenes, límites de stock, proveedores ni datos personales (de un
+  cliente solo nombre, apellido y `ci_nit`).
+- Pruebas: `tests/comercial/test_plazo_cambio.py`, `tests/sincronizacion/test_resolver_conflicto.py`,
+  `test_paquete*.py` y `test_plazo_cambio_offline.py`, y `tests/postgres/test_resolver_concurrencia.py`.
+  Las 6 rutas nuevas están en `tests/aislamiento/rutas_esperadas.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

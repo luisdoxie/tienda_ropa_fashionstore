@@ -51,6 +51,7 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("bitacora.ver", "bitacora", "Consultar la bitácora de auditoría de la empresa"),
     ("sincronizacion.operar", "sincronizacion", "Enviar operaciones hechas sin conexión y consultar las propias"),
     ("sincronizacion.supervisar", "sincronizacion", "Ver las operaciones sin conexión de la empresa o de la sucursal"),
+    ("sincronizacion.resolver", "sincronizacion", "Forzar o rechazar una operación sin conexión en conflicto"),
 ]
 
 # Permisos que NO recibe el administrador de una empresa: son del
@@ -71,6 +72,7 @@ PERMISOS_POR_ROL: dict[str, list[str]] = {
         "reportes.ver",
         "sincronizacion.operar",
         "sincronizacion.supervisar",
+        "sincronizacion.resolver",
     ],
     "cajero": [
         "catalogo.ver",

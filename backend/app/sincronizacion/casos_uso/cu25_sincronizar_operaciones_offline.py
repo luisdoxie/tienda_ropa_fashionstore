@@ -7,10 +7,10 @@ motivo, D16).
 Postcondición: cada operación queda guardada como `confirmada`, `rechazada` o
 `en_conflicto` y es consultable; reenviar la misma operación no la repite.
 
-Caso de uso COMPUESTO, con dos clases de control: `ProcesarLote` (recibe el lote y
-resuelve cada operación) y `ConsultarOperaciones` (el estado de lo enviado). La E08
-agrega la descarga del paquete de datos y la resolución de conflictos en ESTE mismo
-archivo.
+Caso de uso COMPUESTO, con cuatro clases de control: `ProcesarLote` (recibe el lote y
+resuelve cada operación), `ConsultarOperaciones` (el estado de lo enviado),
+`DescargarPaquete` (E08: los datos que el cliente baja para operar sin conexión) y
+`ResolverConflicto` (E08: un encargado fuerza o rechaza una operación en conflicto).
 
 Cómo se procesa un lote (D12-D17):
 - Las operaciones se toman en orden de `fecha_operacion` (la más antigua primero), no
@@ -34,28 +34,63 @@ import uuid
 
 from sqlalchemy.orm import Session
 
-from app.core.auditoria import ACCION_SINCRONIZAR_LOTE, ENTIDAD_LOTE_SYNC, ContextoAuditoria
+from app.core.auditoria import (
+    ACCION_RESOLVER_CONFLICTO,
+    ACCION_SINCRONIZAR_LOTE,
+    ENTIDAD_LOTE_SYNC,
+    ENTIDAD_OPERACION_SYNC,
+    ContextoAuditoria,
+)
+from app.catalogo import politicas as catalogo_politicas
+from app.comercial import politicas as comercial_politicas
+from app.core.config import get_settings
 from app.core.deps import ParametrosPaginacion
-from app.core.exceptions import DomainError, NoEncontradoError, PermisoDenegadoError, StockInsuficienteError
+from app.core.exceptions import (
+    ConflictoError,
+    DomainError,
+    NoEncontradoError,
+    PermisoDenegadoError,
+    StockInsuficienteError,
+)
 from app.core.permisos import PERMISO_SINCRONIZACION_SUPERVISAR, PERMISO_SINCRONIZAR
 from app.core.security import permisos_de_usuario
 from app.core.tenant import exigir_empresa
-from app.core.tiempo import ahora_utc_naive
+from app.core.tiempo import ahora_utc_naive, hoy_utc
 from app.plataforma import politicas as plataforma_politicas
 from app.sincronizacion import politicas
 from app.sincronizacion.models import TIPOS, OperacionSync
 from app.sincronizacion.repository import OperacionSyncRepository
 from app.sincronizacion.schemas import (
+    MAX_OPERACIONES_POR_LOTE,
     VERSION_CONTRATO,
+    AlcancePromocionPaquete,
+    CategoriaPaquete,
+    ClientePaquete,
+    ColorPaquete,
+    EmpresaPaquete,
     FiltrosOperaciones,
+    HorarioPaquete,
     LoteEntrada,
     LoteRespuesta,
     OperacionEntrada,
     OperacionSyncDetalle,
     OperacionSyncPagina,
     OperacionSyncRespuesta,
+    PaqueteCatalogo,
+    PaqueteClientes,
+    PaqueteManifiesto,
+    PaqueteStock,
+    ProductoPaquete,
+    PromocionPaquete,
+    ReferenciaPaquete,
+    ReglasPaquete,
+    ResolverEntrada,
     ResultadoOperacion,
     ResumenLote,
+    StockPaquete,
+    SucursalPaquete,
+    TallaPaquete,
+    VariantePaquete,
 )
 
 logger = logging.getLogger("app.sincronizacion")
@@ -363,6 +398,325 @@ class ConsultarOperaciones:
         return OperacionSyncDetalle(**_a_respuesta(fila).model_dump(), payload=fila.payload if supervisa else None)
 
 
+class DescargarPaquete:
+    """El subconjunto de datos que el cliente descarga para operar sin conexión (E08): manifiesto
+    (sucursales autorizadas con horario, referencias, promociones y reglas), catálogo con precios y
+    descuentos ya calculados, stock conocido de UNA sucursal (con modo incremental) y datos mínimos
+    de clientes. Todo se filtra por la empresa de la sesión y por la sucursal que el usuario puede
+    operar; nunca sale un costo, un margen, un límite de stock ni un dato personal más allá del
+    nombre, el apellido y el ci_nit del cliente. Cada respuesta lleva `generado_en`: el instante en
+    que el servidor leyó los datos, con el que el cliente decide mostrar "información desactualizada".
+    """
+
+    # ---- manifiesto ----
+
+    def manifiesto(self, db: Session, usuario_id: int, sucursal_id: int | None = None) -> PaqueteManifiesto:
+        generado_en = ahora_utc_naive()
+        empresa = plataforma_politicas.obtener_empresa(db, exigir_empresa(db))
+        sucursales = plataforma_politicas.listar_sucursales_autorizadas(db, usuario_id, sucursal_id)
+        categorias, tallas, colores = catalogo_politicas.listar_referencia_para_paquete(db)
+        promociones = comercial_politicas.listar_promociones_vigentes(db, hoy_utc())
+        ajustes = get_settings()
+        return PaqueteManifiesto(
+            generado_en=generado_en,
+            aviso_desactualizado_horas=ajustes.sync_aviso_desactualizado_horas,
+            empresa=EmpresaPaquete(id=empresa.id, codigo=empresa.codigo, nombre=empresa.nombre),
+            sucursales=[
+                SucursalPaquete(
+                    id=sucursal.id,
+                    codigo=sucursal.codigo,
+                    nombre=sucursal.nombre,
+                    direccion=sucursal.direccion,
+                    es_deposito=sucursal.es_deposito,
+                    horarios=[
+                        HorarioPaquete(
+                            dia_semana=horario.dia_semana,
+                            hora_apertura=horario.hora_apertura,
+                            hora_cierre=horario.hora_cierre,
+                        )
+                        for horario in horarios
+                    ],
+                )
+                for sucursal, horarios in sucursales
+            ],
+            referencia=ReferenciaPaquete(
+                categorias=[
+                    CategoriaPaquete(id=c.id, nombre=c.nombre, categoria_padre_id=c.categoria_padre_id)
+                    for c in categorias
+                ],
+                tallas=[TallaPaquete(id=t.id, codigo=t.codigo, orden=t.orden) for t in tallas],
+                colores=[ColorPaquete(id=c.id, nombre=c.nombre, codigo_hex=c.codigo_hex) for c in colores],
+            ),
+            promociones_vigentes=[
+                PromocionPaquete(
+                    id=p.id,
+                    nombre=p.nombre,
+                    tipo=p.tipo,
+                    valor=p.valor,
+                    fecha_inicio=p.fecha_inicio,
+                    fecha_fin=p.fecha_fin,
+                    alcances=[
+                        AlcancePromocionPaquete(
+                            producto_id=a.producto_id, categoria_id=a.categoria_id, temporada_id=a.temporada_id
+                        )
+                        for a in p.alcances
+                    ],
+                )
+                for p in promociones
+            ],
+            reglas=ReglasPaquete(
+                metodos_pago_offline=["efectivo"],
+                max_operaciones_por_lote=MAX_OPERACIONES_POR_LOTE,
+                plazo_cambio_horas=plataforma_politicas.obtener_plazo_cambio_horas(db),
+                cambios_y_devoluciones="solo_en_linea",
+                reservas_offline="las registra el personal",
+            ),
+        )
+
+    # ---- catálogo ----
+
+    def catalogo(self, db: Session, desde_id: int, limite: int) -> PaqueteCatalogo:
+        """Una página por clave. El descuento de cada variante sale de UNA consulta de promociones
+        por página (no una por variante) con la misma regla que `calcular_linea`."""
+        generado_en = ahora_utc_naive()
+        productos, total, hay_mas = catalogo_politicas.listar_catalogo_para_paquete(db, desde_id, limite)
+        promociones = comercial_politicas.promociones_vigentes_por_producto(
+            db, [(p.id, p.categoria_id, p.temporada_id) for p in productos], hoy_utc()
+        )
+        items = []
+        for producto in productos:
+            variantes = []
+            for variante in producto.variantes:
+                precio = catalogo_politicas.obtener_precio_efectivo(variante)
+                descuento = comercial_politicas.mejor_descuento(precio, promociones[producto.id])
+                variantes.append(
+                    VariantePaquete(
+                        id=variante.id,
+                        talla_id=variante.talla_id,
+                        color_id=variante.color_id,
+                        sku=variante.sku,
+                        codigo_barras=variante.codigo_barras,
+                        precio=comercial_politicas.redondear(precio),
+                        descuento_unitario=comercial_politicas.redondear(descuento),
+                    )
+                )
+            items.append(
+                ProductoPaquete(
+                    id=producto.id,
+                    codigo=producto.codigo,
+                    nombre=producto.nombre,
+                    categoria_id=producto.categoria_id,
+                    genero=producto.genero,
+                    temporada_id=producto.temporada_id,
+                    imagen_principal=catalogo_politicas.imagen_principal_url(producto),
+                    variantes=variantes,
+                )
+            )
+        return PaqueteCatalogo(
+            generado_en=generado_en,
+            total=total,
+            siguiente_desde_id=productos[-1].id if hay_mas else None,
+            items=items,
+        )
+
+    # ---- stock ----
+
+    def stock(
+        self,
+        db: Session,
+        usuario_id: int,
+        sucursal_id: int | None,
+        desde: dt.datetime | None,
+        desde_variante_id: int,
+        limite: int,
+    ) -> PaqueteStock:
+        """El stock conocido de UNA sucursal: `cantidad_disponible` (física menos reservada), nada
+        más. Sin `desde` es la descarga completa; con `desde` solo las filas modificadas desde
+        entonces menos el solape que fija el servidor (reaplicar una fila es inofensivo: el cliente
+        la REEMPLAZA)."""
+        generado_en = ahora_utc_naive()
+        sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)
+        if sucursal_id is None:
+            # Alcance global: no hay una sucursal "propia" que asumir. Un dispositivo opera una a la vez.
+            raise DomainError("Indique sucursal_id: el stock se descarga de una sucursal a la vez", 422)
+        filas, hay_mas = catalogo_politicas.listar_stock_para_paquete(
+            db, sucursal_id, None if desde is None else politicas.desde_a_utc_naive(desde), desde_variante_id, limite
+        )
+        return PaqueteStock(
+            generado_en=generado_en,
+            sucursal_id=sucursal_id,
+            incremental=desde is not None,
+            siguiente_desde_variante_id=filas[-1].variante_id if hay_mas else None,
+            items=[
+                StockPaquete(
+                    variante_id=fila.variante_id,
+                    cantidad_disponible=fila.cantidad_fisica - fila.cantidad_reservada,
+                    actualizado_en=fila.actualizado_en,
+                )
+                for fila in filas
+            ],
+        )
+
+    # ---- clientes ----
+
+    def clientes(self, db: Session, desde_id: int, limite: int) -> PaqueteClientes:
+        """Solo id, nombre, apellido y ci_nit (hace falta para facturar a un cliente conocido). Los
+        cambios de un cliente existente no se detectan sin fecha de modificación: el cliente
+        refresca la lista completa cuando el usuario lo pide."""
+        generado_en = ahora_utc_naive()
+        filas, total, hay_mas = plataforma_politicas.listar_clientes_minimos(db, desde_id, limite)
+        return PaqueteClientes(
+            generado_en=generado_en,
+            total=total,
+            siguiente_desde_id=filas[-1][0] if hay_mas else None,
+            items=[ClientePaquete(id=id_, nombre=nombre, apellido=apellido, ci_nit=ci_nit) for id_, nombre, apellido, ci_nit in filas],
+        )
+
+
+class ResolverConflicto:
+    """Un encargado (o el administrador) cierra una operación `en_conflicto` (D15, E08):
+
+    - `forzar` (solo ventas): la prenda YA salió de la tienda y el cliente ya pagó en efectivo.
+      Registra un ajuste POSITIVO de inventario por el faltante exacto (kardex con referencia
+      `sync_forzada`) y confirma la venta tal como la hizo el operador original (su fecha, sus
+      precios, a su nombre). El stock físico nunca queda negativo.
+    - `rechazar` (cualquier tipo): la operación pasa a `rechazada` con el motivo escrito. Como el
+      conflicto no dejó efectos, no hay nada que deshacer en el inventario; el efectivo cobrado en
+      tienda se devuelve fuera del sistema.
+
+    `confirmada` y `rechazada` son finales. Repetir la MISMA acción sobre una operación ya resuelta
+    con ella devuelve lo guardado sin tocar nada; la acción contraria es 409. La fila se lee con
+    bloqueo, así que dos resoluciones simultáneas se ponen en fila. Todo (ajuste, venta, estado,
+    notificación al operador y bitácora) va en UNA transacción."""
+
+    def __init__(self) -> None:
+        self._operaciones = OperacionSyncRepository()
+
+    def ejecutar(
+        self,
+        db: Session,
+        usuario_id: int,
+        operacion_id: uuid.UUID,
+        datos: ResolverEntrada,
+        contexto: ContextoAuditoria | None = None,
+    ) -> OperacionSyncDetalle:
+        sucursal_propia = plataforma_politicas.sucursal_asignada(db, usuario_id)
+        fila = self._operaciones.obtener_bloqueada(db, operacion_id)
+        # Fuera de su alcance (otra empresa, o la sucursal de otro) se ve igual que inexistente.
+        if fila is None or (sucursal_propia is not None and fila.sucursal_id != sucursal_propia):
+            raise NoEncontradoError("Operación no encontrada")
+
+        previa = (fila.resultado or {}).get("resolucion")
+        if fila.estado != "en_conflicto":
+            if previa is not None and previa.get("accion") == datos.accion:
+                return _a_detalle(fila)  # ya resuelta así: idempotente
+            raise ConflictoError(_mensaje_no_resoluble(fila, previa))
+
+        if datos.accion == "forzar":
+            self._forzar(db, usuario_id, fila, datos)
+        else:
+            self._rechazar(db, usuario_id, fila, datos)
+        self._avisar_y_auditar(db, usuario_id, contexto, fila, datos)
+        db.commit()
+        db.refresh(fila)
+        return _a_detalle(fila)
+
+    # -- las dos acciones ---------------------------------------------------------------
+
+    @staticmethod
+    def _resolucion(usuario_id: int, datos: ResolverEntrada, ajustes: list[dict]) -> dict:
+        return {
+            "accion": datos.accion,
+            "por_usuario_id": usuario_id,
+            "en": ahora_utc_naive().replace(microsecond=0).isoformat(),
+            "motivo": datos.motivo,
+            "ajustes": ajustes,
+        }
+
+    def _forzar(self, db: Session, usuario_id: int, fila: OperacionSync, datos: ResolverEntrada) -> None:
+        if fila.tipo != "venta_contado":
+            raise ConflictoError("Las reservas en conflicto solo se pueden rechazar")
+        try:
+            payload = politicas.validar_payload(fila.tipo, fila.payload)
+            with db.begin_nested():  # si algo falla, ni ajuste ni venta: la operación sigue en conflicto
+                resolucion, ajustes = politicas.forzar_venta_contado(db, fila, payload, usuario_id)
+        except politicas.RechazoOperacion as rechazo:
+            raise ConflictoError(rechazo.mensaje) from None
+        except DomainError as error:
+            raise ConflictoError(error.mensaje) from None
+        fila.estado = "confirmada"
+        fila.motivo = None
+        fila.procesada_en = ahora_utc_naive()
+        fila.resultado = {
+            "mensaje": None,
+            "recurso": resolucion.recurso,
+            "cambio": str(resolucion.cambio) if resolucion.cambio is not None else None,
+            "avisos": resolucion.avisos,
+            "faltantes": [],
+            "resolucion": self._resolucion(usuario_id, datos, ajustes),
+        }
+
+    def _rechazar(self, db: Session, usuario_id: int, fila: OperacionSync, datos: ResolverEntrada) -> None:
+        anterior = fila.resultado or {}
+        fila.estado = "rechazada"
+        fila.motivo = politicas.RECHAZADA_POR_ENCARGADO
+        fila.procesada_en = ahora_utc_naive()
+        fila.resultado = {
+            "mensaje": datos.motivo,
+            "recurso": None,
+            "cambio": None,
+            "avisos": [],
+            "faltantes": anterior.get("faltantes", []),  # lo que faltaba, como contexto de la decisión
+            "resolucion": self._resolucion(usuario_id, datos, []),
+        }
+
+    # -- aviso al operador y bitácora -------------------------------------------------------
+
+    @staticmethod
+    def _avisar_y_auditar(
+        db: Session, usuario_id: int, contexto: ContextoAuditoria | None, fila: OperacionSync, datos: ResolverEntrada
+    ) -> None:
+        corto = str(fila.operacion_id)[:8]
+        objeto = "venta" if fila.tipo == "venta_contado" else "reserva"
+        if datos.accion == "forzar":
+            mensaje = f"Tu {objeto} {corto} fue confirmada por un encargado"
+        else:
+            mensaje = f"Tu {objeto} {corto} fue rechazada por un encargado: {datos.motivo}"
+        plataforma_politicas.crear_notificacion(
+            db,
+            fila.usuario_id,
+            titulo="Operación sincronizada resuelta",
+            mensaje=mensaje[:400],
+            tipo="sincronizacion",
+            referencia_id=fila.id,
+            commit=False,
+        )
+        resolucion = fila.resultado["resolucion"]
+        plataforma_politicas.registrar_bitacora_de(
+            db,
+            contexto,
+            ENTIDAD_OPERACION_SYNC,
+            fila.id,
+            ACCION_RESOLVER_CONFLICTO,
+            {
+                "operacion_id": str(fila.operacion_id),
+                "tipo": fila.tipo,
+                "decision": datos.accion,
+                "ajustes": resolucion["ajustes"],
+                "motivo": datos.motivo,
+            },
+        )
+
+
+def _mensaje_no_resoluble(fila: OperacionSync, previa: dict | None) -> str:
+    if previa is not None:
+        resuelta = "confirmada" if previa.get("accion") == "forzar" else "rechazada"
+        return f"La operación ya fue {resuelta} por un encargado y no se puede resolver de otra forma"
+    if fila.estado == "en_proceso":
+        return "La operación todavía se está procesando"
+    return f"La operación está {fila.estado}: solo se resuelven las que están en conflicto"
+
+
 def _desde(fecha: dt.date | None) -> dt.datetime | None:
     return None if fecha is None else dt.datetime.combine(fecha, dt.time.min)
 
@@ -391,4 +745,10 @@ def _a_respuesta(fila: OperacionSync) -> OperacionSyncRespuesta:
         cambio=guardado.get("cambio"),
         avisos=guardado.get("avisos", []),
         faltantes=guardado.get("faltantes", []),
+        resolucion=guardado.get("resolucion"),
     )
+
+
+def _a_detalle(fila: OperacionSync) -> OperacionSyncDetalle:
+    """El detalle CON payload, para quien supervisa o resuelve."""
+    return OperacionSyncDetalle(**_a_respuesta(fila).model_dump(), payload=fila.payload)

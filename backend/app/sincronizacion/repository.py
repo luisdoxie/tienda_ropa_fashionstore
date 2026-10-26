@@ -15,6 +15,15 @@ class OperacionSyncRepository:
     def obtener_por_operacion(self, db: Session, operacion_id: uuid.UUID) -> OperacionSync | None:
         return db.scalar(select(OperacionSync).where(OperacionSync.operacion_id == operacion_id))
 
+    def obtener_bloqueada(self, db: Session, operacion_id: uuid.UUID) -> OperacionSync | None:
+        """La operación con SELECT ... FOR UPDATE (solo PostgreSQL; en SQLite se omite) y
+        releída (`populate_existing`): dos encargados que la resuelven a la vez se ponen en fila
+        y el segundo ve el estado que dejó el primero."""
+        consulta = select(OperacionSync).where(OperacionSync.operacion_id == operacion_id)
+        if db.get_bind().dialect.name == "postgresql":
+            consulta = consulta.with_for_update()
+        return db.scalar(consulta.execution_options(populate_existing=True))
+
     def reservar_clave(self, db: Session, **campos) -> OperacionSync | None:
         """Inserta la operación en estado `en_proceso` dentro de un SAVEPOINT. Si la clave
         (empresa, operación) ya existía devuelve `None`: es un reenvío. En PostgreSQL, si

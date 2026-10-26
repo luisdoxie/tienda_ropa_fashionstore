@@ -66,6 +66,7 @@ TOKEN_CLIENTE = {
     ("GET", f"{_BASE}/probador/variante/{{variante_id}}/assets"),
     ("GET", f"{_BASE}/pagos/{{pago_id}}/estado"),
     ("GET", f"{_BASE}/ventas/{{venta_id}}/comprobante"),
+    ("GET", f"{_BASE}/ventas/{{venta_id}}/plazo-cambio"),
     ("GET", f"{_BASE}/reservas/mis-reservas"),
     ("GET", f"{_BASE}/clientes/direcciones"),
 }
@@ -101,6 +102,7 @@ CUERPOS = {
         "colores_ids": [u.nuevo("color")],
     },
     ("PUT", f"{_BASE}/promociones/{{promocion_id}}"): lambda u: {"nombre": f"Promo {_n(u)}"},
+    ("POST", f"{_BASE}/sincronizacion/operaciones/{{operacion_id}}/resolver"): lambda u: {"accion": "rechazar", "motivo": "prueba"},
     ("PUT", f"{_BASE}/proveedores/{{proveedor_id}}"): lambda u: {"contacto": f"Contacto {_n(u)}"},
     ("POST", f"{_BASE}/proveedores/{{proveedor_id}}/productos"): lambda u: {"producto_id": u.nuevo("producto")},
     ("PUT", f"{_BASE}/reservas/{{reserva_id}}/seleccion"): lambda u: {"lineas": [{"variante_id": u.ids["variante"], "seleccionada": True}]},

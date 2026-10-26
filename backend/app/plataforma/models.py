@@ -207,12 +207,19 @@ class Empresa(Base):
     comercial (es lo que identifica a la empresa en el login y en la URL)."""
 
     __tablename__ = "empresa"
+    __table_args__ = (
+        CheckConstraint(
+            "plazo_cambio_horas IS NULL OR plazo_cambio_horas BETWEEN 1 AND 720", name="ck_empresa_plazo_cambio"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
     codigo: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
     logo_url: Mapped[str | None] = mapped_column(Text)
     color_acento: Mapped[str | None] = mapped_column(String(7))
+    # Plazo propio para devolver o cambiar prendas (E08, D19). NULL = el del plan.
+    plazo_cambio_horas: Mapped[int | None] = mapped_column(SmallInteger)
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
 

@@ -310,6 +310,16 @@ class PromocionRepository:
         db.flush()
         return promocion
 
+    def listar_vigentes(self, db: Session, hoy: dt.date) -> list[Promocion]:
+        """Todas las promociones activas y vigentes hoy, con sus alcances (2 consultas en total,
+        sin importar cuántas sean)."""
+        consulta = (
+            self._consulta_base()
+            .where(Promocion.activo.is_(True), Promocion.fecha_inicio <= hoy, Promocion.fecha_fin >= hoy)
+            .order_by(Promocion.id)
+        )
+        return list(db.scalars(consulta))
+
     def listar_vigentes_para(
         self, db: Session, *, producto_id: int, categoria_id: int, temporada_id: int | None, hoy: dt.date
     ) -> list[Promocion]:

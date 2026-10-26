@@ -3,8 +3,9 @@
 Absorbe el antiguo CU-40 (Registrar devolución).
 
 Actor: Cajero, Encargado de sucursal.
-Precondición: la venta existe, está pagada o entregada y es de la
-sucursal del empleado (salvo alcance global).
+Precondición: la venta existe, está pagada o entregada, es de la
+sucursal del empleado (salvo alcance global) y está dentro del plazo de cambio
+de la empresa (24 horas por defecto, desde la fecha real de la venta).
 Postcondición: la devolución queda registrada y el stock reingresa a la
 sucursal.
 
@@ -17,12 +18,22 @@ from sqlalchemy.orm import Session
 
 from app.catalogo.politicas import actualizar_stock_operacion, bloquear_stock_en_orden
 from app.comercial.models import Devolucion, DevolucionDetalle
+from app.comercial.politicas import describir_plazo_cambio, exigir_plazo_cambio, obtener_comprobante
 from app.comercial.repository import DevolucionRepository, EstadoVentaRepository, VentaRepository
 from app.comercial.schemas import DevolucionCrear
 from app.core.auditoria import ACCION_REGISTRAR, ENTIDAD_DEVOLUCION, ContextoAuditoria
 from app.core.codigos import generar_codigo
 from app.core.exceptions import DomainError, NoEncontradoError
 from app.plataforma import politicas as plataforma_politicas
+
+class ConsultarPlazoCambio:
+    """Cuánto le queda a una venta para devolver o cambiar prendas. Lo ve el dueño
+    de la venta o el personal de su sucursal (misma regla que el comprobante)."""
+
+    def ejecutar(self, db: Session, venta_id: int, usuario_id: int) -> dict:
+        venta = obtener_comprobante(db, venta_id, usuario_id)
+        return describir_plazo_cambio(db, venta)
+
 
 class RegistrarDevolucion:
     def __init__(self) -> None:
@@ -45,6 +56,9 @@ class RegistrarDevolucion:
         estado_venta = self._estados.obtener(db, venta.estado_id)
         if estado_venta.codigo not in ("pagada", "entregada"):
             raise DomainError(f"No se puede devolver una venta en estado '{estado_venta.codigo}'")
+        # D19: pasado el plazo de la empresa (desde la fecha real de la venta) ya no
+        # se acepta. Cada devolución se evalúa por separado contra esa fecha.
+        exigir_plazo_cambio(db, venta)
 
         detalle_por_id = {linea.id: linea for linea in venta.detalle}
 

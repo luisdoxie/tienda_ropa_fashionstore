@@ -18,6 +18,7 @@ VALORES_ESPERADOS = {
     "PERMISO_BITACORA_VER": "bitacora.ver",
     "PERMISO_SINCRONIZAR": "sincronizacion.operar",
     "PERMISO_SINCRONIZACION_SUPERVISAR": "sincronizacion.supervisar",
+    "PERMISO_SINCRONIZACION_RESOLVER": "sincronizacion.resolver",
     "PERMISO_CATALOGO": "catalogo.gestionar",
     "PERMISO_CATALOGO_VER": "catalogo.ver",
     "PERMISO_INVENTARIO_VER": "inventario.ver",

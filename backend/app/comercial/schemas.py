@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.tipos import FechaUTC
+
 
 # ---- Reservas ----
 
@@ -341,6 +343,18 @@ class DevolucionRespuesta(BaseModel):
     estado: Literal["pendiente", "aprobada", "rechazada"]
     usuario_id: int | None
     detalle: list[DevolucionDetalleRespuesta]
+
+
+class PlazoCambioRespuesta(BaseModel):
+    """Cuánto le queda a una venta para devolver o cambiar prendas (D19). Las
+    marcas van en UTC con "Z"; `vigente` es falso pasado `vence_en`."""
+
+    venta_id: int
+    fecha_venta: FechaUTC
+    plazo_horas: int
+    vence_en: FechaUTC
+    vigente: bool
+    estado_venta: str
 
 
 # ---- Pagos ----

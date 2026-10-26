@@ -39,6 +39,7 @@ from app.core.auditoria import (
     ACCION_ASIGNAR_PLAN,
     ACCION_CAMBIAR_ESTADO,
     ACCION_CAMBIAR_PLAN,
+    ACCION_CAMBIAR_PLAZO_CAMBIO,
     ACCION_CREAR,
     ACCION_DESACTIVAR,
     ACCION_RENOVAR,
@@ -608,7 +609,7 @@ class ConsultarMiEmpresa:
         return empresa
 
     @staticmethod
-    def _respuesta(empresa: Empresa) -> MiEmpresaRespuesta:
+    def _respuesta(db: Session, empresa: Empresa) -> MiEmpresaRespuesta:
         return MiEmpresaRespuesta(
             id=empresa.id,
             codigo=empresa.codigo,
@@ -616,26 +617,42 @@ class ConsultarMiEmpresa:
             logo_url=empresa.logo_url,
             color_acento=empresa.color_acento,
             activo=empresa.activo,
+            plazo_cambio_horas=empresa.plazo_cambio_horas,
+            plazo_cambio_horas_efectivo=politicas.obtener_plazo_cambio_horas(db),
         )
 
     def obtener(self, db: Session) -> MiEmpresaRespuesta:
-        return self._respuesta(self._empresa(db))
+        return self._respuesta(db, self._empresa(db))
 
     def actualizar(
         self, db: Session, datos: MiEmpresaActualizar, contexto: ContextoAuditoria | None = None
     ) -> MiEmpresaRespuesta:
-        """Nombre comercial, logo y color de acento. Plan, estado y código no se
-        tocan desde aquí."""
+        """Nombre comercial, logo, color de acento y plazo de cambio de prendas
+        (`null` = el del plan). Plan, estado y código no se tocan desde aquí."""
         empresa = self._empresa(db)
         empresa_id = empresa.id
+        plazo_enviado = "plazo_cambio_horas" in datos.model_fields_set
+        plazo_antes = empresa.plazo_cambio_horas
         cambios = _sin_nulos(datos, EmpresaActualizar, CAMPOS_ANULABLES_EMPRESA)
         detalle = diff_campos(empresa, cambios.model_dump(exclude_unset=True), ("activo",))
         actualizada = self._repo.actualizar(db, empresa_id, cambios, commit=False)
-        # La empresa es la de la sesión (el administrador que la edita).
-        politicas.registrar_bitacora_de(db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_ACTUALIZAR, detalle)
+        # La empresa es la de la sesión (el administrador que la edita). Si solo se
+        # tocó el plazo, el único evento es el del plazo.
+        if detalle["campos"] or not plazo_enviado:
+            politicas.registrar_bitacora_de(db, contexto, ENTIDAD_EMPRESA, empresa_id, ACCION_ACTUALIZAR, detalle)
+        if plazo_enviado and datos.plazo_cambio_horas != plazo_antes:
+            actualizada.plazo_cambio_horas = datos.plazo_cambio_horas
+            politicas.registrar_bitacora_de(
+                db,
+                contexto,
+                ENTIDAD_EMPRESA,
+                empresa_id,
+                ACCION_CAMBIAR_PLAZO_CAMBIO,
+                {"antes": plazo_antes, "despues": datos.plazo_cambio_horas},
+            )
         db.commit()
         db.refresh(actualizada)
-        return self._respuesta(actualizada)
+        return self._respuesta(db, actualizada)
 
     def obtener_suscripcion(self, db: Session) -> MiSuscripcionRespuesta:
         """Plan, estado efectivo, fechas, límite y uso de sucursales, y las

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # Sincronizacion offline (CU-25): una operacion con fecha mas alla de ahora + estos
     # minutos se rechaza como "fecha_futura" (reloj del dispositivo adelantado).
     sync_tolerancia_futuro_minutos: int = 5
+    # Paquete de descarga (E08): horas tras las que el cliente avisa "información
+    # desactualizada", y segundos que el servidor resta al `desde` del stock
+    # incremental (cubre transacciones que confirman un poco después de su now()).
+    sync_aviso_desactualizado_horas: int = 12
+    sync_stock_solape_segundos: int = 120
+
+    # Plazo (horas) para devolver o cambiar prendas cuando ni la empresa ni su plan
+    # lo definen (p. ej. datos de prueba). D19.
+    plazo_cambio_horas_respaldo: int = 24
 
     # Dias que se conserva la bitacora de auditoria; POST /tareas/purgar-bitacora
     # borra lo anterior.

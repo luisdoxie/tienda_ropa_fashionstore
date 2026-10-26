@@ -210,6 +210,19 @@ def obtener_info_promocion(variante: ProductoVariante) -> tuple[int, int, int | 
     return producto.id, producto.categoria_id, producto.temporada_id
 
 
+def listar_catalogo_para_paquete(db: Session, desde_id: int, limite: int) -> tuple[list[Producto], int, bool]:
+    """Para `sincronizacion` (paquete de descarga offline): una página de productos activos con
+    sus variantes activas e imágenes, por clave (`id > desde_id`). Devuelve (productos, total de
+    productos activos, hay_mas)."""
+    return producto_repo.listar_para_paquete(db, desde_id, limite)
+
+
+def listar_referencia_para_paquete(db: Session) -> tuple[list[Categoria], list[Talla], list]:
+    """Para `sincronizacion`: categorías activas, tallas y colores de la empresa, con los que el
+    cliente offline arma los filtros y las etiquetas del catálogo descargado."""
+    return categoria_repo.listar_activas(db), talla_repo.listar_todas(db), color_repo.listar_todos(db)
+
+
 def listar_valores_referencia(db: Session) -> ValoresReferenciaCatalogo:
     """Para que `inteligencia` arme el prompt de Groq con los valores
     válidos reales, sin consultar categoria/material/color/talla/temporada
@@ -471,6 +484,15 @@ def obtener_stock(db: Session, variante_id: int, sucursal_id: int) -> Stock:
     if stock is None:
         raise NoEncontradoError("Todavía no hay stock registrado para esa variante en esa sucursal")
     return stock
+
+
+def listar_stock_para_paquete(
+    db: Session, sucursal_id: int, desde, desde_variante_id: int, limite: int
+) -> tuple[list[Stock], bool]:
+    """Para `sincronizacion` (paquete de descarga offline): una página del stock de una sucursal
+    (solo variantes activas), por clave (`variante_id > desde_variante_id`). Con `desde` solo las
+    filas modificadas desde ese instante. Devuelve (filas, hay_mas)."""
+    return stock_repo.listar_para_paquete(db, sucursal_id, desde, desde_variante_id, limite)
 
 
 def listar_variantes_con_stock(db: Session, sucursal_id: int | None = None) -> set[int]:

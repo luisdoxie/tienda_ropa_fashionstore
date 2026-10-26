@@ -9,6 +9,8 @@ el mensaje correcto sin interpretar texto."""
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -22,6 +24,7 @@ from app.comercial.politicas import calcular_linea, cobrar_en_caja, crear_reserv
 from app.comercial.schemas import ReservaCrear, ReservaDetalleCrear
 from app.core.config import get_settings
 from app.core.exceptions import DomainError, NoEncontradoError, StockInsuficienteError
+from app.core.security import permisos_de_usuario
 from app.core.tiempo import ahora_utc_naive, hoy_utc
 from app.plataforma import politicas as plataforma_politicas
 from app.sincronizacion.models import OperacionSync
@@ -50,7 +53,11 @@ RESERVA_FUERA_DE_HORARIO = "reserva_fuera_de_horario"
 RESERVA_VENCIDA = "reserva_vencida"
 REGLA_DE_NEGOCIO = "regla_de_negocio"
 STOCK_INSUFICIENTE = "stock_insuficiente"
-RECHAZADA_POR_ENCARGADO = "rechazada_por_encargado"  # la usa E08
+RECHAZADA_POR_ENCARGADO = "rechazada_por_encargado"  # la guarda `rechazar` (E08)
+OPERADOR_INACTIVO = "operador_inactivo"  # E08: 'forzar' revalida al operador original
+
+# Referencia del movimiento de inventario que deja 'forzar' (E08): el kardex dice de dónde vino.
+REFERENCIA_SYNC_FORZADA = "sync_forzada"
 
 PERMISO_POR_TIPO = {"venta_contado": "ventas.presencial", "reserva": "reservas.gestionar_sucursal"}
 
@@ -283,6 +290,101 @@ def ejecutar_reserva(
             "fecha_expiracion": expiracion.isoformat(),
         }
     )
+
+
+# ---- Paquete de descarga (E08) ----
+
+
+def calcular_etag(paquete: BaseModel) -> str:
+    """Huella del contenido del paquete SIN la marca `generado_en` (que cambia en cada lectura):
+    dos descargas con los mismos datos dan el mismo ETag, y el cliente puede preguntar si cambió
+    (`If-None-Match`) sin volver a bajar el cuerpo."""
+    contenido = paquete.model_dump(mode="json", exclude={"generado_en"})
+    texto = json.dumps(contenido, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:16]
+
+
+def desde_a_utc_naive(desde: dt.datetime) -> dt.datetime:
+    """El `desde` del stock incremental en UTC sin zona, menos el solape (D: el servidor lo resta
+    SIEMPRE, un cliente no puede olvidarlo). Sin zona se toma como UTC."""
+    if desde.tzinfo is not None:
+        desde = desde.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return desde - dt.timedelta(seconds=get_settings().sync_stock_solape_segundos)
+
+
+# ---- Resolver conflictos (E08, D15) ----
+
+
+def revalidar_operador(db: Session, operacion: OperacionSync):
+    """Antes de forzar: el operador ORIGINAL sigue pudiendo hacer lo que hizo (usuario activo,
+    empleado con acceso a la sucursal y el permiso del tipo). Devuelve su ficha de empleado; si
+    algo falló lanza `RechazoOperacion` (quien resuelve lo entrega como 409 y la operación sigue
+    en conflicto: lo que corresponde entonces es rechazarla)."""
+    try:
+        plataforma_politicas.obtener_usuario(db, operacion.usuario_id)
+    except NoEncontradoError:
+        raise RechazoOperacion(OPERADOR_INACTIVO, "El operador que registró la operación ya no está activo") from None
+    permisos = set(permisos_de_usuario(db, operacion.usuario_id))
+    return validar_actor(db, operacion.usuario_id, permisos, operacion.tipo, operacion.sucursal_id)
+
+
+def ajustar_faltantes(
+    db: Session, operacion: OperacionSync, lineas: list[tuple[int, int]], encargado_id: int
+) -> list[dict[str, int]]:
+    """El AJUSTE POSITIVO de 'forzar': por cada variante, la diferencia exacta entre lo vendido
+    (las líneas repetidas se suman) y el disponible (física menos reservada). El stock físico
+    NUNCA queda negativo: el disponible queda en 0 y las unidades apartadas por reservas de otras
+    personas no se tocan. Sin faltante (el stock se recuperó) no hay ajuste. Los movimientos
+    quedan en el kardex con referencia `sync_forzada` y el encargado como actor. No confirma."""
+    pedido: dict[int, int] = {}
+    for variante_id, cantidad in lineas:
+        pedido[variante_id] = pedido.get(variante_id, 0) + cantidad
+    sucursal_id = operacion.sucursal_id
+    # Bloquea (y relee) todas las filas primero, en orden: así el disponible que se lee es el real.
+    catalogo_politicas.bloquear_stock_en_orden(db, [(variante_id, sucursal_id) for variante_id in pedido])
+    corto = str(operacion.operacion_id)[:8]
+    ajustes = []
+    for variante_id in sorted(pedido):
+        try:
+            stock = catalogo_politicas.obtener_stock(db, variante_id, sucursal_id)
+            disponible = max(stock.cantidad_fisica - stock.cantidad_reservada, 0)
+        except NoEncontradoError:
+            disponible = 0
+        faltante = pedido[variante_id] - disponible
+        if faltante <= 0:
+            continue
+        movimiento = catalogo_politicas.actualizar_stock_operacion(
+            db,
+            variante_id=variante_id,
+            sucursal_id=sucursal_id,
+            tipo_movimiento_codigo="ajuste_positivo",
+            cantidad=faltante,
+            referencia_tipo=REFERENCIA_SYNC_FORZADA,
+            referencia_id=operacion.id,
+            usuario_id=encargado_id,
+            observacion=f"Ajuste por conflicto de sincronización {corto}: la prenda ya salió de la tienda",
+            commit=False,
+        )
+        ajustes.append({"variante_id": variante_id, "cantidad": faltante, "movimiento_id": movimiento.id})
+    return ajustes
+
+
+def forzar_venta_contado(
+    db: Session, operacion: OperacionSync, payload: VentaContadoPayload, encargado_id: int
+) -> tuple[Resolucion, list[dict[str, int]]]:
+    """Confirma una venta en conflicto: revalida al operador original, ajusta el inventario por lo
+    que faltaba y ejecuta la MISMA venta de E07 (fecha de la operación, precios de la operación,
+    pago en efectivo) a nombre del operador. Nada se confirma aquí; el llamador lo corre dentro
+    de un SAVEPOINT."""
+    empleado = revalidar_operador(db, operacion)
+    _validar_variantes(db, [linea.variante_id for linea in payload.lineas])  # antes de ajustar nada
+    ajustes = ajustar_faltantes(
+        db, operacion, [(linea.variante_id, linea.cantidad) for linea in payload.lineas], encargado_id
+    )
+    resolucion = ejecutar_venta_contado(
+        db, operacion.usuario_id, empleado, operacion.sucursal_id, payload, operacion.fecha_operacion
+    )
+    return resolucion, ajustes
 
 
 def lineas_del_payload(tipo: str, modelo: BaseModel) -> list[tuple[int, int]]:

@@ -13,7 +13,7 @@ from app.comercial.casos_uso.cu13_gestionar_carrito_compra_digital import Gestio
 from app.comercial.casos_uso.cu14_registrar_venta_presencial import RegistrarVentaPresencial
 from app.comercial.casos_uso.cu15_consultar_ventas import ConsultarHistorialCompras, ConsultarVentasSucursal
 from app.comercial.casos_uso.cu16_gestionar_promociones import GestionarPromociones
-from app.comercial.casos_uso.cu17_gestionar_devoluciones_cambios import RegistrarDevolucion
+from app.comercial.casos_uso.cu17_gestionar_devoluciones_cambios import ConsultarPlazoCambio, RegistrarDevolucion
 from app.comercial.casos_uso.cu18_procesar_pagos import (
     ConfirmarRechazarTransaccion,
     PagarPasarelaDigital,
@@ -52,6 +52,7 @@ from app.comercial.schemas import (
     PagoIniciarRequest,
     PagoIniciarRespuesta,
     PagoRespuesta,
+    PlazoCambioRespuesta,
     PromocionActualizar,
     PromocionCrear,
     PromocionRespuesta,
@@ -204,6 +205,7 @@ cu_historial_compras = ConsultarHistorialCompras()
 cu_gestionar_promociones = GestionarPromociones()
 cu_ventas_sucursal = ConsultarVentasSucursal()
 cu_registrar_devolucion = RegistrarDevolucion()
+cu_plazo_cambio = ConsultarPlazoCambio()
 
 
 def _venta_respuesta(db: Session, venta) -> VentaRespuesta:
@@ -300,6 +302,13 @@ def obtener_comprobante(
 ) -> VentaRespuesta:
     venta = cu_historial_compras.obtener_comprobante(db, venta_id, usuario.id)
     return _venta_respuesta(db, venta)
+
+
+@ventas_router.get("/{venta_id}/plazo-cambio", response_model=PlazoCambioRespuesta)
+def obtener_plazo_cambio(
+    venta_id: int, usuario=Depends(get_current_user), db: Session = Depends(get_db)
+) -> PlazoCambioRespuesta:
+    return PlazoCambioRespuesta(**cu_plazo_cambio.ejecutar(db, venta_id, usuario.id))
 
 
 # ---- /api/v1/devoluciones ------------------------------------------------------------

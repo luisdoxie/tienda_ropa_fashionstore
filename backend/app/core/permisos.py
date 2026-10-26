@@ -31,6 +31,8 @@ PERMISO_BITACORA_VER = "bitacora.ver"
 PERMISO_SINCRONIZAR = "sincronizacion.operar"
 # Ver las operaciones de toda la empresa (o de la sucursal propia) y su payload.
 PERMISO_SINCRONIZACION_SUPERVISAR = "sincronizacion.supervisar"
+# Resolver una operación en conflicto: forzarla (con ajuste de inventario) o rechazarla.
+PERMISO_SINCRONIZACION_RESOLVER = "sincronizacion.resolver"
 
 # ---- catalogo ----
 PERMISO_CATALOGO = "catalogo.gestionar"

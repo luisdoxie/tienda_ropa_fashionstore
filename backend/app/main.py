@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -95,12 +96,17 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # desde un navegador. El valor de la web debe apuntar a la misma base URL
 # que autoriza acá (ver web/src/environments/environment*.ts -> apiUrl).
 # La app Flutter no necesita estar en esta lista: CORS no aplica a Dio.
+# Compresión gzip de las respuestas grandes (el paquete de descarga offline, E08): solo si el
+# cliente la acepta y de más de 1000 bytes. Se agrega ANTES que CORS para que CORS quede por fuera.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # El ETag del paquete de descarga: sin esto el JavaScript de la PWA no puede leerlo.
+    expose_headers=["ETag"],
 )
 
 registrar_handlers(app)

@@ -37,6 +37,8 @@ def test_obtener_mi_empresa(client_por_peticion, dos_empresas):
         "logo_url": None,
         "color_acento": None,
         "activo": True,
+        "plazo_cambio_horas": None,
+        "plazo_cambio_horas_efectivo": 24,
     }
 
 

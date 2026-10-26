@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,7 @@ from app.comercial.models import (
     EstadoVenta,
     MetodoPago,
     Pago,
+    Promocion,
     Reserva,
     ReservaDetalle,
     ReservaHistorial,
@@ -63,7 +65,13 @@ from app.core.codigos import generar_codigo
 from app.core.permisos import PERMISO_STAFF_RESERVAS, PERMISO_STAFF_VENTAS
 from app.core.deps import ParametrosPeriodo
 from app.core.tiempo import ahora_utc_naive, hoy_utc
-from app.core.exceptions import ConflictoError, DomainError, PermisoDenegadoError, StockInsuficienteError
+from app.core.exceptions import (
+    ConflictoError,
+    DomainError,
+    PermisoDenegadoError,
+    PlazoCambioVencidoError,
+    StockInsuficienteError,
+)
 from app.core.repository import confirmar
 from app.core.security import permisos_de_usuario
 from app.core.tenant import por_cada_empresa, sin_filtro
@@ -376,6 +384,21 @@ def redondear(valor: Decimal) -> Decimal:
 # ---- Cálculo de precio + promoción ------------------------------------------------
 
 
+def mejor_descuento(precio_unitario: Decimal, promociones: Iterable[Promocion]) -> Decimal:
+    """El mayor descuento unitario entre las promociones dadas, SIN redondear (quien lo usa
+    redondea): porcentaje del precio o monto fijo, y nunca más que el precio (el precio no queda
+    negativo). Es la regla de `calcular_linea`, compartida con el paquete de descarga offline."""
+    descuento_unitario = Decimal("0")
+    for promocion in promociones:
+        if promocion.tipo == "porcentaje":
+            candidato = precio_unitario * promocion.valor / Decimal("100")
+        else:
+            candidato = promocion.valor
+        candidato = min(candidato, precio_unitario)
+        descuento_unitario = max(descuento_unitario, candidato)
+    return descuento_unitario
+
+
 def calcular_linea(db: Session, variante: ProductoVariante, cantidad: int, hoy: dt.date) -> tuple[Decimal, Decimal, Decimal]:
     """(precio_unitario, descuento_unitario, subtotal_neto) de una línea.
     La usan CU-13 (previsualizar el carrito) y registrar_venta (CU-13 y
@@ -386,18 +409,38 @@ def calcular_linea(db: Session, variante: ProductoVariante, cantidad: int, hoy: 
         db, producto_id=producto_id, categoria_id=categoria_id, temporada_id=temporada_id, hoy=hoy
     )
 
-    descuento_unitario = Decimal("0")
-    for promocion in promociones:
-        if promocion.tipo == "porcentaje":
-            candidato = precio_unitario * promocion.valor / Decimal("100")
-        else:
-            candidato = promocion.valor
-        candidato = min(candidato, precio_unitario)  # nunca deja el precio negativo
-        descuento_unitario = max(descuento_unitario, candidato)
-
-    descuento_unitario = redondear(descuento_unitario)
+    descuento_unitario = redondear(mejor_descuento(precio_unitario, promociones))
     subtotal = redondear((precio_unitario - descuento_unitario) * cantidad)
     return precio_unitario, descuento_unitario, subtotal
+
+
+def listar_promociones_vigentes(db: Session, hoy: dt.date) -> list[Promocion]:
+    """Para `sincronizacion` (manifiesto del paquete offline): las promociones activas y vigentes
+    hoy, con sus alcances. Es informativa: el precio con descuento ya viene calculado."""
+    return promocion_repo.listar_vigentes(db, hoy)
+
+
+def promociones_vigentes_por_producto(
+    db: Session, claves: Iterable[tuple[int, int, int | None]], hoy: dt.date
+) -> dict[int, list[Promocion]]:
+    """{producto_id: promociones que le aplican} para varios productos con UNA consulta de
+    promociones (no una por producto). `claves` son (producto_id, categoria_id, temporada_id). Una
+    promoción aplica si alguno de sus alcances coincide por producto, por categoría o por
+    temporada: la misma regla que `listar_vigentes_para` (y por tanto que `calcular_linea`)."""
+    vigentes = promocion_repo.listar_vigentes(db, hoy)
+    resultado: dict[int, list[Promocion]] = {}
+    for producto_id, categoria_id, temporada_id in claves:
+        resultado[producto_id] = [
+            promocion
+            for promocion in vigentes
+            if any(
+                alcance.producto_id == producto_id
+                or alcance.categoria_id == categoria_id
+                or (temporada_id is not None and alcance.temporada_id == temporada_id)
+                for alcance in promocion.alcances
+            )
+        ]
+    return resultado
 
 
 # ---- Venta: regla central ----------------------------------------------------------
@@ -758,6 +801,56 @@ def obtener_comprobante(db: Session, venta_id: int, usuario_id: int) -> Venta:
         if cliente is None or venta.cliente_id != cliente.id:
             raise PermisoDenegadoError("No tenés acceso a esta venta")
     return venta
+
+
+# ---- Plazo para devolver o cambiar prendas (D19) ---------------------------------------
+
+
+def _duracion_legible(transcurrido: dt.timedelta) -> str:
+    """'26 h 10 min'; desde las 48 h, '2 días 3 h'."""
+    minutos = int(transcurrido.total_seconds() // 60)
+    horas, minutos_sueltos = divmod(minutos, 60)
+    if horas < 48:
+        return f"{horas} h {minutos_sueltos} min"
+    dias, horas_sueltas = divmod(horas, 24)
+    return f"{dias} días {horas_sueltas} h"
+
+
+def _plazo_legible(plazo_horas: int) -> str:
+    return "1 hora" if plazo_horas == 1 else f"{plazo_horas} horas"
+
+
+def validar_plazo_cambio(fecha_venta: dt.datetime, plazo_horas: int, ahora: dt.datetime) -> None:
+    """Pura: 409 si `ahora` pasó `fecha_venta + plazo_horas`. El límite es
+    inclusivo (a las 24:00:00 exactas aún se acepta; a las 24:00:01 no)."""
+    if ahora > fecha_venta + dt.timedelta(hours=plazo_horas):
+        raise PlazoCambioVencidoError(
+            "El plazo para cambiar prendas de esta venta ya venció: se hizo hace "
+            f"{_duracion_legible(ahora - fecha_venta)} y el plazo es de {_plazo_legible(plazo_horas)}."
+        )
+
+
+def exigir_plazo_cambio(db: Session, venta: Venta, ahora: dt.datetime | None = None) -> None:
+    """Aplica el plazo de la empresa de la sesión a la venta. Se cuenta desde
+    `Venta.fecha`, que en una venta offline es la fecha de la operación y no la
+    de la sincronización."""
+    validar_plazo_cambio(
+        venta.fecha, plataforma_politicas.obtener_plazo_cambio_horas(db), ahora or ahora_utc_naive()
+    )
+
+
+def describir_plazo_cambio(db: Session, venta: Venta) -> dict:
+    """Para `GET /ventas/{id}/plazo-cambio`: fecha, plazo, vencimiento y si sigue vigente."""
+    plazo_horas = plataforma_politicas.obtener_plazo_cambio_horas(db)
+    vence_en = venta.fecha + dt.timedelta(hours=plazo_horas)
+    return {
+        "venta_id": venta.id,
+        "fecha_venta": venta.fecha,
+        "plazo_horas": plazo_horas,
+        "vence_en": vence_en,
+        "vigente": ahora_utc_naive() <= vence_en,
+        "estado_venta": obtener_estado_codigo(db, venta.estado_id),
+    }
 
 
 # ---- Puntos de entrada para `inteligencia` (reportes y recomendador) ----------

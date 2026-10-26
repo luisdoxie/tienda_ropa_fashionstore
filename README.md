@@ -88,7 +88,7 @@ Orden de dependencias: `core` ← `plataforma` ← `catalogo` ← `comercial` �
 | catalogo      | CU-05 Catálogo · CU-06 Consultar y buscar · CU-07 Favoritos · CU-08 Abastecimiento · CU-09 Inventario · CU-10 Assets del probador · CU-11 Probar prenda con IA |
 | comercial     | CU-12 Reservas · CU-13 Carrito y compra digital · CU-14 Venta presencial · CU-15 Consultar ventas · CU-16 Promociones · CU-17 Devoluciones y cambios · CU-18 Pagos · CU-19 Envíos y tarifas |
 | inteligencia  | CU-20 Recomendar productos · CU-21 Buscar por voz · CU-22 Reportes e indicadores · CU-23 Reportes con IA (hoy reporte por voz, se amplía) · **CU-24 Analizar con Machine Learning (por construir)** |
-| sincronizacion | CU-25 Sincronizar operaciones offline (backend hecho; la descarga de datos y los conflictos son de la E08) |
+| sincronizacion | CU-25 Sincronizar operaciones offline (backend hecho: lotes idempotentes, descarga del paquete de datos, resolución de conflictos y plazo de 24 h para cambios; falta el cliente offline de la PWA y Flutter) |
 
 ## Estado y hoja de ruta (segundo parcial)
 

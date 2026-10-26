@@ -45,6 +45,11 @@ class StockInsuficienteError(ConflictoError):
         self.disponible = disponible
 
 
+class PlazoCambioVencidoError(ConflictoError):
+    """La venta ya pasó el plazo para devolver o cambiar prendas (D19). 409 con un
+    mensaje que dice cuánto hace que se vendió y cuál es el plazo."""
+
+
 class PermisoDenegadoError(DomainError):
     def __init__(self, mensaje: str = "No tiene permiso para realizar esta acción") -> None:
         super().__init__(mensaje, status_code=status.HTTP_403_FORBIDDEN)

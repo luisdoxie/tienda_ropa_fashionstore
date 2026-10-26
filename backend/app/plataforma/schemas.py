@@ -498,15 +498,21 @@ class MiEmpresaRespuesta(BaseModel):
     logo_url: str | None = None
     color_acento: str | None = None
     activo: bool
+    # Plazo propio para devolver o cambiar prendas (None = usa el del plan) y el que
+    # rige hoy (D19, E08).
+    plazo_cambio_horas: int | None = None
+    plazo_cambio_horas_efectivo: int
 
 
 class MiEmpresaActualizar(BaseModel):
-    """Solo la identidad visual. Un plan, un estado o el código enviados aquí se
-    ignoran."""
+    """La identidad visual y el plazo de cambio. Un plan, un estado o el código
+    enviados aquí se ignoran. `plazo_cambio_horas`: 1 a 720, o `null` para volver
+    al plazo del plan."""
 
     nombre: str | None = Field(default=None, min_length=2, max_length=120)
     logo_url: str | None = None
     color_acento: str | None = Field(default=None, pattern=COLOR_ACENTO_PATRON)
+    plazo_cambio_horas: int | None = Field(default=None, ge=1, le=720)
 
 
 class MiSuscripcionRespuesta(BaseModel):

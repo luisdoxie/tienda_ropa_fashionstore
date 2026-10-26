@@ -93,6 +93,10 @@ class CategoriaRepository(CRUDBase[Categoria, CategoriaCrear, CategoriaActualiza
     def listar_nombres_activos(self, db: Session) -> list[str]:
         return list(db.scalars(select(Categoria.nombre).where(Categoria.activo.is_(True))))
 
+    def listar_activas(self, db: Session) -> list[Categoria]:
+        """Todas las categorías activas, por id (paquete de descarga offline)."""
+        return list(db.scalars(select(Categoria).where(Categoria.activo.is_(True)).order_by(Categoria.id)))
+
     def id_por_nombre(self, db: Session, nombre: str | None) -> int | None:
         return _id_por_texto(db, Categoria.id, Categoria.nombre, nombre)
 
@@ -117,6 +121,10 @@ class TallaRepository(CRUDBaseSinActivo[Talla, TallaCrear, TallaActualizar]):
 
     def listar_codigos(self, db: Session) -> list[str]:
         return list(db.scalars(select(Talla.codigo)))
+
+    def listar_todas(self, db: Session) -> list[Talla]:
+        """Todas las tallas por orden (paquete de descarga offline)."""
+        return list(db.scalars(select(Talla).order_by(Talla.orden, Talla.id)))
 
     def id_por_codigo(self, db: Session, codigo: str | None) -> int | None:
         return _id_por_texto(db, Talla.id, Talla.codigo, codigo)
@@ -146,6 +154,10 @@ class ColorRepository(CRUDBaseSinActivo[Color, ColorCrear, ColorActualizar]):
 
     def listar_nombres(self, db: Session) -> list[str]:
         return list(db.scalars(select(Color.nombre)))
+
+    def listar_todos(self, db: Session) -> list[Color]:
+        """Todos los colores por id (paquete de descarga offline)."""
+        return list(db.scalars(select(Color).order_by(Color.id)))
 
     def id_por_nombre(self, db: Session, nombre: str | None) -> int | None:
         return _id_por_texto(db, Color.id, Color.nombre, nombre)
@@ -249,6 +261,26 @@ class ProductoRepository(CRUDBase[Producto, ProductoCrear, ProductoActualizar]):
             .limit(paginacion.tamanio)
         )
         return list(db.scalars(consulta).all())
+
+    def listar_para_paquete(self, db: Session, desde_id: int, limite: int) -> tuple[list[Producto], int, bool]:
+        """Una página del catálogo para el paquete de descarga offline: paginación por CLAVE
+        (productos activos con `id > desde_id`, por id), sus variantes ACTIVAS y sus imágenes, en
+        una cantidad fija de consultas (no crece con los productos). Devuelve (productos, total de
+        productos activos, hay_mas)."""
+        total = db.scalar(select(func.count()).select_from(Producto).where(Producto.activo.is_(True))) or 0
+        filas = list(
+            db.scalars(
+                select(Producto)
+                .where(Producto.activo.is_(True), Producto.id > desde_id)
+                .options(
+                    selectinload(Producto.variantes.and_(ProductoVariante.activo.is_(True))),
+                    selectinload(Producto.imagenes),
+                )
+                .order_by(Producto.id)
+                .limit(limite + 1)  # una de más: dice si hay otra página
+            )
+        )
+        return filas[:limite], total, len(filas) > limite
 
     def buscar_publico(
         self, db: Session, paginacion: ParametrosPaginacion, filtros: FiltrosCatalogo
@@ -658,6 +690,31 @@ class StockRepository:
         return db.scalar(
             select(Stock).where(Stock.variante_id == variante_id, Stock.sucursal_id == sucursal_id)
         )
+
+    def listar_para_paquete(
+        self, db: Session, sucursal_id: int, desde: dt.datetime | None, desde_variante_id: int, limite: int
+    ) -> tuple[list[Stock], bool]:
+        """Una página del stock de UNA sucursal para el paquete de descarga offline: paginación por
+        clave (`variante_id > desde_variante_id`), solo variantes y productos activos y, con `desde`,
+        solo las filas modificadas desde ese instante (el llamador ya restó el solape). Devuelve
+        (filas, hay_mas)."""
+        consulta = (
+            select(Stock)
+            .join(ProductoVariante, ProductoVariante.id == Stock.variante_id)
+            .join(Producto, Producto.id == ProductoVariante.producto_id)
+            .where(
+                Stock.sucursal_id == sucursal_id,
+                Stock.variante_id > desde_variante_id,
+                ProductoVariante.activo.is_(True),
+                Producto.activo.is_(True),
+            )
+            .order_by(Stock.variante_id)
+            .limit(limite + 1)
+        )
+        if desde is not None:
+            consulta = consulta.where(Stock.actualizado_en >= desde)
+        filas = list(db.scalars(consulta))
+        return filas[:limite], len(filas) > limite
 
     def listar_por_variante(self, db: Session, variante_id: int) -> list[Stock]:
         return list(db.scalars(select(Stock).where(Stock.variante_id == variante_id)))

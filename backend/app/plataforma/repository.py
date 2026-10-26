@@ -224,6 +224,29 @@ class ClienteRepository:
             raise NoEncontradoError("Perfil de cliente no encontrado")
         return cliente
 
+    def listar_minimos(self, db: Session, desde_id: int, limite: int) -> tuple[list[tuple], int, bool]:
+        """Clientes de la empresa con usuario activo, SOLO (id, nombre, apellido, ci_nit), por
+        clave (`id > desde_id`). Se piden columnas sueltas, no el modelo: así correo, teléfono y el
+        resto del perfil ni siquiera se leen. Devuelve (filas, total de clientes activos,
+        hay_mas)."""
+        activos = (Usuario.activo.is_(True),)
+        total = (
+            db.scalar(
+                select(func.count()).select_from(Cliente).join(Usuario, Usuario.id == Cliente.usuario_id).where(*activos)
+            )
+            or 0
+        )
+        filas = list(
+            db.execute(
+                select(Cliente.id, Usuario.nombre, Usuario.apellido, Cliente.ci_nit)
+                .join(Usuario, Usuario.id == Cliente.usuario_id)
+                .where(*activos, Cliente.id > desde_id)
+                .order_by(Cliente.id)
+                .limit(limite + 1)
+            )
+        )
+        return filas[:limite], total, len(filas) > limite
+
     def buscar_por_usuario(self, db: Session, usuario_id: int) -> Cliente | None:
         """Variante de obtener_por_usuario que no lanza si no existe, para
         que el caller decida si crea el perfil o lo reusa (ver
@@ -333,6 +356,10 @@ class SucursalRepository(CRUDBase[Sucursal, SucursalCrear, SucursalActualizar]):
             return []
         return list(db.scalars(select(Sucursal).where(Sucursal.id.in_(ids))))
 
+    def listar_activas(self, db: Session) -> list[Sucursal]:
+        """Todas las sucursales activas de la empresa (el depósito incluido), por id."""
+        return list(db.scalars(select(Sucursal).where(Sucursal.activo.is_(True)).order_by(Sucursal.id)))
+
     def crear(self, db: Session, datos: SucursalCrear, commit: bool = True) -> Sucursal:
         if self.obtener_por_codigo(db, datos.codigo) is not None:
             raise ConflictoError("Ya existe una sucursal con ese código")
@@ -378,6 +405,18 @@ class HorarioRepository:
                 .order_by(HorarioSucursal.dia_semana)
             )
         )
+
+    def listar_por_sucursales(self, db: Session, sucursal_ids: list[int]) -> dict[int, list[HorarioSucursal]]:
+        """Los horarios de varias sucursales en UNA consulta: {sucursal_id: horarios por día}."""
+        agrupados: dict[int, list[HorarioSucursal]] = {sucursal_id: [] for sucursal_id in sucursal_ids}
+        if sucursal_ids:
+            for horario in db.scalars(
+                select(HorarioSucursal)
+                .where(HorarioSucursal.sucursal_id.in_(sucursal_ids))
+                .order_by(HorarioSucursal.sucursal_id, HorarioSucursal.dia_semana)
+            ):
+                agrupados[horario.sucursal_id].append(horario)
+        return agrupados
 
     def obtener(self, db: Session, sucursal_id: int, horario_id: int) -> HorarioSucursal:
         horario = db.scalar(

@@ -256,6 +256,19 @@ def situacion_de_la_empresa(db: Session) -> SituacionEmpresa:
     return SituacionEmpresa(estado_efectivo(suscripcion), suscripcion, plan)
 
 
+def obtener_plazo_cambio_horas(db: Session) -> int:
+    """Horas que tiene un cliente para devolver o cambiar prendas (D19), en la
+    empresa de la sesión: su plazo propio; si no lo definió (NULL), el de su plan
+    vigente; y si tampoco hay plan, el respaldo de `Settings`."""
+    empresa = db.get(Empresa, exigir_empresa(db))
+    if empresa is not None and empresa.plazo_cambio_horas is not None:
+        return empresa.plazo_cambio_horas
+    plan = plan_de_la_empresa(db)
+    if plan is not None and plan.plazo_cambio_horas_defecto:
+        return plan.plazo_cambio_horas_defecto
+    return get_settings().plazo_cambio_horas_respaldo
+
+
 def funcionalidades_habilitadas(db: Session) -> list[str]:
     """Las funcionalidades que incluye el plan de la empresa, en el orden de
     `core.planes.FUNCIONALIDADES`. Sin suscripción vigente, ninguna."""
@@ -526,6 +539,29 @@ def validar_horario_en_atencion(db: Session, sucursal_id: int, fecha, hora_desde
         raise DomainError("La sucursal no atiende ese día")
     if hora_desde < horario.hora_apertura or hora_hasta > horario.hora_cierre:
         raise DomainError("La franja horaria elegida está fuera del horario de atención de la sucursal")
+
+
+def listar_sucursales_autorizadas(
+    db: Session, usuario_id: int, sucursal_id: int | None = None
+) -> list[tuple[Sucursal, list[HorarioSucursal]]]:
+    """Para `sincronizacion` (manifiesto del paquete offline): las sucursales ACTIVAS que el usuario
+    puede operar, cada una con sus horarios de atención. Con alcance global son todas; si está
+    limitado a una, solo la suya. Con `sucursal_id`, solo esa (403 si no le corresponde, 404 si no
+    existe o es de otra empresa)."""
+    sucursal_id = acotar_sucursal(db, usuario_id, sucursal_id)
+    if sucursal_id is None:
+        sucursales = sucursal_repo.listar_activas(db)
+    else:
+        sucursal = sucursal_repo.buscar(db, sucursal_id)
+        sucursales = [sucursal] if sucursal is not None and sucursal.activo else []
+    horarios = horario_repo.listar_por_sucursales(db, [sucursal.id for sucursal in sucursales])
+    return [(sucursal, horarios[sucursal.id]) for sucursal in sucursales]
+
+
+def listar_clientes_minimos(db: Session, desde_id: int, limite: int) -> tuple[list[tuple], int, bool]:
+    """Para `sincronizacion` (paquete offline): los clientes activos de la empresa con solo
+    (id, nombre, apellido, ci_nit), por clave (`id > desde_id`). Devuelve (filas, total, hay_mas)."""
+    return cliente_repo.listar_minimos(db, desde_id, limite)
 
 
 def listar_empleados_sucursal(db: Session, sucursal_id: int) -> list[Empleado]:

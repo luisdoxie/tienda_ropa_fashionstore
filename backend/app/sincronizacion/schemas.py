@@ -14,20 +14,12 @@ import uuid
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer, model_validator
+
+from app.core.tipos import FechaUTC
 
 VERSION_CONTRATO = "1.0"
 MAX_OPERACIONES_POR_LOTE = 50
-
-
-def _a_utc_con_z(valor: dt.datetime) -> str:
-    """Naive (UTC, como se guarda) o con zona -> '2026-10-20T18:07:11Z'."""
-    if valor.tzinfo is not None:
-        valor = valor.astimezone(dt.timezone.utc).replace(tzinfo=None)
-    return valor.replace(microsecond=0).isoformat() + "Z"
-
-
-FechaUTC = Annotated[dt.datetime, PlainSerializer(_a_utc_con_z, return_type=str, when_used="json")]
 
 TipoOperacion = Literal["venta_contado", "reserva"]
 EstadoResultado = Literal["confirmada", "rechazada", "en_conflicto", "error_temporal"]
@@ -151,6 +143,24 @@ class LoteRespuesta(BaseModel):
 # ---- Consulta ---------------------------------------------------------------------
 
 
+class AjusteResolucion(BaseModel):
+    """Un ajuste positivo de inventario que hizo 'forzar' para cubrir un faltante."""
+
+    variante_id: int
+    cantidad: int
+    movimiento_id: int
+
+
+class ResolucionConflicto(BaseModel):
+    """Cómo se cerró una operación que estaba en conflicto (E08)."""
+
+    accion: Literal["forzar", "rechazar"]
+    por_usuario_id: int
+    en: FechaUTC
+    motivo: str | None = None
+    ajustes: list[AjusteResolucion] = []
+
+
 class OperacionSyncRespuesta(BaseModel):
     """Una operación guardada, SIN su payload."""
 
@@ -172,6 +182,22 @@ class OperacionSyncRespuesta(BaseModel):
     cambio: Decimal | None = None
     avisos: list[AvisoPrecio] = []
     faltantes: list[Faltante] = []
+    resolucion: ResolucionConflicto | None = None  # solo si un encargado la resolvió
+
+
+class ResolverEntrada(BaseModel):
+    """Body de `POST /operaciones/{operacion_id}/resolver`. El motivo es obligatorio para
+    rechazar y opcional para forzar."""
+
+    accion: Literal["forzar", "rechazar"]
+    motivo: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def _motivo_de_rechazo(self) -> "ResolverEntrada":
+        self.motivo = (self.motivo or "").strip() or None
+        if self.accion == "rechazar" and self.motivo is None:
+            raise ValueError("El motivo es obligatorio para rechazar una operación")
+        return self
 
 
 class OperacionSyncDetalle(OperacionSyncRespuesta):
@@ -194,3 +220,149 @@ class FiltrosOperaciones(BaseModel):
     usuario_id: int | None = None
     desde: dt.date | None = None
     hasta: dt.date | None = None
+
+
+# ---- Paquete de descarga (E08) -------------------------------------------------------------
+# Lo que el cliente descarga para operar sin conexión. Contrato v1 como el resto: montos en TEXTO,
+# marcas de tiempo en UTC con "Z", horas "HH:MM". Solo lo mínimo para vender y reservar: nada de
+# costos, márgenes, límites de stock, proveedores ni datos personales (salvo nombre, apellido y
+# ci_nit del cliente). `generado_en` es el instante en que el servidor leyó los datos: con él el
+# cliente decide cuándo mostrar "información desactualizada".
+
+HoraHM = Annotated[dt.time, PlainSerializer(lambda hora: hora.strftime("%H:%M"), return_type=str, when_used="json")]
+
+
+class PaqueteBase(BaseModel):
+    version_contrato: str = VERSION_CONTRATO
+    generado_en: FechaUTC
+
+
+class EmpresaPaquete(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+
+
+class HorarioPaquete(BaseModel):
+    dia_semana: int  # 1 = lunes ... 7 = domingo
+    hora_apertura: HoraHM
+    hora_cierre: HoraHM
+
+
+class SucursalPaquete(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    direccion: str
+    es_deposito: bool
+    horarios: list[HorarioPaquete]
+
+
+class CategoriaPaquete(BaseModel):
+    id: int
+    nombre: str
+    categoria_padre_id: int | None = None
+
+
+class TallaPaquete(BaseModel):
+    id: int
+    codigo: str
+    orden: int
+
+
+class ColorPaquete(BaseModel):
+    id: int
+    nombre: str
+    codigo_hex: str | None = None
+
+
+class ReferenciaPaquete(BaseModel):
+    categorias: list[CategoriaPaquete]
+    tallas: list[TallaPaquete]
+    colores: list[ColorPaquete]
+
+
+class AlcancePromocionPaquete(BaseModel):
+    producto_id: int | None = None
+    categoria_id: int | None = None
+    temporada_id: int | None = None
+
+
+class PromocionPaquete(BaseModel):
+    id: int
+    nombre: str
+    tipo: Literal["porcentaje", "monto"]
+    valor: Decimal
+    fecha_inicio: dt.date
+    fecha_fin: dt.date
+    alcances: list[AlcancePromocionPaquete]
+
+
+class ReglasPaquete(BaseModel):
+    metodos_pago_offline: list[str]
+    max_operaciones_por_lote: int
+    plazo_cambio_horas: int
+    cambios_y_devoluciones: str
+    reservas_offline: str
+
+
+class PaqueteManifiesto(PaqueteBase):
+    aviso_desactualizado_horas: int
+    empresa: EmpresaPaquete
+    sucursales: list[SucursalPaquete]
+    referencia: ReferenciaPaquete
+    promociones_vigentes: list[PromocionPaquete]
+    reglas: ReglasPaquete
+
+
+class VariantePaquete(BaseModel):
+    id: int
+    talla_id: int
+    color_id: int
+    sku: str
+    codigo_barras: str | None = None
+    precio: Decimal  # el efectivo: el de la variante o, si no tiene, el del producto
+    descuento_unitario: Decimal  # el mayor descuento vigente al `generado_en`
+
+
+class ProductoPaquete(BaseModel):
+    id: int
+    codigo: str
+    nombre: str
+    categoria_id: int
+    genero: str
+    temporada_id: int | None = None
+    imagen_principal: str | None = None
+    variantes: list[VariantePaquete]
+
+
+class PaqueteCatalogo(PaqueteBase):
+    total: int  # productos activos de la empresa: para verificar que no faltó ninguna página
+    siguiente_desde_id: int | None = None  # None = última página
+    items: list[ProductoPaquete]
+
+
+class StockPaquete(BaseModel):
+    variante_id: int
+    cantidad_disponible: int  # física menos reservada
+    actualizado_en: FechaUTC
+
+
+class PaqueteStock(PaqueteBase):
+    sucursal_id: int
+    incremental: bool  # True si se pidió `desde`: solo vienen las filas modificadas
+    siguiente_desde_variante_id: int | None = None
+    items: list[StockPaquete]
+
+
+class ClientePaquete(BaseModel):
+    id: int
+    nombre: str
+    apellido: str
+    ci_nit: str | None = None
+
+
+class PaqueteClientes(PaqueteBase):
+    total: int
+    siguiente_desde_id: int | None = None
+    items: list[ClientePaquete]
