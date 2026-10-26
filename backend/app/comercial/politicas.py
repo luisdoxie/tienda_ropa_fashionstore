@@ -888,10 +888,23 @@ def reporte_ventas_resumen(
     sucursal_id: int | None = None,
     categoria_id: int | None = None,
     canal: str | None = None,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
 ) -> dict:
     """Para `inteligencia` (reportes): total vendido, transacciones y margen bruto del
-    período (el ticket promedio lo calcula quien llama, dividiendo)."""
-    return comercial_repo.resumen(db, periodo.desde, periodo.hasta, sucursal_id, categoria_id, canal)
+    período (el ticket promedio lo calcula quien llama, dividiendo). Los parámetros en lista
+    (reportes generativos) se suman a los singulares; una lista vacía no coincide con nada."""
+    return comercial_repo.resumen(
+        db,
+        periodo.desde,
+        periodo.hasta,
+        sucursal_id,
+        categoria_id,
+        canal,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+    )
 
 
 def reporte_ventas_top_productos(
@@ -901,9 +914,28 @@ def reporte_ventas_top_productos(
     categoria_id: int | None = None,
     canal: str | None = None,
     limite: int = 10,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
+    producto_ids: list[int] | None = None,
+    ascendente: bool = False,
 ) -> list[dict]:
-    """Para `inteligencia` (reportes): productos más vendidos del período."""
-    return comercial_repo.top_productos(db, periodo.desde, periodo.hasta, sucursal_id, categoria_id, canal, limite)
+    """Para `inteligencia` (reportes): productos más vendidos del período; con `ascendente`,
+    los menos vendidos (solo entre los que tuvieron ventas). Los filtros en lista (reportes
+    generativos) se suman a los singulares; una lista vacía no coincide con nada."""
+    return comercial_repo.top_productos(
+        db,
+        periodo.desde,
+        periodo.hasta,
+        sucursal_id,
+        categoria_id,
+        canal,
+        limite,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+        producto_ids=producto_ids,
+        ascendente=ascendente,
+    )
 
 
 def reporte_ventas_por_canal(
@@ -919,10 +951,100 @@ def reporte_ventas_por_sucursal(
     categoria_id: int | None = None,
     canal: str | None = None,
     sucursal_id: int | None = None,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
 ) -> list[dict]:
     """Para `inteligencia` (reportes): ventas agrupadas por sucursal (con `sucursal_id`,
-    solo la fila de esa sucursal: lo que ve un encargado)."""
-    return comercial_repo.por_sucursal(db, periodo.desde, periodo.hasta, categoria_id, canal, sucursal_id)
+    solo la fila de esa sucursal: lo que ve un encargado). Los filtros en lista (reportes
+    generativos) se suman a los singulares; una lista vacía no coincide con nada."""
+    return comercial_repo.por_sucursal(
+        db,
+        periodo.desde,
+        periodo.hasta,
+        categoria_id,
+        canal,
+        sucursal_id,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+    )
+
+
+_DESGLOSES_SERIE = ("sucursal", "categoria")
+_DOS_DECIMALES = Decimal("0.01")
+
+
+def _dinero(valor) -> Decimal:
+    """Un total de la base como Decimal con 2 decimales. SQLite (solo las pruebas) devuelve
+    float en SUM(); PostgreSQL, Decimal: `Decimal(str(x))` sirve para ambos."""
+    return Decimal(str(valor if valor is not None else 0)).quantize(_DOS_DECIMALES, rounding=ROUND_HALF_UP)
+
+
+def reporte_ventas_serie_diaria(
+    db: Session,
+    periodo: ParametrosPeriodo,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
+    producto_ids: list[int] | None = None,
+    canal: str | None = None,
+    desglose: tuple[str, ...] = (),
+) -> list[dict]:
+    """Para `inteligencia` (reportes generativos): ventas por día del período (solo los días
+    con ventas), por orden de fecha. `desglose` admite "sucursal" y/o "categoria" (otro valor
+    es un error: 400). Cada fila trae `dia` (date), [`sucursal_id`, `sucursal`],
+    [`categoria_id`, `categoria`], `transacciones` (ventas distintas), `unidades` y
+    `total_ventas` (Decimal de 2 decimales). El filtro por productos solo restringe: no hay
+    desglose por producto. Cuenta solo ventas pagadas o entregadas."""
+    invalidos = [valor for valor in desglose if valor not in _DESGLOSES_SERIE]
+    if invalidos:
+        raise DomainError(f"Desglose no soportado: {', '.join(invalidos)}. Usa sucursal o categoria.")
+    filas = comercial_repo.serie_diaria(
+        db,
+        periodo.desde,
+        periodo.hasta,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+        producto_ids=producto_ids,
+        canal=canal,
+        desglose=tuple(desglose),
+    )
+    return [
+        {
+            **fila,
+            "dia": dt.date.fromisoformat(str(fila["dia"])[:10]),
+            "transacciones": int(fila["transacciones"]),
+            "unidades": int(fila["unidades"]),
+            "total_ventas": _dinero(fila["total_ventas"]),
+        }
+        for fila in filas
+    ]
+
+
+def reporte_ventas_por_categoria(
+    db: Session,
+    periodo: ParametrosPeriodo,
+    *,
+    sucursal_ids: list[int] | None = None,
+    canal: str | None = None,
+) -> list[dict]:
+    """Para `inteligencia` (reportes generativos): ventas del período por categoría, de la que
+    más vendió a la que menos. Cada fila: `categoria_id`, `categoria`, `unidades`,
+    `total_vendido` y `margen_bruto` (Decimal de 2 decimales), `transacciones`. La categoría es
+    la del producto (sin subcategorías). Cuenta solo ventas pagadas o entregadas."""
+    filas = comercial_repo.por_categoria(
+        db, periodo.desde, periodo.hasta, sucursal_ids=sucursal_ids, canal=canal
+    )
+    return [
+        {
+            **fila,
+            "unidades": int(fila["unidades"]),
+            "total_vendido": _dinero(fila["total_vendido"]),
+            "margen_bruto": _dinero(fila["margen_bruto"]),
+            "transacciones": int(fila["transacciones"]),
+        }
+        for fila in filas
+    ]
 
 
 def contar_ventas_con_reserva(db: Session, periodo: ParametrosPeriodo, sucursal_id: int | None = None) -> int:

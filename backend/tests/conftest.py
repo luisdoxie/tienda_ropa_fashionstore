@@ -7,6 +7,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("JWT_SECRET_KEY", "clave-de-pruebas")
 os.environ.setdefault("TAREAS_TOKEN", "token-de-pruebas")
 os.environ.setdefault("TAREAS_AUTOMATICAS", "false")
+# bcrypt al costo mínimo: sin esto cada usuario creado en una prueba cuesta ~0,25 s y la suite tarda el doble.
+# Producción usa el valor por defecto (12).
+os.environ.setdefault("BCRYPT_ROUNDS", "4")
 # Sin valor por defecto en el código (regla 9): los tests firman los
 # webhooks con estos.
 os.environ.setdefault("LIBELULA_WEBHOOK_SECRET", "secreto-libelula-de-pruebas")

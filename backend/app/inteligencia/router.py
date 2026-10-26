@@ -13,12 +13,20 @@ from app.inteligencia.casos_uso.cu22_consultar_reportes_indicadores import (
     ConsultarReportesVentasInventario,
     VisualizarDashboardIndicadores,
 )
-from app.inteligencia.casos_uso.cu23_generar_reportes_con_ia import GenerarReporteComandoVoz
+from app.core.auditoria import ContextoAuditoria, obtener_contexto_auditoria
+from app.inteligencia.casos_uso.cu23_generar_reportes_con_ia import (
+    ConsultarCatalogoReportes,
+    EjecutarReporteGenerativo,
+    GenerarReporteComandoVoz,
+    InterpretarSolicitudReporte,
+)
 from app.inteligencia.politicas import registrar_evento
 from app.inteligencia.schemas import (
     DashboardRespuesta,
     EventoCrear,
     RecomendacionesRespuesta,
+    ReporteGenerativoRequest,
+    ReporteGenerativoRespuesta,
     ReporteInventarioRespuesta,
     ReporteReservasRespuesta,
     ReporteVentasRespuesta,
@@ -144,6 +152,52 @@ def reporte_dashboard(
 
 _routers_reportes = [reportes_router]
 
+
+# ---- Reportes generativos con IA (CU-23, E09) ----------------------------------------
+# Orden de errores: 401, suscripción, plan (exigir_funcionalidad), permiso, y recién entonces las
+# reglas de negocio, que responden 200 con un estado (incompleta, ambigua, invalida...).
+
+cu_catalogo_reportes = ConsultarCatalogoReportes()
+cu_interpretar_reporte = InterpretarSolicitudReporte()
+cu_ejecutar_reporte = EjecutarReporteGenerativo()
+
+reportes_ia_router = APIRouter(
+    prefix="/api/v1/reportes-ia",
+    tags=["reportes-ia"],
+    dependencies=[Depends(exigir_funcionalidad(FUNC_REPORTES_IA)), ver_requerido],
+)
+
+
+@reportes_ia_router.get("/catalogo")
+def catalogo_reportes_ia(usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict]:
+    return cu_catalogo_reportes.ejecutar(db)
+
+
+@reportes_ia_router.post("/interpretar", response_model=ReporteGenerativoRespuesta)
+@limiter.limit("15/minute")
+def interpretar_reporte_ia(
+    request: Request,
+    datos: ReporteGenerativoRequest,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReporteGenerativoRespuesta:
+    return cu_interpretar_reporte.ejecutar(db, usuario.id, datos)
+
+
+@reportes_ia_router.post("/ejecutar", response_model=ReporteGenerativoRespuesta)
+@limiter.limit("15/minute")
+def ejecutar_reporte_ia(
+    request: Request,
+    datos: ReporteGenerativoRequest,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> ReporteGenerativoRespuesta:
+    return cu_ejecutar_reporte.ejecutar(db, usuario.id, datos, contexto)
+
+
+_routers_reportes_ia = [reportes_ia_router]
+
 # ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
 # Los MISMOS handlers públicos de /ia (voz, recomendaciones, eventos) bajo el
 # código de la tienda (D02, D10). La empresa la fija `contexto_empresa`
@@ -170,4 +224,4 @@ publico_tienda_router.add_api_route(
 )
 
 
-routers = _routers_inteligencia + _routers_reportes + [publico_tienda_router]
+routers = _routers_inteligencia + _routers_reportes + _routers_reportes_ia + [publico_tienda_router]

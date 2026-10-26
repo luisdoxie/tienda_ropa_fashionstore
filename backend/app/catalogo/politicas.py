@@ -37,12 +37,14 @@ from app.catalogo.repository import (
     TemporadaRepository,
     TipoMovimientoRepository,
     VarianteRepository,
+    existencias_por_producto,
 )
 from app.catalogo.schemas import CatalogoItemRespuesta, FiltrosCatalogo, Genero, ValoresReferenciaCatalogo
 from app.core import storage
 from app.core.deps import ParametrosPeriodo
 from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError, StockInsuficienteError
 from app.core.tenant import registrar_inicializador
+from app.core.texto import normalizar_texto
 from app.plataforma import politicas as plataforma_politicas
 
 
@@ -266,6 +268,91 @@ def resolver_categoria_por_nombre(db: Session, nombre: str | None) -> int | None
     categoría que devolvió Groq sin consultar `categoria` directamente.
     Sin match, devuelve None -- no rompe el reporte."""
     return categoria_repo.id_por_nombre(db, nombre)
+
+
+def resolver_categorias_por_nombres(db: Session, nombres: list[str]) -> tuple[list[int], list[str]]:
+    """Para `inteligencia` (reportes generativos): resuelve nombres de categoría a ids entre las
+    categorías ACTIVAS de la empresa de la sesión. Igualdad exacta sobre el texto normalizado
+    (sin mayúsculas, tildes ni espacios de más), nunca un patrón. El id es el de esa categoría
+    y NADA MÁS: no se incluyen sus subcategorías (decisión de E09). Devuelve (ids sin repetir en
+    el orden pedido, nombres sin coincidencia). Los nombres vacíos se ignoran."""
+    por_nombre: dict[str, list[int]] = {}
+    for categoria_id, nombre in categoria_repo.listar_id_nombre_activas(db):
+        por_nombre.setdefault(normalizar_texto(nombre), []).append(categoria_id)
+    ids: list[int] = []
+    sin_coincidencia: list[str] = []
+    for nombre in nombres:
+        clave = normalizar_texto(nombre)
+        if not clave:
+            continue
+        encontrados = por_nombre.get(clave)
+        if not encontrados:
+            sin_coincidencia.append(nombre.strip())
+            continue
+        ids.extend(i for i in encontrados if i not in ids)
+    return ids, sin_coincidencia
+
+
+def resolver_productos_por_nombres(
+    db: Session, nombres: list[str], tope: int = 10
+) -> tuple[list[int], list[str], list[str]]:
+    """Para `inteligencia` (reportes generativos): resuelve nombres de producto a ids entre los
+    productos ACTIVOS de la empresa de la sesión. El nombre pedido debe estar CONTENIDO en el
+    del producto, sin distinguir mayúsculas, tildes ni espacios de más (la comparación es en
+    Python: el texto nunca arma un patrón LIKE). Un nombre que coincide con más de `tope`
+    productos es ambiguo y no se resuelve. Devuelve (ids sin repetir, nombres ambiguos, nombres
+    sin coincidencia). Los nombres vacíos se ignoran."""
+    productos = [(producto_id, normalizar_texto(nombre)) for producto_id, nombre in producto_repo.listar_id_nombre_activos(db)]
+    ids: list[int] = []
+    ambiguos: list[str] = []
+    sin_coincidencia: list[str] = []
+    for nombre in nombres:
+        clave = normalizar_texto(nombre)
+        if not clave:
+            continue
+        encontrados = [producto_id for producto_id, nombre_producto in productos if clave in nombre_producto]
+        if not encontrados:
+            sin_coincidencia.append(nombre.strip())
+        elif len(encontrados) > tope:
+            ambiguos.append(nombre.strip())
+        else:
+            ids.extend(i for i in encontrados if i not in ids)
+    return ids, ambiguos, sin_coincidencia
+
+
+def listar_nombres_categorias_activas(db: Session) -> list[str]:
+    """Para `inteligencia` (sugerencias cuando un nombre de categoría no coincide): los nombres
+    de las categorías activas de la empresa."""
+    return categoria_repo.listar_nombres_activos(db)
+
+
+def reporte_existencias_por_producto(
+    db: Session,
+    sucursal_ids: list[int] | None,
+    categoria_ids: list[int] | None,
+    producto_ids: list[int] | None,
+    limite: int,
+) -> list[dict]:
+    """Para `inteligencia` (reportes generativos): los `limite` productos con menos existencia,
+    de menor a mayor. Cada fila: `producto_id`, `producto`, `categoria`, `disponible` (suma de
+    sus variantes ACTIVAS en las sucursales pedidas; None = todas), `stock_minimo` (la suma de
+    sus mínimos) y `bajo_minimo` (disponible <= stock_minimo, el mismo criterio de las alertas
+    de inventario aplicado al total). Solo productos activos con alguna fila de stock; las listas
+    vacías no coinciden con nada. La categoría filtra por id exacto, sin subcategorías."""
+    if limite < 1:
+        raise DomainError("El límite debe ser al menos 1.")
+    filas = existencias_por_producto(db, sucursal_ids, categoria_ids, producto_ids, limite)
+    return [
+        {
+            "producto_id": fila["producto_id"],
+            "producto": fila["producto"],
+            "categoria": fila["categoria"],
+            "disponible": int(fila["disponible"]),
+            "stock_minimo": int(fila["stock_minimo"]),
+            "bajo_minimo": int(fila["disponible"]) <= int(fila["stock_minimo"]),
+        }
+        for fila in filas
+    ]
 
 
 def listar_variantes_temporada_vigente(db: Session) -> set[int]:

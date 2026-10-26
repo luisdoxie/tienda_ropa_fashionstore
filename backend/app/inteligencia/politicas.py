@@ -11,11 +11,12 @@
 """
 
 import datetime as dt
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
 from app.catalogo import politicas as catalogo_politicas
+from app.core.tiempo import inicio_de_semana, restar_meses
 from app.inteligencia.repository import HistorialNavegacionRepository
 from app.inteligencia.schemas import (
     DashboardRespuesta,
@@ -185,3 +186,179 @@ def tasa_conversion(por_estado: list[dict], ventas_con_reserva: int) -> float:
     if total_reservas == 0:
         return 0.0
     return round(ventas_con_reserva / total_reservas, 4)
+
+
+# ---- Reportes generativos (CU-23, E09) ----
+# Funciones puras: reciben filas ya consultadas por comercial y catalogo y las dejan listas para
+# mostrar. No tocan la base.
+
+_DOS_DECIMALES = Decimal("0.01")
+_AGRUPACIONES = ("dia", "semana", "mes")
+
+
+def a_decimal(valor) -> Decimal:
+    """Un total de la base como Decimal de 2 decimales (SQLite devuelve float en SUM())."""
+    return Decimal(str(valor if valor is not None else 0)).quantize(_DOS_DECIMALES, rounding=ROUND_HALF_UP)
+
+
+def a_numero(valor: Decimal) -> float:
+    """El Decimal como número JSON de 2 decimales: sirve para mostrar, no para calcular."""
+    return float(Decimal(valor).quantize(_DOS_DECIMALES, rounding=ROUND_HALF_UP))
+
+
+def calcular_participacion(valores: list[Decimal], total: Decimal | None = None) -> list[float]:
+    """Porcentaje (0 a 100, 1 decimal) que representa cada valor sobre `total` (por defecto, la
+    suma de `valores`). Con total 0 todo es 0."""
+    base = sum(valores, Decimal("0")) if total is None else Decimal(total)
+    if base <= 0:
+        return [0.0 for _ in valores]
+    return [float((Decimal(v) * 100 / base).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) for v in valores]
+
+
+def armar_resumen(filas: list[dict], claves: list[str]) -> dict:
+    """Totales de las columnas sumables indicadas (enteros como int, montos como número de 2
+    decimales)."""
+    resumen: dict = {}
+    for clave in claves:
+        valores = [fila.get(clave) for fila in filas if fila.get(clave) is not None]
+        if valores and all(isinstance(v, int) and not isinstance(v, bool) for v in valores):
+            resumen[clave] = sum(valores)
+        else:
+            resumen[clave] = a_numero(sum((Decimal(str(v)) for v in valores), Decimal("0")))
+    return resumen
+
+
+def etiqueta_periodo(desde: dt.date, hasta: dt.date) -> str:
+    return _fecha(desde) if desde == hasta else f"{_fecha(desde)} al {_fecha(hasta)}"
+
+
+def _inicio_de_bucket(dia: dt.date, agrupacion: str) -> dt.date:
+    if agrupacion == "semana":
+        return inicio_de_semana(dia)
+    if agrupacion == "mes":
+        return dia.replace(day=1)
+    return dia
+
+
+def _siguiente_bucket(inicio: dt.date, agrupacion: str) -> dt.date:
+    if agrupacion == "semana":
+        return inicio + dt.timedelta(days=7)
+    if agrupacion == "mes":
+        return restar_meses(inicio, -1)
+    return inicio + dt.timedelta(days=1)
+
+
+def etiqueta_bucket(inicio: dt.date, agrupacion: str) -> str:
+    """'14/09/2026' (día), 'S38 (14/09)' (semana ISO, lunes a domingo) o '09/2026' (mes)."""
+    if agrupacion == "semana":
+        return f"S{inicio.isocalendar().week} ({inicio:%d/%m})"
+    if agrupacion == "mes":
+        return f"{inicio:%m/%Y}"
+    return _fecha(inicio)
+
+
+def agrupar_serie(
+    filas: list[dict], agrupacion: str, desde: dt.date, hasta: dt.date, *, serie: str | None = None
+) -> list[dict]:
+    """Suma las filas diarias por día, semana (lunes a domingo) o mes, e incluye con ceros los
+    periodos sin ventas entre `desde` y `hasta`. Con `serie` (p. ej. "sucursal") hay una fila por
+    periodo y por cada valor de esa serie que aparece en los datos. Cada fila: `periodo`
+    (etiqueta), `desde` (inicio del periodo, sin salir del rango pedido), `transacciones`,
+    `unidades`, `total_ventas` (Decimal) y la `serie` si se pidió."""
+    if agrupacion not in _AGRUPACIONES:
+        raise ValueError(f"Agrupación desconocida: {agrupacion}")
+    series = sorted({fila[serie] for fila in filas}) if serie else [None]
+    acumulado: dict[tuple[dt.date, str | None], list] = {}
+    for fila in filas:
+        clave = (_inicio_de_bucket(fila["dia"], agrupacion), fila[serie] if serie else None)
+        suma = acumulado.setdefault(clave, [0, 0, Decimal("0")])
+        suma[0] += int(fila["transacciones"])
+        suma[1] += int(fila["unidades"])
+        suma[2] += Decimal(fila["total_ventas"])
+    salida: list[dict] = []
+    inicio = _inicio_de_bucket(desde, agrupacion)
+    while inicio <= hasta:
+        for valor in series:
+            transacciones, unidades, total = acumulado.get((inicio, valor), (0, 0, Decimal("0")))
+            fila_nueva = {
+                "periodo": etiqueta_bucket(inicio, agrupacion),
+                "desde": max(inicio, desde),
+                "transacciones": transacciones,
+                "unidades": unidades,
+                "total_ventas": total,
+            }
+            if serie:
+                fila_nueva[serie] = valor
+            salida.append(fila_nueva)
+        inicio = _siguiente_bucket(inicio, agrupacion)
+    return salida
+
+
+def _vendio(filas: list[dict], clave: str) -> str:
+    return _bs(Decimal(str(filas[0][clave])))
+
+
+def redactar_narrativa_reporte(codigo: str, periodo: str | None, filas: list[dict], resumen: dict) -> str:
+    """Resumen corto en español de un reporte generativo, por plantilla. Las cifras salen del
+    resultado ya calculado: ningún dato sale a un tercero y ninguna cifra la inventa un modelo."""
+    cuando = f"Entre el {periodo.replace(' al ', ' y el ')}" if periodo and " al " in periodo else f"El {periodo}"
+    if codigo != "productos_menor_existencia" and not filas:
+        return f"{cuando} no hubo ventas con esos filtros."
+    if codigo == "ventas_por_sucursal":
+        mejor = max(filas, key=lambda f: f["total_ventas"])
+        return (
+            f"{cuando} se vendió {_bs(Decimal(str(resumen['total_ventas'])))} en "
+            f"{_cantidad(len(filas), 'sucursal', 'sucursales')}. La que más vendió fue {mejor['sucursal']} "
+            f"con {_bs(Decimal(str(mejor['total_ventas'])))} ({_porcentaje_100(mejor['participacion'])} del total)."
+        )
+    if codigo == "productos_mas_vendidos":
+        primero = filas[0]
+        return (
+            f"{cuando}, {primero['producto']} encabeza la lista con "
+            f"{_cantidad(primero['unidades'], 'unidad', 'unidades')} y {_bs(Decimal(str(primero['total_vendido'])))}. "
+            f"Se muestran {_cantidad(len(filas), 'producto', 'productos')} que suman "
+            f"{_bs(Decimal(str(resumen['total_vendido'])))}."
+        )
+    if codigo == "ventas_por_periodo":
+        mejor = max(filas, key=lambda f: f["total_ventas"])
+        return (
+            f"{cuando} se vendió {_bs(Decimal(str(resumen['total_ventas'])))} en "
+            f"{_cantidad(resumen['transacciones'], 'venta', 'ventas')}. El mejor periodo fue {mejor['periodo']} "
+            f"con {_bs(Decimal(str(mejor['total_ventas'])))}."
+        )
+    if codigo == "comparacion_sucursales":
+        sucursales = sorted({f["sucursal"] for f in filas})
+        mejor = max(filas, key=lambda f: f["total_ventas"])
+        return (
+            f"{cuando} se compararon {_cantidad(len(sucursales), 'sucursal', 'sucursales')} con un total de "
+            f"{_bs(Decimal(str(resumen['total_ventas'])))}. El mayor monto fue de {mejor['sucursal']} en "
+            f"{mejor['periodo']}: {_bs(Decimal(str(mejor['total_ventas'])))}."
+        )
+    if codigo == "productos_menor_existencia":
+        if not filas:
+            return "No hay productos con existencias registradas con esos filtros."
+        bajos = sum(1 for f in filas if f["bajo_minimo"])
+        primero = filas[0]
+        texto = (
+            f"El producto con menos existencia es {primero['producto']} "
+            f"({_cantidad(primero['disponible'], 'unidad disponible', 'unidades disponibles')})."
+        )
+        texto += (
+            f" {_cantidad(bajos, 'producto está', 'productos están')} por debajo del stock mínimo."
+            if bajos
+            else " Ninguno está por debajo del stock mínimo."
+        )
+        return texto
+    if codigo == "ingresos_por_categoria":
+        primera = filas[0]
+        return (
+            f"{cuando} la categoría con más ingresos fue {primera['categoria']} con "
+            f"{_bs(Decimal(str(primera['total_vendido'])))} ({_porcentaje_100(primera['participacion'])} del total). "
+            f"En conjunto las {len(filas)} categorías mostradas suman {_bs(Decimal(str(resumen['total_vendido'])))}."
+        )
+    return "Reporte generado."
+
+
+def _porcentaje_100(valor: float) -> str:
+    """Un porcentaje que ya viene de 0 a 100 (45.5 -> '45,5%')."""
+    return f"{valor:.1f}".rstrip("0").rstrip(".").replace(".", ",") + "%"

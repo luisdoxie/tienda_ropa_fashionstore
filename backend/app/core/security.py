@@ -36,7 +36,8 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    # El costo sale de `bcrypt_rounds` (12 por defecto); solo las pruebas lo bajan (tests/conftest.py).
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=settings.bcrypt_rounds)).decode("utf-8")
 
 
 def verificar_password(password: str, password_hash: str) -> bool:

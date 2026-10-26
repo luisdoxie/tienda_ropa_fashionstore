@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # tras `login_max_intentos` fallos dentro de `login_ventana_segundos` la
     # cuenta queda bloqueada hasta que el fallo mas viejo salga de la ventana.
     # No son secretos.
+    # Costo de bcrypt al guardar una contraseña. 12 en producción (no lo cambies); las pruebas lo bajan
+    # a 4 con BCRYPT_ROUNDS en tests/conftest.py para que la suite no pase la mayor parte del tiempo
+    # calculando hashes. Un hash ya guardado se verifica con el costo con que se creó.
+    bcrypt_rounds: int = Field(default=12, ge=4, le=16)
+
     login_max_intentos: int = 5
     login_ventana_segundos: int = 900
 
@@ -146,6 +151,14 @@ class Settings(BaseSettings):
     # para una búsqueda por voz).
     groq_api_key: str = ""
     groq_modelo: str = "openai/gpt-oss-20b"
+
+    # Reportes generativos (E09, CU-23): timeout y reintentos del intérprete de
+    # Groq, tope de filas de un reporte y narrativa generada por IA (apagada: la
+    # narrativa por plantilla es la que siempre se usa).
+    groq_timeout_segundos: float = 10.0
+    groq_reintentos: int = 1
+    reportes_ia_max_filas: int = 500
+    reportes_ia_narrativa_ia: bool = False
 
     # Peso promedio de una prenda (kg), para estimar el peso total de un
     # pedido en comercial.casos_uso.cu19_gestionar_envios_tarifas._peso_pedido()

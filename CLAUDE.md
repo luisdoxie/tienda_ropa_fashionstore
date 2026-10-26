@@ -102,8 +102,9 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
   Procesar pagos · CU-19 Gestionar envíos y tarifas.
 - inteligencia: CU-20 Recomendar productos · CU-21 Buscar prendas por voz ·
   CU-22 Consultar reportes e indicadores · CU-23 Generar reportes con IA
-  (hoy reporte por voz; se amplía) · CU-24 Analizar con Machine Learning
-  (NUEVO, sin implementar).
+  (reportes generativos de registro cerrado con intérprete Groq o de reglas,
+  más el reporte por voz de siempre; E09) · CU-24 Analizar con Machine
+  Learning (NUEVO, sin implementar).
 - sincronizacion: CU-25 Sincronizar operaciones offline (`cu25_...`, clases de
   control `ProcesarLote`, `ConsultarOperaciones`, `DescargarPaquete` y
   `ResolverConflicto`; las dos últimas son de la E08).
@@ -488,6 +489,41 @@ Decisiones de diseño (D15, D17, D19):
 - Pruebas: `tests/comercial/test_plazo_cambio.py`, `tests/sincronizacion/test_resolver_conflicto.py`,
   `test_paquete*.py` y `test_plazo_cambio_offline.py`, y `tests/postgres/test_resolver_concurrencia.py`.
   Las 6 rutas nuevas están en `tests/aislamiento/rutas_esperadas.py`.
+
+### Reportes generativos con IA (E09, CU-23, `backend/app/inteligencia/`)
+Convierte una frase (escrita, o dictada y ya transcrita por el cliente) en un reporte de datos reales de
+la empresa del token. La IA NUNCA ve la base ni genera SQL: solo devuelve un JSON con el tipo de reporte
+y filtros, que se valida contra un registro cerrado.
+- **Rutas** (plan con `reportes_ia` y permiso `reportes.ver`; 15/min por IP): `GET /api/v1/reportes-ia/catalogo`,
+  `POST .../interpretar` ("entendí esto", sin ejecutar) y `POST .../ejecutar` (`{texto}` o `{solicitud}`).
+  `/ia/reporte-voz` (el reporte por voz de 4 pestañas) no cambia y también exige `reportes_ia`.
+- **Flujo:** intérprete (Groq con timeout de 10 s y 1 reintento; si no responde, `InterpreteReportesReglas`, de
+  palabras clave, con un aviso) → `SolicitudReporte` (extra="forbid", sin ids ni empresa) → validación contra
+  `registro_reportes.py` (`REGISTRO`: 6 reportes, con filtros, columnas y gráfico) → resolución de fechas con
+  `core/tiempo.resolver_periodo_relativo` (la IA nunca calcula fechas) y de nombres contra la empresa de la
+  sesión → ejecutor del registro (funciones de `comercial` y `catalogo`: aquí no hay SQL) → filas, resumen,
+  `grafico_sugerido`, avisos y narrativa por plantilla. Una prueba guardia falla si aparece `text(`, `SELECT ` o
+  `execute(` bajo `app/inteligencia`.
+- **Reportes:** `ventas_por_sucursal`, `productos_mas_vendidos`, `ventas_por_periodo` (día, semana o mes, con los
+  periodos sin ventas en 0), `comparacion_sucursales` (variación contra el periodo anterior),
+  `productos_menor_existencia` e `ingresos_por_categoria`. Agregar uno (E12) es una entrada del registro más su
+  ejecutor (`conectar_ejecutor`); el prompt de Groq y las ayudas se generan desde el registro.
+- **Estados** (siempre HTTP 200; solo plan, permiso, suscripción, cuerpo mal formado y rate limit son errores):
+  `ok`, `incompleta`, `ambigua` (nombre sin coincidencia: se sugieren los reales), `invalida` (periodo futuro, más
+  de 366 días, límite fuera de 1..50, agrupación no admitida), `no_soportada`. Con cualquier estado distinto de `ok`
+  no hay filas. Un filtro que el reporte no usa se ignora con un aviso.
+- **Alcance:** quien no tiene alcance global (encargado, cajero) solo ve su sucursal; se fuerza y se avisa. El filtro
+  por categoría es por id exacto (sin subcategorías). "Últimos N meses" = N-1 meses completos más lo corrido del actual.
+  `hoy` es UTC (`core/tiempo.hoy_utc`). Los montos de las filas son números de 2 decimales (para mostrar, no calcular).
+- **Bitácora:** cada `/ejecutar` deja una fila `reporte_ia/ejecutar` (o `rechazar`) con el tipo, el estado, el
+  intérprete, los filtros ya resueltos (ids), el conteo de filas y la duración. NO guarda el texto del usuario.
+- **Pendiente (opcional, E09b):** la narrativa generada por IA (extensión 8.5, apagada por defecto con
+  `reportes_ia_narrativa_ia`) no se implementó; la narrativa es siempre la plantilla. Settings nuevos:
+  `groq_timeout_segundos`, `groq_reintentos`, `reportes_ia_max_filas` (500).
+- Pruebas: `tests/inteligencia/test_reportes_generativos*.py`, `test_registro_reportes.py`, `test_interprete_*.py`,
+  `test_narrativa_reportes.py`, `tests/core/test_tiempo_periodos.py`, las consultas nuevas en `tests/comercial`,
+  `tests/catalogo` y `tests/plataforma`, y `tests/postgres/test_reportes_generativos_pg.py`. Ninguna prueba llama a
+  Groq (fixture autouse `sin_red_groq`). Las 3 rutas están en `tests/aislamiento/rutas_esperadas.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

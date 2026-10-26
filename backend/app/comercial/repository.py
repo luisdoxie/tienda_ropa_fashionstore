@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Select, func, or_, select, text
+from sqlalchemy import Select, bindparam, func, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.comercial.models import (
@@ -411,8 +411,20 @@ class DevolucionRepository:
 # una vista de reportes, no CRUD.
 
 
+def _consulta_en_texto(consulta: str, parametros: dict):
+    """El `text()` de la consulta. Un parámetro cuyo valor es una lista o tupla se declara
+    `expanding` (`campo IN :campo` se abre en un marcador por elemento): así las listas de
+    sucursales, categorías y productos viajan siempre como parámetros, nunca pegadas al SQL.
+    Una lista vacía no coincide con nada (SQLAlchemy la expande a un conjunto vacío)."""
+    listas = [
+        bindparam(nombre, expanding=True) for nombre, valor in parametros.items() if isinstance(valor, (list, tuple))
+    ]
+    sentencia = text(consulta)
+    return sentencia.bindparams(*listas) if listas else sentencia
+
+
 def _filas_a_dicts(db: Session, consulta: str, parametros: dict) -> list[dict]:
-    filas = db.execute(text(consulta), parametros).mappings().all()
+    filas = db.execute(_consulta_en_texto(consulta, parametros), parametros).mappings().all()
     return [dict(fila) for fila in filas]
 
 
@@ -436,7 +448,13 @@ def _condiciones_ventas(
     sucursal_id: int | None,
     categoria_id: int | None,
     canal: str | None,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
+    producto_ids: list[int] | None = None,
 ) -> tuple[list[str], dict]:
+    # Los parámetros singulares y las listas (reportes generativos, E09) se suman con AND.
+    # None = sin filtro; una lista vacía no coincide con nada.
     # hasta_exclusiva: `fecha` es timestamp, desde/hasta son solo fecha --
     # sin esto, las ventas del día `hasta` (con hora > 00:00) quedarían
     # afuera del rango.
@@ -456,6 +474,14 @@ def _condiciones_ventas(
     if canal is not None:
         condiciones.append("canal = :canal")
         parametros["canal"] = canal
+    for columna, valores in (
+        ("sucursal_id", sucursal_ids),
+        ("categoria_id", categoria_ids),
+        ("producto_id", producto_ids),
+    ):
+        if valores is not None:
+            condiciones.append(f"{columna} IN :{columna}s")
+            parametros[f"{columna}s"] = [int(valor) for valor in valores]
     return condiciones, parametros
 
 
@@ -479,15 +505,20 @@ def resumen(
     sucursal_id: int | None = None,
     categoria_id: int | None = None,
     canal: str | None = None,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
 ) -> dict:
-    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(
+        db, desde, hasta, sucursal_id, categoria_id, canal, sucursal_ids=sucursal_ids, categoria_ids=categoria_ids
+    )
     consulta = (
         "SELECT COUNT(DISTINCT venta_id) AS transacciones, "
         "COALESCE(SUM(subtotal), 0) AS total_ventas, "
         "COALESCE(SUM(margen), 0) AS margen_bruto "
         "FROM vw_ventas_detalle WHERE " + " AND ".join(condiciones)
     )
-    fila = db.execute(text(consulta), parametros).mappings().one()
+    fila = db.execute(_consulta_en_texto(consulta, parametros), parametros).mappings().one()
     return dict(fila)
 
 
@@ -499,14 +530,32 @@ def top_productos(
     categoria_id: int | None = None,
     canal: str | None = None,
     limite: int = 10,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
+    producto_ids: list[int] | None = None,
+    ascendente: bool = False,
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(
+        db,
+        desde,
+        hasta,
+        sucursal_id,
+        categoria_id,
+        canal,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+        producto_ids=producto_ids,
+    )
     parametros["limite"] = limite
+    # Solo entran productos con ventas en el período; con `ascendente` salen los que menos
+    # vendieron DE ESOS. El desempate por id deja el orden estable.
+    sentido = "ASC" if ascendente else "DESC"
     consulta = (
         "SELECT producto_id, producto, SUM(cantidad) AS cantidad_vendida, SUM(subtotal) AS total_vendido "
         "FROM vw_ventas_detalle WHERE "
         + " AND ".join(condiciones)
-        + " GROUP BY producto_id, producto ORDER BY cantidad_vendida DESC LIMIT :limite"
+        + f" GROUP BY producto_id, producto ORDER BY cantidad_vendida {sentido}, producto_id LIMIT :limite"
     )
     return _filas_a_dicts(db, consulta, parametros)
 
@@ -529,11 +578,89 @@ def por_sucursal(
     categoria_id: int | None = None,
     canal: str | None = None,
     sucursal_id: int | None = None,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
 ) -> list[dict]:
-    condiciones, parametros = _condiciones_ventas(db, desde, hasta, sucursal_id, categoria_id, canal)
+    condiciones, parametros = _condiciones_ventas(
+        db, desde, hasta, sucursal_id, categoria_id, canal, sucursal_ids=sucursal_ids, categoria_ids=categoria_ids
+    )
     consulta = (
         "SELECT sucursal_id, sucursal, COUNT(DISTINCT venta_id) AS transacciones, SUM(subtotal) AS total_ventas "
         "FROM vw_ventas_detalle WHERE " + " AND ".join(condiciones) + " GROUP BY sucursal_id, sucursal ORDER BY sucursal_id"
+    )
+    return _filas_a_dicts(db, consulta, parametros)
+
+
+def serie_diaria(
+    db: Session,
+    desde: dt.date,
+    hasta: dt.date,
+    *,
+    sucursal_ids: list[int] | None = None,
+    categoria_ids: list[int] | None = None,
+    producto_ids: list[int] | None = None,
+    canal: str | None = None,
+    desglose: tuple[str, ...] = (),
+) -> list[dict]:
+    """Ventas por día (`date(fecha)`, portable SQLite/PostgreSQL), opcionalmente desglosadas por
+    sucursal y/o categoría. `dia` llega como texto en SQLite y como date en PostgreSQL: lo
+    normaliza quien llama. Solo salen los días con ventas."""
+    condiciones, parametros = _condiciones_ventas(
+        db,
+        desde,
+        hasta,
+        None,
+        None,
+        canal,
+        sucursal_ids=sucursal_ids,
+        categoria_ids=categoria_ids,
+        producto_ids=producto_ids,
+    )
+    columnas = ["date(fecha) AS dia"]
+    agrupar = ["date(fecha)"]
+    ordenar = ["dia"]
+    if "sucursal" in desglose:
+        columnas += ["sucursal_id", "sucursal"]
+        agrupar += ["sucursal_id", "sucursal"]
+        ordenar.append("sucursal_id")
+    if "categoria" in desglose:
+        columnas += ["categoria_id", "categoria"]
+        agrupar += ["categoria_id", "categoria"]
+        ordenar.append("categoria_id")
+    columnas += [
+        "COUNT(DISTINCT venta_id) AS transacciones",
+        "SUM(cantidad) AS unidades",
+        "SUM(subtotal) AS total_ventas",
+    ]
+    consulta = (
+        "SELECT "
+        + ", ".join(columnas)
+        + " FROM vw_ventas_detalle WHERE "
+        + " AND ".join(condiciones)
+        + " GROUP BY "
+        + ", ".join(agrupar)
+        + " ORDER BY "
+        + ", ".join(ordenar)
+    )
+    return _filas_a_dicts(db, consulta, parametros)
+
+
+def por_categoria(
+    db: Session,
+    desde: dt.date,
+    hasta: dt.date,
+    *,
+    sucursal_ids: list[int] | None = None,
+    canal: str | None = None,
+) -> list[dict]:
+    condiciones, parametros = _condiciones_ventas(db, desde, hasta, None, None, canal, sucursal_ids=sucursal_ids)
+    consulta = (
+        "SELECT categoria_id, categoria, SUM(cantidad) AS unidades, SUM(subtotal) AS total_vendido, "
+        "SUM(margen) AS margen_bruto, COUNT(DISTINCT venta_id) AS transacciones "
+        "FROM vw_ventas_detalle WHERE "
+        + " AND ".join(condiciones)
+        + " GROUP BY categoria_id, categoria ORDER BY total_vendido DESC, categoria_id"
     )
     return _filas_a_dicts(db, consulta, parametros)
 

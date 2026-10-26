@@ -432,9 +432,10 @@ def test_las_consultas_en_texto_son_las_conocidas_y_todas_usan_condicion_empresa
                 assert _llama_a(funcion, "condicion_empresa", "_condiciones_ventas"), (
                     f"{relativa}::{funcion.name} consulta una vista sin condicion_empresa"
                 )
+    # E09 (reportes generativos): una consulta más de existencias y dos de ventas (por día y por categoría).
     assert con_vista == {
-        "catalogo/repository.py": set(FUNCIONES_DE_INVENTARIO),
-        "comercial/repository.py": set(FUNCIONES_DE_VENTAS),
+        "catalogo/repository.py": set(FUNCIONES_DE_INVENTARIO) | {"existencias_por_producto"},
+        "comercial/repository.py": set(FUNCIONES_DE_VENTAS) | {"serie_diaria", "por_categoria"},
     }
     # El único que arma el filtro de ventas, lo hace con condicion_empresa.
     condiciones = next(f for f in _funciones(_arbol("comercial/repository.py")) if f.name == "_condiciones_ventas")
@@ -443,6 +444,11 @@ def test_las_consultas_en_texto_son_las_conocidas_y_todas_usan_condicion_empresa
 
 def test_el_sql_en_texto_de_los_repositorios_esta_en_funciones_conocidas():
     """`text(` solo en el ayudante `_filas_a_dicts` (recibe el SQL ya armado) y en `resumen` (lo arma con el filtro)."""
-    for relativa, permitidas in (("catalogo/repository.py", {"_filas_a_dicts"}), ("comercial/repository.py", {"_filas_a_dicts", "resumen"})):
+    # E09: `existencias_por_producto` arma su consulta con un JOIN sobre la vista; `_consulta_en_texto` es el único
+    # que envuelve el SQL de comercial en text() (declara las listas como parámetros, nunca pegadas al SQL).
+    for relativa, permitidas in (
+        ("catalogo/repository.py", {"_filas_a_dicts", "existencias_por_producto"}),
+        ("comercial/repository.py", {"_consulta_en_texto"}),  # las demás llaman a este ayudante
+    ):
         usan = {f.name for f in _funciones(_arbol(relativa)) if _llama_a(f, "text")}
         assert usan == permitidas, f"{relativa}: funciones con text() = {sorted(usan)}"

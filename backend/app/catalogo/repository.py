@@ -2,7 +2,7 @@ import datetime as dt
 from collections.abc import Iterable
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select, text, tuple_, update
+from sqlalchemy import bindparam, func, or_, select, text, tuple_, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.catalogo.models import (
@@ -96,6 +96,11 @@ class CategoriaRepository(CRUDBase[Categoria, CategoriaCrear, CategoriaActualiza
     def listar_activas(self, db: Session) -> list[Categoria]:
         """Todas las categorías activas, por id (paquete de descarga offline)."""
         return list(db.scalars(select(Categoria).where(Categoria.activo.is_(True)).order_by(Categoria.id)))
+
+    def listar_id_nombre_activas(self, db: Session) -> list[tuple[int, str]]:
+        """(id, nombre) de las categorías activas, por id (reportes generativos)."""
+        filas = db.execute(select(Categoria.id, Categoria.nombre).where(Categoria.activo.is_(True)).order_by(Categoria.id))
+        return [(categoria_id, nombre) for categoria_id, nombre in filas]
 
     def id_por_nombre(self, db: Session, nombre: str | None) -> int | None:
         return _id_por_texto(db, Categoria.id, Categoria.nombre, nombre)
@@ -227,6 +232,13 @@ class ProductoRepository(CRUDBase[Producto, ProductoCrear, ProductoActualizar]):
 
     def obtener_por_codigo(self, db: Session, codigo: str) -> Producto | None:
         return db.scalar(select(Producto).where(Producto.codigo == codigo))
+
+    def listar_id_nombre_activos(self, db: Session) -> list[tuple[int, str]]:
+        """(id, nombre) de los productos activos de la empresa, por id: la base para resolver
+        nombres dichos por una persona o un LLM comparando en Python (sin tildes ni mayúsculas),
+        sin armar patrones LIKE con ese texto."""
+        filas = db.execute(select(Producto.id, Producto.nombre).where(Producto.activo.is_(True)).order_by(Producto.id))
+        return [(producto_id, nombre) for producto_id, nombre in filas]
 
     def crear(
         self, db: Session, datos: ProductoCrear, creado_por: int | None, commit: bool = True
@@ -891,6 +903,46 @@ def valuacion(db: Session, sucursal_id: int | None = None) -> list[dict]:
         parametros["sucursal_id"] = sucursal_id
     consulta += " GROUP BY sucursal_id, sucursal ORDER BY sucursal_id"
     return _filas_a_dicts(db, consulta, parametros)
+
+
+def existencias_por_producto(
+    db: Session,
+    sucursal_ids: list[int] | None,
+    categoria_ids: list[int] | None,
+    producto_ids: list[int] | None,
+    limite: int,
+) -> list[dict]:
+    """Existencias por producto (suma de variantes y de las sucursales pedidas), de menor a
+    mayor disponible. Parte de `vw_inventario_consolidado` filtrada por la empresa (la vista no
+    pasa por el filtro del ORM) y la une con producto, variante y categoría para dejar solo lo
+    activo. None = sin filtro; una lista vacía no coincide con nada. Solo aparecen productos con
+    alguna fila de stock en esas sucursales."""
+    condicion_tenant, parametros = condicion_empresa(db)
+    # La condición va DENTRO de la subconsulta: ahí `empresa_id` solo puede ser el de la vista.
+    condiciones = ["p.activo = :activo", "pv.activo = :activo"]
+    parametros["activo"] = True
+    for columna, valores, nombre in (
+        ("v.sucursal_id", sucursal_ids, "sucursal_ids"),
+        ("p.categoria_id", categoria_ids, "categoria_ids"),
+        ("p.id", producto_ids, "producto_ids"),
+    ):
+        if valores is not None:
+            condiciones.append(f"{columna} IN :{nombre}")
+            parametros[nombre] = [int(valor) for valor in valores]
+    parametros["limite"] = int(limite)
+    consulta = (
+        "SELECT p.id AS producto_id, p.nombre AS producto, c.nombre AS categoria, "
+        "SUM(v.cantidad_disponible) AS disponible, SUM(v.stock_minimo) AS stock_minimo "
+        "FROM (SELECT * FROM vw_inventario_consolidado WHERE " + condicion_tenant + ") v "
+        "JOIN producto p ON p.id = v.producto_id AND p.empresa_id = v.empresa_id "
+        "JOIN producto_variante pv ON pv.id = v.variante_id AND pv.empresa_id = v.empresa_id "
+        "JOIN categoria c ON c.id = p.categoria_id AND c.empresa_id = p.empresa_id "
+        "WHERE " + " AND ".join(condiciones) + " GROUP BY p.id, p.nombre, c.nombre "
+        "ORDER BY disponible ASC, p.id LIMIT :limite"
+    )
+    listas = [bindparam(n, expanding=True) for n, valor in parametros.items() if isinstance(valor, list)]
+    sentencia = text(consulta).bindparams(*listas) if listas else text(consulta)
+    return [dict(fila) for fila in db.execute(sentencia, parametros).mappings().all()]
 
 
 # ---- Abastecimiento ----

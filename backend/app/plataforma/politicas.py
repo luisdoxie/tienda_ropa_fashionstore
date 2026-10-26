@@ -6,7 +6,6 @@ que nadie más tenga que tocarlas directamente."""
 import datetime as dt
 import logging
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +25,7 @@ from app.core.exceptions import (
 from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_ADMINISTRADOR, ROL_SUPERADMINISTRADOR
 from app.core.planes import FUNCIONALIDADES
 from app.core.tenant import empresa_de, exigir_empresa, registrar_inicializador, sin_filtro
+from app.core.texto import normalizar_texto, quitar_tildes
 from app.core.tiempo import ahora_utc_naive, hoy_utc
 from app.plataforma.models import (
     Bitacora,
@@ -127,8 +127,7 @@ def normalizar_nombre_empresa(nombre: str) -> str:
     los extremos. 'Boutique Andina' -> 'boutique-andina'. Vacio si no queda
     nada (se trata como credenciales invalidas). Maximo 60 caracteres, la
     longitud de `empresa.codigo`; E04 la reutiliza para generar el codigo."""
-    sin_marcas = "".join(c for c in unicodedata.normalize("NFKD", nombre) if not unicodedata.combining(c))
-    guionado = re.sub(r"[^a-z0-9]+", "-", sin_marcas.lower()).strip("-")
+    guionado = re.sub(r"[^a-z0-9]+", "-", quitar_tildes(nombre).lower()).strip("-")
     return guionado[:_LONGITUD_CODIGO_EMPRESA].strip("-")
 
 
@@ -504,6 +503,35 @@ def resolver_sucursal_por_nombre(db: Session, nombre: str | None) -> int | None:
     return db.scalar(
         select(Sucursal.id).where(func.lower(Sucursal.nombre) == nombre.strip().lower(), Sucursal.activo.is_(True))
     )
+
+
+def resolver_sucursales_por_nombres(db: Session, nombres: list[str]) -> tuple[list[int], list[str]]:
+    """Para `inteligencia` (reportes generativos): resuelve nombres de sucursal a ids,
+    solo entre las sucursales ACTIVAS de la empresa de la sesión. Igualdad exacta sobre el
+    texto normalizado (sin mayúsculas, tildes ni espacios de más): nunca un patrón, porque
+    el nombre viene de un LLM o de un cliente. Devuelve (ids sin repetir en el orden pedido,
+    nombres que no coincidieron con ninguna). Los nombres vacíos se ignoran."""
+    por_nombre: dict[str, list[int]] = {}
+    for sucursal in sucursal_repo.listar_activas(db):
+        por_nombre.setdefault(normalizar_texto(sucursal.nombre), []).append(sucursal.id)
+    ids: list[int] = []
+    sin_coincidencia: list[str] = []
+    for nombre in nombres:
+        clave = normalizar_texto(nombre)
+        if not clave:
+            continue
+        encontrados = por_nombre.get(clave)
+        if not encontrados:
+            sin_coincidencia.append(nombre.strip())
+            continue
+        ids.extend(i for i in encontrados if i not in ids)
+    return ids, sin_coincidencia
+
+
+def listar_nombres_sucursales_activas(db: Session) -> list[str]:
+    """Para `inteligencia`: los nombres de las sucursales activas de la empresa, por id
+    (las sugerencias cuando un nombre pedido no coincide con ninguna)."""
+    return [sucursal.nombre for sucursal in sucursal_repo.listar_activas(db)]
 
 
 def atiende_al_publico(db: Session, sucursal_id: int) -> bool:
