@@ -17,13 +17,22 @@ from sqlalchemy.orm import Session
 
 from app.catalogo import politicas as catalogo_politicas
 from app.core.tiempo import inicio_de_semana, restar_meses
+from app.inteligencia import registro_reportes
 from app.inteligencia.repository import HistorialNavegacionRepository
 from app.inteligencia.schemas import (
+    ColumnaReporte,
     DashboardRespuesta,
+    DocumentoReporte,
     EventoCrear,
+    FechaParcial,
+    PeriodoSolicitado,
+    ReporteGenerativoRespuesta,
     ReporteInventarioRespuesta,
     ReporteReservasRespuesta,
     ReporteVentasRespuesta,
+    SeccionReporte,
+    SolicitudReporte,
+    SolicitudResuelta,
 )
 from app.plataforma.politicas import obtener_perfil_cliente
 
@@ -52,14 +61,24 @@ ResultadoReporte = ReporteVentasRespuesta | ReporteInventarioRespuesta | Reporte
 _AVISO_NO_ENTENDIDO = "No identifiqué qué reporte pedías, así que te muestro el resumen general. "
 
 
-def _bs(valor: Decimal) -> str:
-    """Bs 12.400,50: miles con punto, decimales con coma."""
-    formateado = f"{Decimal(valor):,.2f}"  # 12,400.50
-    return "Bs " + formateado.replace(",", "\0").replace(".", ",").replace("\0", ".")
+def formato_numero(valor, decimales: int = 2) -> str:
+    """12.400,50: miles con punto, decimales con coma (sin símbolo de moneda)."""
+    formateado = f"{Decimal(str(valor)):,.{decimales}f}"  # 12,400.50
+    return formateado.replace(",", "\0").replace(".", ",").replace("\0", ".")
 
 
-def _fecha(fecha: dt.date) -> str:
+def formato_bs(valor: Decimal) -> str:
+    """Bs 12.400,50."""
+    return "Bs " + formato_numero(valor)
+
+
+def formato_fecha(fecha: dt.date) -> str:
     return fecha.strftime("%d/%m/%Y")
+
+
+# Los nombres con guion bajo se conservan: los usa el resto de este módulo y sus pruebas.
+_bs = formato_bs
+_fecha = formato_fecha
 
 
 def _porcentaje(fraccion: float) -> str:
@@ -362,3 +381,138 @@ def redactar_narrativa_reporte(codigo: str, periodo: str | None, filas: list[dic
 def _porcentaje_100(valor: float) -> str:
     """Un porcentaje que ya viene de 0 a 100 (45.5 -> '45,5%')."""
     return f"{valor:.1f}".rstrip("0").rstrip(".").replace(".", ",") + "%"
+
+
+# ---- Exportación (E10) -------------------------------------------------------------------
+# Adaptadores de un reporte a DocumentoReporte. El constructor de archivos no sabe de dónde
+# viene el reporte; los de CU-22 y los de ML (E12) agregan aquí su propio adaptador.
+
+# Columnas cuya suma tiene sentido (ventas, existencias y valores del inventario, reservas). Las
+# demás (ticket promedio, precio y costo unitarios, participación, variación, posición, stock
+# mínimo) no se totalizan.
+COLUMNAS_SUMABLES = frozenset(
+    {
+        "transacciones",
+        "unidades",
+        "total_ventas",
+        "total_vendido",
+        "margen_bruto",
+        "cantidad_fisica",
+        "cantidad_reservada",
+        "cantidad_disponible",
+        "valor_inventario",
+        "valor_total",
+        "cantidad",
+    }
+)
+
+_ETIQUETA_CANAL = {"digital": "digital", "presencial": "presencial"}
+_ETIQUETA_AGRUPACION = {"dia": "por día", "semana": "por semana", "mes": "por mes"}
+_ETIQUETA_ORDEN = {"mayor_a_menor": "de mayor a menor", "menor_a_mayor": "de menor a mayor"}
+
+
+def calcular_totales(columnas: list[ColumnaReporte], filas: list[dict]) -> dict | None:
+    """Suma, con Decimal, las columnas sumables de las filas (enteros como int, montos con 2
+    decimales). `None` si no hay filas o ninguna columna se suma."""
+    if not filas:
+        return None
+    totales: dict = {}
+    for columna in columnas:
+        if columna.clave not in COLUMNAS_SUMABLES:
+            continue
+        valores = [f.get(columna.clave) for f in filas if f.get(columna.clave) is not None]
+        if not valores:
+            continue
+        if columna.tipo == "entero":
+            totales[columna.clave] = sum(int(v) for v in valores)
+        else:
+            totales[columna.clave] = sum((Decimal(str(v)) for v in valores), Decimal("0")).quantize(
+                _DOS_DECIMALES, rounding=ROUND_HALF_UP
+            )
+    return totales or None
+
+
+def _nombres(referencias) -> str:
+    return ", ".join(r.nombre for r in referencias)
+
+
+def lineas_de_filtros(solicitud: SolicitudResuelta) -> list[str]:
+    """Los filtros que el reporte admite, redactados para el encabezado del archivo. Un filtro
+    admitido pero sin valor se muestra como "todas"/"todos": que el archivo diga qué abarca."""
+    definicion = registro_reportes.obtener(solicitud.tipo_reporte)
+    admitidos = definicion.filtros if definicion else {}
+    lineas: list[str] = []
+    if solicitud.periodo is not None:
+        lineas.append(f"Periodo: {solicitud.periodo.etiqueta}")
+    if "sucursales" in admitidos:
+        lineas.append(f"Sucursales: {_nombres(solicitud.sucursales) or 'todas'}")
+    if "categorias" in admitidos:
+        lineas.append(f"Categorías: {_nombres(solicitud.categorias) or 'todas'}")
+    if "productos" in admitidos and solicitud.productos:
+        lineas.append(f"Productos: {_nombres(solicitud.productos)}")
+    if "canal" in admitidos:
+        lineas.append(f"Canal: {_ETIQUETA_CANAL.get(solicitud.canal, 'todos')}")
+    if solicitud.agrupacion:
+        lineas.append(f"Agrupación: {_ETIQUETA_AGRUPACION.get(solicitud.agrupacion, solicitud.agrupacion)}")
+    if "orden" in admitidos and solicitud.orden:
+        lineas.append(f"Orden: {_ETIQUETA_ORDEN.get(solicitud.orden, solicitud.orden)}")
+    if solicitud.limite is not None:
+        lineas.append(f"Máximo de filas: {solicitud.limite}")
+    return lineas
+
+
+def documento_desde_reporte(
+    respuesta: ReporteGenerativoRespuesta, empresa_nombre: str, ahora: dt.datetime
+) -> DocumentoReporte:
+    """Convierte un reporte generativo ya ejecutado (estado "ok") en el documento que se
+    descarga. Las columnas de dinero llevan "(Bs)" en el título; los totales solo se ponen
+    si el reporte está completo (con filas recortadas, la suma sería de otra cosa)."""
+    reporte = respuesta.reporte
+    if reporte is None or respuesta.solicitud is None:
+        raise ValueError("Solo se puede exportar un reporte ejecutado (estado ok).")
+    columnas = [
+        c.model_copy(update={"titulo": f"{c.titulo} (Bs)"}) if c.tipo == "moneda" else c for c in reporte.columnas
+    ]
+    seccion = SeccionReporte(
+        titulo=reporte.titulo,
+        columnas=columnas,
+        filas=reporte.filas,
+        totales=None if reporte.truncado else calcular_totales(columnas, reporte.filas),
+        grafico=reporte.grafico_sugerido,
+    )
+    return DocumentoReporte(
+        titulo=reporte.titulo,
+        subtitulo=respuesta.narrativa,
+        empresa_nombre=empresa_nombre,
+        filtros=lineas_de_filtros(respuesta.solicitud),
+        generado_en=ahora,
+        secciones=[seccion],
+        truncado=reporte.truncado,
+        avisos=list(respuesta.avisos),
+    )
+
+
+def solicitud_desde_resuelta(resuelta: SolicitudResuelta) -> SolicitudReporte:
+    """La solicitud resuelta que devolvió /ejecutar, vuelta a una SolicitudReporte para
+    ejecutarla otra vez SIN intérprete. El periodo se reenvía como el rango de fechas ya
+    calculado (la descarga trae el mismo periodo que la vista previa aunque pase la medianoche)
+    y los ids se descartan: los nombres se resuelven de nuevo contra la empresa de la sesión."""
+    periodo = None
+    if resuelta.periodo is not None:
+        desde, hasta = resuelta.periodo.desde, resuelta.periodo.hasta
+        periodo = PeriodoSolicitado(
+            tipo="rango_fechas",
+            desde=FechaParcial(dia=desde.day, mes=desde.month, anio=desde.year),
+            hasta=FechaParcial(dia=hasta.day, mes=hasta.month, anio=hasta.year),
+        )
+    return SolicitudReporte(
+        tipo_reporte=resuelta.tipo_reporte,
+        periodo=periodo,
+        sucursales=[r.nombre for r in resuelta.sucursales],
+        categorias=[r.nombre for r in resuelta.categorias],
+        productos=[r.nombre for r in resuelta.productos],
+        canal=resuelta.canal,
+        agrupacion=resuelta.agrupacion,
+        orden=resuelta.orden,
+        limite=resuelta.limite,
+    )

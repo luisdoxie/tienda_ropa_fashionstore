@@ -21,6 +21,7 @@ Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
   (cámara en vivo + google_mlkit_pose_detection + anclajes) se eliminó.
   Respaldo en la etiqueta `respaldo-pre-quitar-espejo` y la rama
   `respaldo-espejo-wip`.
+- Exportación de reportes (E10): `openpyxl` (Excel) y `reportlab` (PDF), solo en memoria
 - Pagos: Libélula y PayPal, ambos en sandbox
 - Despliegue: Railway sin Docker, y Vercel para el Angular
 
@@ -524,6 +525,38 @@ y filtros, que se valida contra un registro cerrado.
   `test_narrativa_reportes.py`, `tests/core/test_tiempo_periodos.py`, las consultas nuevas en `tests/comercial`,
   `tests/catalogo` y `tests/plataforma`, y `tests/postgres/test_reportes_generativos_pg.py`. Ninguna prueba llama a
   Groq (fixture autouse `sin_red_groq`). Las 3 rutas están en `tests/aislamiento/rutas_esperadas.py`.
+
+### Exportación a Excel y PDF (E10, `backend/app/inteligencia/`)
+Cualquier reporte se descarga como `.xlsx` o `.pdf` con formato de reporte formal (título, empresa,
+filtros, fecha en hora de Bolivia, tabla con totales y gráfico). El constructor no sabe de dónde viene el
+reporte: recibe un `DocumentoReporte` (`schemas.py`, bloque "Exportación") y devuelve los bytes.
+- **Archivos.** `exportacion.py` (fachada: `construir_archivo`, `ArchivoExportado`, `MAX_FILAS`),
+  `exportacion_xlsx.py` (openpyxl, gráfico nativo de Excel), `exportacion_pdf.py` (reportlab, gráfico vectorial,
+  "Pagina X de Y"), `exportacion_comun.py` (colores del rediseño, topes y `datos_de_grafico`: máximo 12
+  categorías, las menores en "Otros") y `exportacion_convencionales.py` (adaptadores de CU-22).
+- **Rutas.** `POST /api/v1/reportes-ia/exportar` (plan con `reportes_ia`, `reportes.ver`, 10/min): cuerpo
+  `{formato: xlsx|pdf, incluir_grafico, y exactamente uno de texto | solicitud | resuelta}`. `resuelta` es la
+  `solicitud` que devolvió `/ejecutar`: no vuelve a interpretar, conserva el periodo ya calculado y descarta los
+  ids (los nombres se resuelven otra vez contra la empresa de la sesión). Si el estado no es `ok`: 422
+  `reporte_no_exportable` con `estado`, `mensaje` y `sugerencias`, sin archivo. Y
+  `GET /api/v1/reportes/{ventas|inventario|reservas}/exportar?formato=` (mismos filtros que las rutas JSON, en
+  los dos planes). La respuesta lleva `Content-Disposition: attachment`, `Cache-Control: no-store` y
+  `X-Content-Type-Options: nosniff`; CORS expone `Content-Disposition` (`app/main.py`).
+- **Reglas.** Todo en memoria, nunca en disco: openpyxl escribe archivos temporales al guardar aunque se le dé un
+  `BytesIO`, así que `exportacion_xlsx.py` usa un escritor propio (depende de internos de openpyxl 3.1.5; una
+  prueba avisa si cambian). Topes: 5.000 filas en Excel y 1.000 en PDF, con aviso; una tabla recortada no lleva
+  totales. Texto que empieza con `= + - @` se guarda como texto en Excel; en el PDF todo texto se escapa y pasa a
+  cp1252 (un emoji sale "?"). El nombre del archivo nunca usa texto del usuario:
+  `reporte-<tipo>-<empresa.codigo>-AAAAMMDD-HHMM.<ext>`. Las columnas de dinero llevan "(Bs)" en el título y no se
+  suman las que no tienen sentido (ticket, participación...); ver `COLUMNAS_SUMABLES` en `politicas.py`.
+- **Bitácora.** `reporte_ia/exportar` y `reporte/exportar` (tipo, formato, filtros en ids, filas y bytes; nunca el
+  texto del usuario).
+- **Límites conocidos.** El logo de la empresa no se incluye. Fuentes estándar (solo Latin-1). Un producto en
+  una `resuelta` se vuelve a buscar por texto contenido, igual que en `/ejecutar`. Las 4 rutas nuevas están en
+  `tests/aislamiento/rutas_esperadas.py` como `CREA_O_ACCION` (la matriz de listados solo lee JSON); su aislamiento
+  se prueba en `tests/inteligencia/test_exportar_*.py` y `tests/postgres/test_exportacion_pg.py`.
+- Pruebas: `tests/inteligencia/test_exportacion_{xlsx,pdf,adaptador}.py`, `test_exportar_endpoint.py`,
+  `test_exportar_convencionales.py` y `tests/postgres/test_exportacion_pg.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

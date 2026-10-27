@@ -105,8 +105,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # El ETag del paquete de descarga: sin esto el JavaScript de la PWA no puede leerlo.
-    expose_headers=["ETag"],
+    # El ETag del paquete de descarga y el nombre del archivo exportado (Content-Disposition,
+    # E10): sin esto el JavaScript de la web no puede leerlos.
+    expose_headers=["ETag", "Content-Disposition"],
 )
 
 registrar_handlers(app)

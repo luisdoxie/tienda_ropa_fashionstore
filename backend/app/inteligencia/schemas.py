@@ -454,3 +454,60 @@ class ReporteGenerativoRespuesta(BaseModel):
     solicitud: SolicitudResuelta | None = None
     reporte: ReporteEjecutado | None = None
     narrativa: str | None = None
+
+
+# ---- Exportación ----------------------------------------------------------------------------
+# E10. El constructor de archivos (`exportacion.py`) solo conoce DocumentoReporte: no sabe de
+# reportes generativos, de CU-22 ni de la base. Cualquier reporte (E09, los convencionales y,
+# luego, los de ML) se convierte a este modelo con un adaptador y se descarga igual.
+
+FormatoExportacion = Literal["xlsx", "pdf"]
+
+
+class SeccionReporte(BaseModel):
+    """Una tabla del documento (en Excel, una hoja; en PDF, una sección con su título).
+    `totales` lleva solo las columnas que se suman, ya calculadas con Decimal; las que no
+    aparecen se dejan vacías. `grafico` usa claves de `columnas`."""
+
+    titulo: str
+    columnas: list[ColumnaReporte]
+    filas: list[dict[str, Any]]
+    totales: dict[str, Any] | None = None
+    grafico: GraficoSugerido | None = None
+    nota: str | None = None
+
+
+class DocumentoReporte(BaseModel):
+    """Lo que se imprime: encabezado (título, empresa, filtros, fecha en hora de Bolivia) y
+    una o más secciones. `filtros` son líneas ya redactadas ("Periodo: 01/09/2026 al 20/09/2026")."""
+
+    titulo: str
+    subtitulo: str | None = None
+    empresa_nombre: str
+    filtros: list[str] = Field(default_factory=list)
+    generado_en: dt.datetime
+    secciones: list[SeccionReporte]
+    truncado: bool = False
+    avisos: list[str] = Field(default_factory=list)
+
+
+class ExportarReporteRequest(BaseModel):
+    """Cuerpo de POST /reportes-ia/exportar: el formato y exactamente una de tres formas de
+    pedir el reporte. `texto` y `solicitud` son los de /ejecutar. `resuelta` es la
+    `solicitud` que devolvió /ejecutar ("entendí esto"): se reenvía tal cual y no vuelve a
+    pasar por el intérprete; sus ids se ignoran (se vuelven a resolver los nombres contra la
+    empresa de la sesión)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    formato: FormatoExportacion
+    texto: str | None = Field(default=None, min_length=1, max_length=MAX_LARGO_TEXTO_REPORTE)
+    solicitud: SolicitudReporte | None = None
+    resuelta: SolicitudResuelta | None = None
+    incluir_grafico: bool = True
+
+    @model_validator(mode="after")
+    def _exactamente_uno(self):
+        if sum(valor is not None for valor in (self.texto, self.solicitud, self.resuelta)) != 1:
+            raise ValueError("Envía exactamente uno de 'texto', 'solicitud' o 'resuelta'.")
+        return self

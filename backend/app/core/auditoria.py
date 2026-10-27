@@ -38,6 +38,7 @@ ENTIDAD_DEVOLUCION = "devolucion"
 ENTIDAD_MOVIMIENTO_INVENTARIO = "movimiento_inventario"
 ENTIDAD_BITACORA = "bitacora"
 ENTIDAD_REPORTE_IA = "reporte_ia"  # E09
+ENTIDAD_REPORTE = "reporte"  # E10 (descarga de los reportes convencionales)
 # Reservadas: las registran etapas posteriores con la misma función.
 ENTIDAD_LOTE_SYNC = "lote_sync"  # E07
 ENTIDAD_OPERACION_SYNC = "operacion_sync"  # E08
@@ -63,6 +64,7 @@ ACCION_AJUSTE = "ajuste"
 ACCION_PURGAR = "purgar"
 ACCION_EJECUTAR = "ejecutar"  # E09
 ACCION_RECHAZAR = "rechazar"  # E09
+ACCION_EXPORTAR = "exportar"  # E10
 # Reservadas.
 ACCION_SINCRONIZAR_LOTE = "sincronizar_lote"  # E07
 ACCION_RESOLVER_CONFLICTO = "resolver_conflicto"  # E08

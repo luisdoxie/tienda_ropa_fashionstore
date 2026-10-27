@@ -19,6 +19,7 @@ Clases de control:
   Llama a CU-22, que es de solo lectura.
 - InterpretarSolicitudReporte: "entendí esto" sin ejecutar.
 - EjecutarReporteGenerativo: interpreta, valida y ejecuta uno de los reportes del registro.
+- ExportarReporteGenerativo: lo mismo, pero devuelve el reporte como archivo Excel o PDF (E10).
 - ConsultarCatalogoReportes: los reportes que el plan de la empresa permite pedir."""
 
 import datetime as dt
@@ -33,13 +34,20 @@ from sqlalchemy.orm import Session
 
 from app.catalogo import politicas as catalogo_politicas
 from app.comercial import politicas as comercial_politicas
-from app.core.auditoria import ACCION_EJECUTAR, ACCION_RECHAZAR, ENTIDAD_REPORTE_IA, ContextoAuditoria
+from app.core.auditoria import (
+    ACCION_EJECUTAR,
+    ACCION_EXPORTAR,
+    ACCION_RECHAZAR,
+    ENTIDAD_REPORTE_IA,
+    ContextoAuditoria,
+)
 from app.core.config import get_settings
 from app.core.deps import DIAS_PERIODO_POR_DEFECTO, ParametrosPeriodo
-from app.core.exceptions import DomainError
+from app.core.exceptions import DomainError, ErrorFuncional
 from app.core.planes import FUNCIONALIDADES, verificar_funcionalidad
-from app.core.tiempo import hoy_utc, resolver_periodo_relativo
+from app.core.tiempo import ahora_bolivia, hoy_utc, resolver_periodo_relativo
 from app.inteligencia import registro_reportes
+from app.inteligencia.exportacion import MAX_FILAS, TIPO_MIME, ArchivoExportado, construir_archivo
 from app.inteligencia.groq_cliente import obtener_interprete_reportes, obtener_parser_reporte_voz
 from app.inteligencia.interprete_reglas import InterpreteReportesReglas
 from app.inteligencia.politicas import (
@@ -48,13 +56,16 @@ from app.inteligencia.politicas import (
     agrupar_serie,
     armar_resumen,
     calcular_participacion,
+    documento_desde_reporte,
     etiqueta_periodo,
     redactar_narrativa_reporte,
     redactar_respuesta_reporte,
+    solicitud_desde_resuelta,
     ticket_promedio,
 )
 from app.inteligencia.schemas import (
     TIPOS_REPORTE_VALIDOS,
+    ExportarReporteRequest,
     PeriodoResuelto,
     PeriodoSolicitado,
     ReferenciaResuelta,
@@ -728,6 +739,20 @@ def _resolver_resultado(
     )
 
 
+def _ejecutar_preparada(
+    db: Session, usuario_id: int, preparada: _Preparada, max_filas: int
+) -> ReporteGenerativoRespuesta:
+    """Corre el ejecutor del reporte y arma la respuesta con a lo más `max_filas` filas. Lo
+    comparten /ejecutar (tope de pantalla) y /exportar (tope del archivo)."""
+    definicion = preparada.definicion
+    ejecucion = definicion.ejecutor(db, usuario_id, preparada.contexto)
+    periodo = preparada.resuelta.periodo
+    narrativa = redactar_narrativa_reporte(
+        definicion.codigo, periodo.etiqueta if periodo else None, ejecucion.filas, ejecucion.resumen
+    )
+    return _resolver_resultado(preparada, ejecucion, max_filas, narrativa)
+
+
 class InterpretarSolicitudReporte:
     def ejecutar(self, db: Session, usuario_id: int, datos: ReporteGenerativoRequest) -> ReporteGenerativoRespuesta:
         """POST /api/v1/reportes-ia/interpretar: valida y resuelve la solicitud ("entendí
@@ -755,14 +780,7 @@ class EjecutarReporteGenerativo:
             self._auditar(db, contexto, ACCION_RECHAZAR, {"estado": preparada.estado, "origen": datos.origen}, inicio)
             return preparada
 
-        definicion = preparada.definicion
-        ejecucion = definicion.ejecutor(db, usuario_id, preparada.contexto)
-        max_filas = get_settings().reportes_ia_max_filas
-        periodo = preparada.resuelta.periodo
-        narrativa = redactar_narrativa_reporte(
-            definicion.codigo, periodo.etiqueta if periodo else None, ejecucion.filas, ejecucion.resumen
-        )
-        respuesta = _resolver_resultado(preparada, ejecucion, max_filas, narrativa)
+        respuesta = _ejecutar_preparada(db, usuario_id, preparada, get_settings().reportes_ia_max_filas)
         self._auditar(
             db,
             contexto,
@@ -788,6 +806,61 @@ class EjecutarReporteGenerativo:
         datos = {**datos, "duracion_ms": int((time.perf_counter() - inicio) * 1000)}
         plataforma_politicas.registrar_bitacora_de(db, contexto, ENTIDAD_REPORTE_IA, None, accion, datos)
         db.commit()
+
+
+class ExportarReporteGenerativo:
+    def ejecutar(
+        self,
+        db: Session,
+        usuario_id: int,
+        datos: ExportarReporteRequest,
+        contexto: ContextoAuditoria | None = None,
+    ) -> ArchivoExportado:
+        """POST /api/v1/reportes-ia/exportar: ejecuta el reporte (las mismas validaciones y el
+        mismo alcance que /ejecutar) y lo devuelve como .xlsx o .pdf, todo en memoria.
+
+        Con `resuelta` o `solicitud` NO pasa por el intérprete; con `texto` interpreta igual que
+        /ejecutar. Si el estado no es "ok" (ambigua, invalida, no_soportada...) no hay archivo:
+        422 `reporte_no_exportable` con el mensaje y las sugerencias. Deja una fila de bitácora
+        `reporte_ia/exportar` sin el texto del usuario."""
+        inicio = time.perf_counter()
+        if datos.resuelta is not None:
+            pedido = ReporteGenerativoRequest(solicitud=solicitud_desde_resuelta(datos.resuelta))
+        else:
+            pedido = ReporteGenerativoRequest(texto=datos.texto, solicitud=datos.solicitud)
+        preparada = _PreparadorSolicitud().preparar(db, usuario_id, pedido)
+        if isinstance(preparada, ReporteGenerativoRespuesta):
+            raise ErrorFuncional(
+                "reporte_no_exportable",
+                preparada.mensaje,
+                422,
+                estado=preparada.estado,
+                sugerencias=preparada.sugerencias,
+            )
+
+        respuesta = _ejecutar_preparada(db, usuario_id, preparada, MAX_FILAS[datos.formato])
+        empresa = plataforma_politicas.obtener_empresa_de_la_sesion(db)
+        ahora = ahora_bolivia()
+        documento = documento_desde_reporte(respuesta, empresa.nombre, ahora)
+        contenido = construir_archivo(documento, datos.formato, datos.incluir_grafico)
+        # El nombre sale de datos propios (código del reporte y de la empresa): nunca del texto
+        # del usuario.
+        nombre = f"reporte-{preparada.definicion.codigo}-{empresa.codigo}-{ahora:%Y%m%d-%H%M}.{datos.formato}"
+        EjecutarReporteGenerativo._auditar(
+            db,
+            contexto,
+            ACCION_EXPORTAR,
+            {
+                **preparada.filtros_para_bitacora,
+                "formato": datos.formato,
+                "interprete": preparada.interprete,
+                "filas": len(respuesta.reporte.filas),
+                "truncado": respuesta.reporte.truncado,
+                "bytes": len(contenido),
+            },
+            inicio,
+        )
+        return ArchivoExportado(contenido, TIPO_MIME[datos.formato], nombre)
 
 
 class ConsultarCatalogoReportes:

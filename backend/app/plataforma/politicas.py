@@ -151,6 +151,11 @@ def obtener_empresa(db: Session, empresa_id: int) -> Empresa | None:
     return db.get(Empresa, empresa_id)
 
 
+def obtener_empresa_de_la_sesion(db: Session) -> Empresa:
+    """La empresa de la sesión (nombre y código), para rotular lo que se descarga (E10)."""
+    return db.get(Empresa, exigir_empresa(db))
+
+
 def listar_empresas_activas(db: Session) -> list[int]:
     """Ids de las empresas activas, para las tareas que corren por empresa
     (expirar reservas y ventas pendientes)."""

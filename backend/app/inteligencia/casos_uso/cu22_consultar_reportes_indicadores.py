@@ -15,18 +15,28 @@ y uso del probador virtual.
 Caso de uso COMPUESTO: agrupa los reportes (ventas, inventario, reservas) y
 el dashboard de indicadores, cada uno con su propia clase. Este caso de uso
 SOLO LEE: no escribe en ninguna tabla. Un encargado (sin alcance global) solo
-ve su sucursal: ver plataforma.politicas.acotar_sucursal."""
+ve su sucursal: ver plataforma.politicas.acotar_sucursal.
 
+Descarga en Excel o PDF (E10, paso 8): `ExportarReportesVentasInventario` entrega los reportes de
+ventas, inventario y reservas como archivo; solo agrega una fila de bitácora."""
+
+import datetime as dt
+import time
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.catalogo import politicas as catalogo_politicas
 from app.catalogo.casos_uso.cu09_gestionar_inventario import ConsultarInventarioGlobal
 from app.catalogo.politicas import reporte_uso_probador
 from app.comercial import politicas as comercial_politicas
 from app.comercial.politicas import reporte_reservas_por_estado
+from app.core.auditoria import ACCION_EXPORTAR, ENTIDAD_REPORTE, ContextoAuditoria
 from app.core.deps import ParametrosPeriodo
-from app.inteligencia.politicas import tasa_conversion, ticket_promedio
+from app.core.tiempo import ahora_bolivia
+from app.inteligencia.exportacion import MAX_FILAS, TIPO_MIME, ArchivoExportado, construir_archivo
+from app.inteligencia.exportacion_convencionales import documento_inventario, documento_reservas, documento_ventas
+from app.inteligencia.politicas import etiqueta_periodo, tasa_conversion, ticket_promedio
 from app.inteligencia.schemas import (
     DashboardRespuesta,
     FilaReservasPorEstado,
@@ -106,6 +116,148 @@ class ConsultarReportesVentasInventario:
             por_estado=[FilaReservasPorEstado(**fila) for fila in por_estado],
             tasa_conversion=tasa_conversion(por_estado, ventas_con_reserva),
         )
+
+
+# ---- Descarga de los reportes en Excel o PDF (E10, paso 8) ----
+
+
+class ExportarReportesVentasInventario:
+    """Los mismos reportes de ventas, inventario y reservas, entregados como .xlsx o .pdf. Llama a
+    `ConsultarReportesVentasInventario` (las mismas consultas y el mismo alcance de sucursal) y arma
+    el documento con `exportacion_convencionales`. No escribe nada salvo la fila de bitácora."""
+
+    def __init__(self) -> None:
+        self._reportes = ConsultarReportesVentasInventario()
+
+    def ventas(
+        self,
+        db: Session,
+        usuario_id: int,
+        periodo: ParametrosPeriodo,
+        sucursal_id: int | None,
+        categoria_id: int | None,
+        canal: str | None,
+        formato: str,
+        incluir_grafico: bool,
+        contexto: ContextoAuditoria | None = None,
+    ) -> ArchivoExportado:
+        inicio = time.perf_counter()
+        sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)
+        filtros = [
+            f"Periodo: {etiqueta_periodo(periodo.desde, periodo.hasta)}",
+            self._linea_sucursal(db, sucursal_id),
+            f"Categoría: {self._nombre_categoria(db, categoria_id)}",
+            f"Canal: {canal or 'todos'}",
+        ]
+        reporte = self._reportes.ventas(db, usuario_id, periodo, sucursal_id, categoria_id, canal)
+        documento = documento_ventas(reporte, *self._rotulo(db), filtros, MAX_FILAS[formato])
+        return self._entregar(
+            db,
+            "ventas",
+            documento,
+            formato,
+            incluir_grafico,
+            contexto,
+            inicio,
+            {
+                "periodo": {"desde": periodo.desde.isoformat(), "hasta": periodo.hasta.isoformat()},
+                "sucursal_id": sucursal_id,
+                "categoria_id": categoria_id,
+                "canal": canal,
+            },
+        )
+
+    def inventario(
+        self,
+        db: Session,
+        usuario_id: int,
+        sucursal_id: int | None,
+        formato: str,
+        incluir_grafico: bool,
+        contexto: ContextoAuditoria | None = None,
+    ) -> ArchivoExportado:
+        inicio = time.perf_counter()
+        sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)
+        filtros = [self._linea_sucursal(db, sucursal_id), "Existencias a la fecha de generación"]
+        reporte = self._reportes.inventario(db, usuario_id, sucursal_id)
+        documento = documento_inventario(reporte, *self._rotulo(db), filtros, MAX_FILAS[formato])
+        return self._entregar(
+            db, "inventario", documento, formato, incluir_grafico, contexto, inicio, {"sucursal_id": sucursal_id}
+        )
+
+    def reservas(
+        self,
+        db: Session,
+        usuario_id: int,
+        periodo: ParametrosPeriodo,
+        sucursal_id: int | None,
+        formato: str,
+        incluir_grafico: bool,
+        contexto: ContextoAuditoria | None = None,
+    ) -> ArchivoExportado:
+        inicio = time.perf_counter()
+        sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)
+        filtros = [f"Periodo: {etiqueta_periodo(periodo.desde, periodo.hasta)}", self._linea_sucursal(db, sucursal_id)]
+        reporte = self._reportes.reservas(db, usuario_id, periodo, sucursal_id)
+        documento = documento_reservas(reporte, *self._rotulo(db), filtros)
+        return self._entregar(
+            db,
+            "reservas",
+            documento,
+            formato,
+            incluir_grafico,
+            contexto,
+            inicio,
+            {
+                "periodo": {"desde": periodo.desde.isoformat(), "hasta": periodo.hasta.isoformat()},
+                "sucursal_id": sucursal_id,
+            },
+        )
+
+    # -- apoyo --
+
+    @staticmethod
+    def _linea_sucursal(db: Session, sucursal_id: int | None) -> str:
+        """Una sucursal de otra empresa o inexistente es 404, igual que en el resto de la API."""
+        if sucursal_id is None:
+            return "Sucursal: todas"
+        return f"Sucursal: {plataforma_politicas.obtener_sucursal(db, sucursal_id).nombre}"
+
+    @staticmethod
+    def _nombre_categoria(db: Session, categoria_id: int | None) -> str:
+        return "todas" if categoria_id is None else catalogo_politicas.obtener_categoria(db, categoria_id).nombre
+
+    @staticmethod
+    def _rotulo(db: Session) -> tuple[str, dt.datetime]:
+        """(nombre de la empresa de la sesión, ahora en hora de Bolivia): el encabezado del archivo."""
+        return plataforma_politicas.obtener_empresa_de_la_sesion(db).nombre, ahora_bolivia()
+
+    @staticmethod
+    def _entregar(
+        db: Session,
+        tipo: str,
+        documento,
+        formato: str,
+        incluir_grafico: bool,
+        contexto: ContextoAuditoria | None,
+        inicio: float,
+        datos: dict,
+    ) -> ArchivoExportado:
+        contenido = construir_archivo(documento, formato, incluir_grafico)
+        # El nombre solo lleva datos propios: el tipo de reporte, el código de la empresa y la hora.
+        codigo = plataforma_politicas.obtener_empresa_de_la_sesion(db).codigo
+        nombre = f"reporte-{tipo}-{codigo}-{documento.generado_en:%Y%m%d-%H%M}.{formato}"
+        if contexto is not None:
+            datos = {
+                **datos,
+                "tipo_reporte": tipo,
+                "formato": formato,
+                "bytes": len(contenido),
+                "duracion_ms": int((time.perf_counter() - inicio) * 1000),
+            }
+            plataforma_politicas.registrar_bitacora_de(db, contexto, ENTIDAD_REPORTE, None, ACCION_EXPORTAR, datos)
+            db.commit()
+        return ArchivoExportado(contenido, TIPO_MIME[formato], nombre)
 
 
 # ---- Dashboard de indicadores empresariales (antiguo CU-34: Visualizar indicadores empresariales) ----

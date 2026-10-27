@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Query, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,12 +13,15 @@ from app.inteligencia.casos_uso.cu20_recomendar_productos import RecomendarProdu
 from app.inteligencia.casos_uso.cu21_buscar_prendas_por_voz import BuscarComandoVoz
 from app.inteligencia.casos_uso.cu22_consultar_reportes_indicadores import (
     ConsultarReportesVentasInventario,
+    ExportarReportesVentasInventario,
     VisualizarDashboardIndicadores,
 )
+from app.inteligencia.exportacion import ArchivoExportado
 from app.core.auditoria import ContextoAuditoria, obtener_contexto_auditoria
 from app.inteligencia.casos_uso.cu23_generar_reportes_con_ia import (
     ConsultarCatalogoReportes,
     EjecutarReporteGenerativo,
+    ExportarReporteGenerativo,
     GenerarReporteComandoVoz,
     InterpretarSolicitudReporte,
 )
@@ -24,6 +29,8 @@ from app.inteligencia.politicas import registrar_evento
 from app.inteligencia.schemas import (
     DashboardRespuesta,
     EventoCrear,
+    ExportarReporteRequest,
+    FormatoExportacion,
     RecomendacionesRespuesta,
     ReporteGenerativoRequest,
     ReporteGenerativoRespuesta,
@@ -150,6 +157,80 @@ def reporte_dashboard(
     return cu_dashboard.ejecutar(db, usuario.id, periodo, sucursal_id)
 
 
+# Descarga en Excel o PDF de los mismos reportes (E10, paso 8). Mismo plan (reportes_convencionales:
+# ambos planes) y mismo permiso que las rutas JSON de arriba.
+cu_exportar_convencionales = ExportarReportesVentasInventario()
+FormatoDescarga = Annotated[FormatoExportacion, Query(description="xlsx o pdf")]
+
+
+def _descarga(archivo: ArchivoExportado) -> Response:
+    """La respuesta de un archivo exportado. El nombre solo lleva ASCII (tipo de reporte, código de
+    la empresa, fecha y hora); `Content-Disposition` lo expone CORS (app/main.py)."""
+    return Response(
+        content=archivo.contenido,
+        media_type=archivo.tipo_mime,
+        headers={
+            "Content-Disposition": f'attachment; filename="{archivo.nombre_archivo}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@reportes_router.get("/ventas/exportar", response_class=Response)
+@limiter.limit("10/minute")
+def exportar_reporte_ventas(
+    request: Request,
+    formato: FormatoDescarga,
+    incluir_grafico: bool = True,
+    periodo: ParametrosPeriodo = Depends(periodo_reportes),
+    sucursal_id: int | None = Query(default=None),
+    categoria_id: int | None = Query(default=None),
+    canal: str | None = Query(default=None),
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> Response:
+    return _descarga(
+        cu_exportar_convencionales.ventas(
+            db, usuario.id, periodo, sucursal_id, categoria_id, canal, formato, incluir_grafico, contexto
+        )
+    )
+
+
+@reportes_router.get("/inventario/exportar", response_class=Response)
+@limiter.limit("10/minute")
+def exportar_reporte_inventario(
+    request: Request,
+    formato: FormatoDescarga,
+    incluir_grafico: bool = True,
+    sucursal_id: int | None = Query(default=None),
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> Response:
+    return _descarga(
+        cu_exportar_convencionales.inventario(db, usuario.id, sucursal_id, formato, incluir_grafico, contexto)
+    )
+
+
+@reportes_router.get("/reservas/exportar", response_class=Response)
+@limiter.limit("10/minute")
+def exportar_reporte_reservas(
+    request: Request,
+    formato: FormatoDescarga,
+    incluir_grafico: bool = True,
+    periodo: ParametrosPeriodo = Depends(periodo_reportes),
+    sucursal_id: int | None = Query(default=None),
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> Response:
+    return _descarga(
+        cu_exportar_convencionales.reservas(db, usuario.id, periodo, sucursal_id, formato, incluir_grafico, contexto)
+    )
+
+
 _routers_reportes = [reportes_router]
 
 
@@ -160,6 +241,7 @@ _routers_reportes = [reportes_router]
 cu_catalogo_reportes = ConsultarCatalogoReportes()
 cu_interpretar_reporte = InterpretarSolicitudReporte()
 cu_ejecutar_reporte = EjecutarReporteGenerativo()
+cu_exportar_reporte = ExportarReporteGenerativo()
 
 reportes_ia_router = APIRouter(
     prefix="/api/v1/reportes-ia",
@@ -194,6 +276,25 @@ def ejecutar_reporte_ia(
     contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
 ) -> ReporteGenerativoRespuesta:
     return cu_ejecutar_reporte.ejecutar(db, usuario.id, datos, contexto)
+
+
+@reportes_ia_router.post(
+    "/exportar",
+    response_class=Response,
+    responses={
+        200: {"description": "El archivo (.xlsx o .pdf)", "content": {"application/octet-stream": {}}},
+        422: {"description": "reporte_no_exportable: el estado del reporte no es ok (mensaje y sugerencias)"},
+    },
+)
+@limiter.limit("10/minute")
+def exportar_reporte_ia(
+    request: Request,
+    datos: ExportarReporteRequest,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> Response:
+    return _descarga(cu_exportar_reporte.ejecutar(db, usuario.id, datos, contexto))
 
 
 _routers_reportes_ia = [reportes_ia_router]

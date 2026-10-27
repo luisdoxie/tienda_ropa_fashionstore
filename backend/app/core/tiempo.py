@@ -25,6 +25,15 @@ def hoy_utc() -> dt.date:
     return dt.datetime.now(dt.timezone.utc).date()
 
 
+ZONA_BOLIVIA = dt.timezone(dt.timedelta(hours=-4), "Bolivia")  # UTC-4 fijo, sin horario de verano
+
+
+def ahora_bolivia() -> dt.datetime:
+    """El instante actual en hora de Bolivia (con zona): para rotular los archivos que se
+    descargan (E10). La base y el resto del backend siguen en UTC."""
+    return dt.datetime.now(dt.timezone.utc).astimezone(ZONA_BOLIVIA)
+
+
 def ahora_utc_naive() -> dt.datetime:
     """El instante actual en UTC como datetime naive (sin tzinfo).
 
