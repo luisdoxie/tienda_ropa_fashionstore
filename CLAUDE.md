@@ -328,6 +328,19 @@ funciona hasta que se adapten (E15, E16, E18).
 - Siempre queda al menos un administrador activo por empresa.
 - Semilla de demostración: `python -m scripts.seed_empresas_prueba` (dry-run por
   defecto): FashionStore (Profesional) y Boutique Andina (Básico).
+- Población de demostración (8 organizaciones): `python -m scripts.poblar_demo --origen <carpeta
+  con catalogo.json, JPG y overlays/>` (dry-run por defecto; `--ejecutar`, `--solo <código>`,
+  `--sin-fotos`). Los datos están en `scripts/demo_organizaciones.py` (3 Profesional, 3 Estándar
+  y 2 Básico, 22 sucursales en 7 ciudades, 104 productos con las 24 fotos del dataset, precio por
+  factor de organización y stock distinto por sucursal y variante). El plan Estándar (5 sucursales,
+  IA y copias sí (guarda 6), ML no, cambio en 48 h) se crea como DATO con el CU-04, no por migración ni en
+  `seed_planes.py`. Copias y plazo de cambio crecen con el plan (copias 3, 6, 10; plazo 24, 48, 72 h) y
+  el Básico pasa a INCLUIR copias (cambia D07 solo en estos datos): lo aplica `poblar_demo
+  --ajustar-planes` (la migración y `seed_planes.py` dejan Básico sin copias y Profesional con 5 y 24 h).
+  Las prendas de mujer no admiten probador; la chamarra va como unisex. Polos y
+  Camisetas deportivas cuelgan de la categoría Poleras (el backend reconoce el torso superior por
+  el nombre de la categoría o sus ancestros). No toca el historial de ventas (E11) ni se corre
+  contra `fashionstore_dev` sin `CONFIRMO_BASE_DEV=si`.
 
 ### Pruebas de aislamiento (E05, `backend/tests/aislamiento/`)
 Demuestran en el backend (no en la interfaz) que un usuario de la empresa A no lee,

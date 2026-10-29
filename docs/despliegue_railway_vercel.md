@@ -105,6 +105,53 @@ Los scripts son idempotentes: repetirlos no duplica filas. Los usuarios demo que
 (`SEED_PASSWORD_INICIAL`) son los que usarás para entrar. El superadministrador entra a la web sin indicar
 empresa; los demás con el código de la empresa (`fashionstore` o `boutique-andina`).
 
+### 2.1 Población de demostración con 8 organizaciones (opcional, con fotos)
+
+`scripts.poblar_demo` crea 8 organizaciones (3 Profesional, 3 Estándar y 2 Básico) con 22 sucursales en
+7 ciudades, 104 productos con las fotos del dataset, el probador virtual en las prendas de hombre y la
+chamarra, precios por organización y un stock distinto en cada sucursal. Reemplaza al paso 3 de arriba (usa
+las mismas dos empresas de prueba y suma seis). Los datos están en `backend/scripts/demo_organizaciones.py`.
+
+Requisitos: haber corrido antes `seed_seguridad` (paso 1) **y** los seeds base globales, cada uno con
+`python -m scripts.<nombre>`: `seed_inventario`, `seed_reservas`, `seed_ventas` y `seed_pagos` (idempotentes;
+si falta alguno, `poblar_demo` lo avisa antes de escribir). **No** corras `seed_todo --ejecutar` antes: crearía
+en FashionStore sus 10 productos sin foto además de los 24 con foto. También hacen falta las variables
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET` **en el servicio de Railway** (la API
+necesita al menos el nombre de la nube para construir las URLs de las fotos).
+
+```powershell
+cd C:\Desarrollo\examen\tienda_ropa\backend
+$env:DATABASE_URL = "<DATABASE_PUBLIC_URL de Railway>"
+$env:JWT_SECRET_KEY = "cualquier-valor-largo-solo-para-estos-scripts"
+$env:SEED_PASSWORD_INICIAL = "<contraseña inicial de los usuarios demo, 8 a 72 caracteres>"
+$env:CLOUDINARY_CLOUD_NAME = "<nube>"; $env:CLOUDINARY_API_KEY = "<clave>"; $env:CLOUDINARY_API_SECRET = "<secreto>"
+$origen = "C:\Desarrollo\examen\documento\2doParcial\imagenes_filtradas\imagenes_filtradas"
+
+.\.venv\Scripts\python.exe -m scripts.poblar_demo --origen $origen                       # prueba en seco
+.\.venv\Scripts\python.exe -m scripts.poblar_demo --origen $origen --solo chaski-sport --ejecutar   # una
+.\.venv\Scripts\python.exe -m scripts.poblar_demo --origen $origen --ejecutar            # todas
+
+Remove-Item Env:DATABASE_URL, Env:JWT_SECRET_KEY, Env:SEED_PASSWORD_INICIAL
+Remove-Item Env:CLOUDINARY_CLOUD_NAME, Env:CLOUDINARY_API_KEY, Env:CLOUDINARY_API_SECRET
+```
+
+El script imprime el nombre de la base (nunca la URL) y, al final, el correo de acceso de cada organización
+(la contraseña es `SEED_PASSWORD_INICIAL`; no se imprime). Alternativa para una demostración: con
+`--clave-por-organizacion` (y sin `SEED_PASSWORD_INICIAL`) cada organización usa
+`<Iniciales>.<Nombre sin espacios>.2026` (por ejemplo `CS.ChaskiSport.2026`) y el script las imprime y las
+guarda, con todos los correos, en `backend/backups/accesos_demo.txt` (esa carpeta está fuera de git; también
+se genera sin base con `--solo-accesos`). Son claves **predecibles a propósito**: sirven solo para la defensa.
+Cámbialas o desactiva los usuarios cuando termine.
+
+Los planes de demostración crecen de uno a otro: copias de seguridad que guarda 3 / 6 / 10 y plazo de cambio
+24 / 48 / 72 h (Básico / Estándar / Profesional), y el Básico pasa a incluir copias. Eso lo aplica
+`--ajustar-planes` (una vez); sin esa opción el script nunca modifica un plan ya guardado. El plan Estándar
+lo crea el propio script la primera vez. Es idempotente y reanudable: si se corta, se vuelve
+a correr. Cada corrida con fotos deja un manifiesto en `backend/backups/` (fuera de git) para poder deshacerla
+con `scripts.seed_prendas_probador --revertir`. Con `--sin-fotos` no usa Cloudinary. Contra tu base local
+`fashionstore_dev` se niega a escribir salvo con `CONFIRMO_BASE_DEV=si`. El historial de ventas lo agrega la
+etapa del ML (`seed_ml_sintetico`), no este script.
+
 ## 3. Vercel: la web
 
 1. Con la URL del backend (paso 1.4), edita `web/src/environments/environment.ts`: `apiUrl` debe ser

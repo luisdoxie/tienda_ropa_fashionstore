@@ -222,7 +222,15 @@ def verificar_precondiciones(db: Session) -> None:
     if db.scalar(select(func.count()).select_from(EstadoReserva)) == 0:
         errores.append("Faltan los estados de reserva (correr scripts.seed_reservas)")
     if db.scalar(select(func.count()).select_from(MetodoPago)) == 0:
-        errores.append("Faltan los métodos de pago (correr scripts.seed_ventas)")
+        errores.append("Faltan los métodos de pago (correr scripts.seed_pagos)")
+    # Boutique Andina registra ventas pagadas: necesita los estados de venta y de pago, que son
+    # globales y los siembran seed_ventas y seed_pagos (solo se comprobaba que hubiera métodos de pago).
+    from app.comercial.models import EstadoPago, EstadoVenta
+
+    if db.scalar(select(EstadoVenta.id).where(EstadoVenta.codigo == "pendiente_pago")) is None:
+        errores.append("Faltan los estados de venta (correr scripts.seed_ventas)")
+    if db.scalar(select(EstadoPago.id).where(EstadoPago.codigo == "iniciado")) is None:
+        errores.append("Faltan los estados de pago (correr scripts.seed_pagos)")
     if errores:
         sys.exit("Precondiciones no cumplidas:\n  - " + "\n  - ".join(errores))
 
