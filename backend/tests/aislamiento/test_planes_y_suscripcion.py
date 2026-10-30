@@ -65,6 +65,7 @@ PREFIJOS_EXENTOS_DE_SUSCRIPCION = (
     "/api/v1/mi-empresa",
     "/api/v1/plataforma/",
     "/api/v1/public/tiendas",
+    "/api/v1/public/planes",
     "/api/v1/pagos/webhook/",
     "/api/v1/pagos/qr/",
     "/api/v1/tareas/",

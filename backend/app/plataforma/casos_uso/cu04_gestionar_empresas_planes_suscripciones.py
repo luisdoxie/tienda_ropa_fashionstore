@@ -383,6 +383,11 @@ class GestionarPlanes:
     def listar(self, db: Session, paginacion: ParametrosPaginacion) -> list[Plan]:
         return self._repo.listar_todos(db, paginacion)
 
+    def listar_publicos(self, db: Session) -> list[Plan]:
+        """Sin sesión: los planes activos para la portada pública (los lee de la
+        tabla, así que un plan editado se refleja solo)."""
+        return self._repo.listar_publicos(db)
+
     def obtener(self, db: Session, plan_id: int) -> Plan:
         plan = self._repo.buscar(db, plan_id)
         if plan is None:

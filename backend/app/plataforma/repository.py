@@ -581,6 +581,11 @@ class PlanRepository(CRUDBase[Plan, PlanCrear, PlanActualizar]):
         consulta = select(Plan).order_by(Plan.id).offset(paginacion.offset).limit(paginacion.tamanio)
         return list(db.scalars(consulta))
 
+    def listar_publicos(self, db: Session) -> list[Plan]:
+        """Los planes activos para la portada pública, del más chico al más grande."""
+        consulta = select(Plan).where(Plan.activo.is_(True)).order_by(Plan.max_sucursales, Plan.id)
+        return list(db.scalars(consulta))
+
     def por_ids(self, db: Session, ids) -> dict[int, Plan]:
         ids = set(ids)
         if not ids:

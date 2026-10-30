@@ -119,8 +119,9 @@ def _nombre(clave):
 # --- 1. cada ruta pública sirve solo a su tienda -----------------------------------------------------------------
 
 
-def test_hay_28_rutas_publicas():
-    assert len(PUBLICAS) == 28 and len(CON_CODIGO) == 27
+def test_hay_29_rutas_publicas():
+    # 27 con código de tienda más /public/tiendas y /public/planes (sin código).
+    assert len(PUBLICAS) == 29 and len(CON_CODIGO) == 27
 
 
 @pytest.mark.parametrize("lado", ["A", "B"])
