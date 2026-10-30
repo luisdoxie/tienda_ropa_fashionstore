@@ -2,12 +2,23 @@
 los filtros de consulta con ids de B no devuelven nada de B; la paginación no se sale."""
 
 import pytest
+from sqlalchemy import text
+
+from app.comercial.repository import VW_VENTAS_DETALLE_V2_SQL
 
 from .introspeccion import parametros_de_consulta, ruta_por_clave
 from .plantillas import token_de_ruta
 from .rutas_esperadas import LISTADO, MATRIZ, RUTAS
 
-LISTADOS = sorted(clave for clave, ruta in RUTAS.items() if ruta.clase == LISTADO and ruta.cobertura == MATRIZ)
+# Funcionalidades que el plan Básico de B NO incluye (A es Profesional). Un listado de estas
+# funcionalidades no puede dar 200 a las dos empresas: a A le responde (200, o 409 si aún no hay
+# modelo entrenado) y a B le responde 403 `plan_no_incluye_funcionalidad`. Se prueban aparte
+# (más abajo) y quedan fuera de `LISTADOS`, que exige 200 a ambos lados (también en PostgreSQL).
+FUNCIONALIDADES_SOLO_PROFESIONAL = {"reportes_ia", "analitica_ml", "copias_seguridad"}
+
+_TODOS_LOS_LISTADOS = sorted(clave for clave, ruta in RUTAS.items() if ruta.clase == LISTADO and ruta.cobertura == MATRIZ)
+LISTADOS_DE_PLAN_SUPERIOR = [c for c in _TODOS_LOS_LISTADOS if RUTAS[c].funcionalidad in FUNCIONALIDADES_SOLO_PROFESIONAL]
+LISTADOS = [c for c in _TODOS_LOS_LISTADOS if c not in LISTADOS_DE_PLAN_SUPERIOR]
 
 # Consulta mínima para que la ruta responda 200 (parámetros obligatorios). Función(universo).
 CONSULTA_BASE = {
@@ -139,6 +150,74 @@ def test_un_filtro_con_id_de_b_no_devuelve_datos_de_b(mundo, caso):
     consulta = {**_consulta(metodo, ruta, a), filtro: b.ids[FILTRO_A_RECURSO[filtro]]}
     respuesta = _pedir(mundo, metodo, ruta, a, consulta)
     assert respuesta.status_code in (200, 404), f"{metodo} {ruta}?{filtro}: {respuesta.status_code} {respuesta.text[:300]}"
+    assert b.m("") not in respuesta.text
+    if respuesta.status_code == 200:
+        assert fuga_por_ids(respuesta.json(), b) == [], f"{metodo} {ruta}?{filtro}: ids de B en la respuesta"
+
+
+@pytest.fixture(scope="module")
+def vista_de_ventas(_mundo):
+    """La vista de ventas solo existe de forma permanente en PostgreSQL; la analítica la lee en `/estado` y `/panel`.
+    Se crea mientras corre este módulo y se retira al terminar (igual que en test_planes_y_suscripcion)."""
+    with _mundo.engine.begin() as conexion:
+        conexion.execute(text("DROP VIEW IF EXISTS vw_ventas_detalle"))
+        conexion.execute(text(VW_VENTAS_DETALLE_V2_SQL))
+    try:
+        yield
+    finally:
+        with _mundo.engine.begin() as conexion:
+            conexion.execute(text("DROP VIEW IF EXISTS vw_ventas_detalle"))
+
+
+def test_los_listados_de_plan_superior_no_estan_vacios_y_b_no_los_incluye(mundo):
+    """Guarda de la partición: A (Profesional) incluye la funcionalidad de cada listado y B (Básico) no."""
+    assert LISTADOS_DE_PLAN_SUPERIOR, "ya no hay listados de plan superior: ¿se quitó la analítica del registro?"
+    for clave in LISTADOS_DE_PLAN_SUPERIOR:
+        funcionalidad = RUTAS[clave].funcionalidad
+        incluidas = {}
+        for lado, universo in (("A", mundo.a), ("B", mundo.b)):
+            respuesta = mundo.client.get("/api/v1/mi-empresa/suscripcion", headers=universo.admin)
+            assert respuesta.status_code == 200, respuesta.text[:200]
+            incluidas[lado] = funcionalidad in respuesta.json()["funcionalidades"]
+        assert incluidas == {"A": True, "B": False}, f"{clave}: {funcionalidad} {incluidas}"
+
+
+@pytest.mark.parametrize("clave", LISTADOS_DE_PLAN_SUPERIOR, ids=[_ids(c) for c in LISTADOS_DE_PLAN_SUPERIOR])
+@pytest.mark.parametrize("lado", ["A", "B"])
+def test_el_listado_de_plan_superior_da_lo_suyo_a_a_y_403_de_plan_a_b(mundo, vista_de_ventas, clave, lado):
+    metodo, ruta = clave
+    propia, ajena = (mundo.a, mundo.b) if lado == "A" else (mundo.b, mundo.a)
+    respuesta = _pedir(mundo, metodo, ruta, propia, _consulta(metodo, ruta, propia))
+    cuerpo = respuesta.json()
+    if lado == "A":
+        # Sin modelo entrenado, la demanda, los segmentos, las anomalías y la reposición responden 409; el estado y el panel, 200.
+        if respuesta.status_code == 409:
+            assert cuerpo["codigo"] == "modelo_no_entrenado", f"{metodo} {ruta}: {respuesta.text[:300]}"
+        else:
+            assert respuesta.status_code == 200, f"{metodo} {ruta}: {respuesta.status_code} {respuesta.text[:300]}"
+    else:
+        assert respuesta.status_code == 403, f"{metodo} {ruta}: {respuesta.status_code} {respuesta.text[:300]}"
+        assert cuerpo["codigo"] == "plan_no_incluye_funcionalidad"
+        assert cuerpo["funcionalidad"] == RUTAS[clave].funcionalidad
+    assert ajena.m("") not in respuesta.text, f"{metodo} {ruta}: marca de la otra empresa en la respuesta"
+    assert fuga_por_ids(cuerpo, ajena) == [], f"{metodo} {ruta}: ids de la otra empresa"
+    # Sin datos de texto libre que marcar: lo que prueba el aislamiento de fondo con un modelo
+    # entrenado está en tests/inteligencia/test_analitica_aislamiento.py.
+
+
+CASOS_FILTRO_PLAN_SUPERIOR = [(clave, filtro) for clave in LISTADOS_DE_PLAN_SUPERIOR for filtro in _filtros_de(clave)]
+
+
+@pytest.mark.parametrize("caso", CASOS_FILTRO_PLAN_SUPERIOR, ids=[f"{_ids(c)} ?{f}" for c, f in CASOS_FILTRO_PLAN_SUPERIOR])
+def test_un_filtro_con_id_de_b_no_devuelve_datos_de_b_en_los_de_plan_superior(mundo, vista_de_ventas, caso):
+    (metodo, ruta), filtro = caso
+    a, b = mundo.a, mundo.b
+    consulta = {**_consulta(metodo, ruta, a), filtro: b.ids[FILTRO_A_RECURSO[filtro]]}
+    respuesta = _pedir(mundo, metodo, ruta, a, consulta)
+    # 409: A aún no tiene modelo y no llega a mirar el filtro; 404: la categoría de B se ve como inexistente.
+    assert respuesta.status_code in (200, 404, 409), f"{metodo} {ruta}?{filtro}: {respuesta.status_code} {respuesta.text[:300]}"
+    if respuesta.status_code == 409:
+        assert respuesta.json()["codigo"] == "modelo_no_entrenado"
     assert b.m("") not in respuesta.text
     if respuesta.status_code == 200:
         assert fuga_por_ids(respuesta.json(), b) == [], f"{metodo} {ruta}?{filtro}: ids de B en la respuesta"

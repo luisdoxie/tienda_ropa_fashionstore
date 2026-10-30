@@ -37,6 +37,13 @@ class Ruta(NamedTuple):
 
 
 RUTAS: dict[tuple[str, str], Ruta] = {
+    ('GET', '/api/v1/analitica/anomalias'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('GET', '/api/v1/analitica/demanda'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('GET', '/api/v1/analitica/estado'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('POST', '/api/v1/analitica/entrenar'): Ruta(CREA_O_ACCION, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('GET', '/api/v1/analitica/panel'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('GET', '/api/v1/analitica/reposicion'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
+    ('GET', '/api/v1/analitica/segmentos'): Ruta(LISTADO, 'reportes.ver', 'analitica_ml', MATRIZ),
     ('POST', '/api/v1/auth/login'): Ruta(AUTH, None, None, EXENTA, 'la empresa sale del cuerpo y del correo; se prueba aparte en test_tokens_y_superadmin'),
     ('POST', '/api/v1/auth/recuperar'): Ruta(AUTH, None, None, EXENTA, 'no devuelve datos; el token de recuperacion se ata a la empresa del usuario (E03)'),
     ('POST', '/api/v1/auth/recuperar/confirmar'): Ruta(AUTH, None, None, EXENTA, 'el token lleva empresa_id y huella de la clave (E03); sin recurso de empresa'),

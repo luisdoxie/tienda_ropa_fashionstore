@@ -23,7 +23,7 @@ def test_sin_tipo_de_reporte_es_incompleta_y_sugiere_ejemplos(client_por_peticio
     cuerpo = _caso(client_por_peticion, mundo_ia)
 
     assert cuerpo["estado"] == "incompleta"
-    assert len(cuerpo["sugerencias"]) == 6  # una frase por cada reporte del plan
+    assert len(cuerpo["sugerencias"]) == 11  # una frase por cada reporte del plan (6 de reportes_ia + 5 de analitica_ml)
     _sin_datos(cuerpo)
 
 

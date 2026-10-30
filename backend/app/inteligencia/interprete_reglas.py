@@ -7,13 +7,22 @@ produce campos fuera de él ni ids.
 
 Reglas de prioridad (la primera que aplica gana):
   1. texto hostil (inyección, SQL, datos de otros, credenciales)      -> sin tipo
-  2. "compar"                                                          -> comparacion_sucursales
-  3. existencia / poco stock                                           -> productos_menor_existencia
-  4. "categoria" + ingresos / ventas                                   -> ingresos_por_categoria
-  5. más/menos vendidos, top, mejores                                  -> productos_mas_vendidos
-  6. "por semana", "diario", "mensual", "por mes", ...                 -> ventas_por_periodo
-  7. "sucursal" (o nombre de una sucursal) + ventas                    -> ventas_por_sucursal
-  8. "grafico de ventas" / evolución                                   -> ventas_por_periodo
+  2. "que tan bueno es el modelo", "metricas del modelo", ...           -> metricas_modelos       (E12)
+  3. "segment", "clientes valiosos", "rfm", "tipos de clientes", ...   -> segmentacion_clientes  (E12)
+  4. "reposicion", "reponer", "van a agotar", "me quedo sin", ...      -> reposicion_sugerida    (E12)
+  5. "anomalia", "atipico", "inusual", "dias raros", ...               -> anomalias_ventas       (E12)
+  6. "predic", "pronostic", "proyecc", "cuanto voy a vender", ...      -> prediccion_demanda     (E12)
+  7. "compar"                                                          -> comparacion_sucursales
+  8. existencia / poco stock                                           -> productos_menor_existencia
+  9. "categoria" + ingresos / ventas                                   -> ingresos_por_categoria
+ 10. más/menos vendidos, top, mejores                                  -> productos_mas_vendidos
+ 11. "por semana", "diario", "mensual", "por mes", ...                 -> ventas_por_periodo
+ 12. "sucursal" (o nombre de una sucursal) + ventas                    -> ventas_por_sucursal
+ 13. "grafico de ventas" / evolución                                   -> ventas_por_periodo
+Las cinco reglas de analítica van primero porque sus frases suelen nombrar también "ventas", "demanda" o "modelo"
+("que tan bueno es el modelo de prediccion" debe ser métricas, no predicción), y las métricas antes que la predicción.
+"evaluacion", "precision" o "metricas" solos NO bastan (chocarían con frases de ventas): deben ir con "modelo",
+"prediccion", "algoritmo" o "segmentacion".
 Si nada aplica o hay dudas, los campos quedan en null/vacío y la validación posterior del
 caso de uso pide aclarar. El tipo detectado NO se filtra por plan: eso lo decide el caso de uso.
 """
@@ -63,6 +72,32 @@ _HOSTIL = re.compile(
     r"|\bdrop\s+table\b|\bor\s+1\s*=\s*1\b",
 )
 _HOSTIL_CRUDO = re.compile(r"--|/\*|\*/|<script|\$\{|\{\{")
+
+# Analítica (E12). Ver el orden de prioridad en el docstring del módulo.
+_SUJETO_DEL_MODELO = r"(?:modelos?|prediccion\w*|predicciones|algoritmos?|pronostico\w*|segmentacion)"
+_RE_METRICAS = re.compile(
+    rf"\bque tan (?:bueno|buena|preciso|precisa|confiable|acertad[oa])\w*\b.{{0,40}}\b{_SUJETO_DEL_MODELO}\b"
+    rf"|\bmetricas?\b.{{0,30}}\b{_SUJETO_DEL_MODELO}\b"
+    rf"|\b(?:precision|evaluacion|confiabilidad|calidad|exactitud|acierto|error)\s+(?:de|del|de los|de la|de las)\s+"
+    rf"(?:(?:los|la|las)\s+)?{_SUJETO_DEL_MODELO}\b"
+    rf"|\bevaluar\b.{{0,20}}\b{_SUJETO_DEL_MODELO}\b"
+)
+_RE_SEGMENTACION = re.compile(
+    r"\bsegment\w*|\bclientes? valios\w*|\brfm\b|\btipos? de clientes\b|\bclientes? vip\b|\bgrupos? de clientes\b"
+)
+_RE_PREDICCION = re.compile(r"\bpredic\w*|\bpronostic\w*|\bproyecc\w*|\bdemanda futura\b|\bcuanto voy a vender\b")
+_RE_ANOMALIAS = re.compile(
+    r"\banomali\w*|\batipic\w*|\binusual\w*|\bdias? (?:raros?|extranos?)\b|\bventas? (?:raras?|extranas?)\b"
+)
+# Reposición: solo el futuro ("se me van a agotar"); "por agotarse" / "agotado" son del reporte de existencias.
+_RE_REPOSICION = re.compile(
+    r"\breposicion\b|\brepon\w+|\bme quedo sin\b|\bvan a agotar\w*|\bse agotar\w+|\bvoy a quedar\w* sin\b"
+)
+
+_RE_HORIZONTE_SEMANAS = re.compile(rf"\b(?:proxim[oa]s?|siguientes?)\s+{_NUM}\s+semanas?\b")
+_RE_HORIZONTE_MESES = re.compile(rf"\b(?:proxim[oa]s?|siguientes?)\s+{_NUM}\s+mes(?:es)?\b")
+_RE_PROXIMA_SEMANA = re.compile(r"\b(?:proxima|siguiente) semana\b|\bsemana (?:que viene|siguiente|proxima)\b")
+_RE_PROXIMO_MES = re.compile(r"\b(?:proximo|siguiente) mes\b|\bmes (?:que viene|siguiente|proximo)\b")
 
 _RE_COMPARAR = re.compile(r"\bcompar\w*")
 _RE_EXISTENCIA = re.compile(
@@ -118,6 +153,16 @@ def _es_hostil(crudo: str, limpio: str) -> bool:
 
 
 def _detectar_tipo(t: str, hay_sucursal_nombrada: bool) -> str | None:
+    if _RE_METRICAS.search(t):
+        return "metricas_modelos"
+    if _RE_SEGMENTACION.search(t):
+        return "segmentacion_clientes"
+    if _RE_REPOSICION.search(t):
+        return "reposicion_sugerida"
+    if _RE_ANOMALIAS.search(t):
+        return "anomalias_ventas"
+    if _RE_PREDICCION.search(t):
+        return "prediccion_demanda"
     if _RE_COMPARAR.search(t):
         return "comparacion_sucursales"
     if _RE_EXISTENCIA.search(t):
@@ -186,6 +231,23 @@ def _detectar_periodo(t: str) -> PeriodoSolicitado | None:
 def _detectar_limite(t: str) -> int | None:
     m = _RE_TOP_N.search(t) or _RE_NUM_SUSTANTIVO.search(t)
     return _valor_numero(m.group(1)) if m else None
+
+
+def _detectar_horizonte(t: str) -> int | None:
+    """Semanas hacia adelante: "las proximas 8 semanas" -> 8, "los proximos 2 meses" -> 8 (N*4), "la proxima semana"
+    -> 1 y "el proximo mes" -> 4. Sin número ("las proximas semanas") no adivina. El rango 1..12 lo valida el caso
+    de uso (un valor de más es "invalida", no se recorta en silencio)."""
+    m = _RE_HORIZONTE_SEMANAS.search(t)
+    if m:
+        return _valor_numero(m.group(1))
+    m = _RE_HORIZONTE_MESES.search(t)
+    if m:
+        return _valor_numero(m.group(1)) * 4
+    if _RE_PROXIMA_SEMANA.search(t):
+        return 1
+    if _RE_PROXIMO_MES.search(t):
+        return 4
+    return None
 
 
 def _detectar_agrupacion(t: str) -> str | None:
@@ -303,6 +365,7 @@ class InterpreteReportesReglas(InterpreteReportesBase):
             agrupacion=_detectar_agrupacion(t),
             orden=orden,
             limite=_detectar_limite(t),
+            horizonte_semanas=_detectar_horizonte(t),
         )
 
 

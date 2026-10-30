@@ -17,6 +17,10 @@ ML_MAX_ARTEFACTO_BYTES = 8 * 1024 * 1024  # tope duro del modelo serializado (BY
 ML_VERSIONES_CON_ARTEFACTO = 3  # versiones que conservan el artefacto; las viejas quedan solo con métricas
 ML_TIEMPO_ENTRENAMIENTO_AVISO_SEG = 20  # si se supera, warning y el tiempo queda en `parametros`
 
+ML_DIAS_VIGENCIA = 30  # un modelo con más días se sigue usando, pero se avisa que está desactualizado
+ML_SEMANAS_NUEVAS_MAX = 4  # lo mismo si hay más de tantas semanas de ventas posteriores a sus datos
+ML_PUNTOS_DISPERSION = 300  # muestra máxima (sin identificadores) del gráfico de dispersión de segmentos
+
 ML_SEMILLA_POR_DEFECTO = 42
 ML_N_JOBS = 1  # siempre: el contenedor de Railway es chico y evita hilos descontrolados
 ML_MAX_MODELOS_EN_CACHE = 8  # modelos deserializados que el proceso conserva (empresa, tipo, versión)

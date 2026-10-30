@@ -23,6 +23,14 @@ Cada definición nace con `ejecutor=None`. El ejecutor es un callable
 interno; `REGISTRO` es una vista de solo lectura sobre él, así que ve el cambio.
 Solo acepta códigos que ya existen: no se pueden agregar reportes en caliente.
 `ContextoEjecucion` y `ResultadoEjecucion` los define el caso de uso, no este módulo.
+
+Reportes de analítica (E12)
+---------------------------
+Los reportes con `funcionalidad_plan="analitica_ml"` (predicción de demanda, segmentación de clientes y métricas de
+los modelos) salen del Machine Learning de la empresa. Su ejecutor llama SIEMPRE a `ConsultarAnaliticaML` (nunca a los
+modelos ni a `ml/`) y, si el modelo no está entrenado o es obsoleto, lanza `ReporteNoDisponible`: el caso de uso la
+convierte en el estado "no_disponible" (HTTP 200, sin filas). Son de toda la empresa (`requiere_alcance_global`): quien
+tiene una sucursal asignada recibe el mismo 403 que las rutas de `/analitica`.
 """
 
 from __future__ import annotations
@@ -32,7 +40,7 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Literal
 
-from app.core.planes import FUNC_REPORTES_IA
+from app.core.planes import FUNC_ANALITICA_ML, FUNC_REPORTES_IA
 from app.inteligencia.schemas import (
     AGRUPACIONES_REPORTE,
     CANALES_REPORTE,
@@ -49,6 +57,22 @@ TipoFiltro = Literal["periodo", "lista_nombres", "enum", "entero"]
 
 # callable(db, usuario_id, contexto) -> resultado. Firma documentada en el módulo.
 Ejecutor = Callable[..., Any]
+
+# Semanas que se pueden predecir (las mismas que `ml.demanda.MAX_SEMANAS_PREDICCION`; una prueba vigila que coincidan).
+HORIZONTE_MINIMO = 1
+HORIZONTE_MAXIMO = 12
+HORIZONTE_POR_DEFECTO = 4
+
+
+class ReporteNoDisponible(Exception):
+    """El reporte es válido pero no se puede producir ahora (el modelo de ML no está entrenado, es obsoleto o no
+    cubre lo pedido). El caso de uso la convierte en el estado "no_disponible" (HTTP 200) con `mensaje` y
+    `sugerencias`; nunca se inventan cifras para llenar el hueco."""
+
+    def __init__(self, mensaje: str, sugerencias: Iterable[str] = ()) -> None:
+        super().__init__(mensaje)
+        self.mensaje = mensaje
+        self.sugerencias = list(sugerencias)
 
 
 @dataclass(frozen=True)
@@ -80,7 +104,9 @@ class DefinicionReporte:
     filtros: Mapping[str, DefinicionFiltro]
     columnas: tuple[ColumnaReporte, ...]
     grafico: GraficoSugerido
-    funcionalidad_plan: str = FUNC_REPORTES_IA  # E12 usará "analitica_ml"
+    funcionalidad_plan: str = FUNC_REPORTES_IA  # los de analítica (E12) usan "analitica_ml"
+    # True = es de toda la empresa: quien tiene una sucursal asignada (encargado, cajero) recibe 403.
+    requiere_alcance_global: bool = False
     ejecutor: Ejecutor | None = field(default=None, compare=False, repr=False)
 
 
@@ -131,6 +157,16 @@ def _orden() -> DefinicionFiltro:
 def _agrupacion(valores: tuple[str, ...], defecto: str) -> DefinicionFiltro:
     return DefinicionFiltro(
         "enum", "Cómo agrupar el tiempo.", defecto=defecto, valores=valores
+    )
+
+
+def _horizonte() -> DefinicionFiltro:
+    return DefinicionFiltro(
+        "entero",
+        "Cuántas semanas hacia adelante predecir (la próxima semana = 1, el próximo mes = 4).",
+        defecto=HORIZONTE_POR_DEFECTO,
+        minimo=HORIZONTE_MINIMO,
+        maximo=HORIZONTE_MAXIMO,
     )
 
 
@@ -308,6 +344,142 @@ _DEFINICIONES: tuple[DefinicionReporte, ...] = (
         ),
         grafico=GraficoSugerido(tipo="torta", eje_x="categoria", eje_y="total_vendido"),
     ),
+    # ---- Analítica (E12): salen del Machine Learning de la empresa; solo el plan con analitica_ml ----
+    DefinicionReporte(
+        codigo="prediccion_demanda",
+        titulo="Predicción de demanda",
+        descripcion=(
+            "Unidades que se prevé vender cada semana en las próximas semanas, por categoría, con un rango estimado. "
+            "Es una predicción del modelo de Machine Learning de la empresa, no ventas pasadas."
+        ),
+        ejemplos=(
+            "predice la demanda de camisas para el proximo mes",
+            "pronostico de ventas para las proximas 8 semanas",
+            "cuanto voy a vender la proxima semana",
+        ),
+        filtros=MappingProxyType(
+            {
+                "categorias": _nombres("categorías"),
+                "horizonte_semanas": _horizonte(),
+            }
+        ),
+        columnas=(
+            ColumnaReporte(clave="categoria", titulo="Categoría", tipo="texto"),
+            ColumnaReporte(clave="semana", titulo="Semana (lunes)", tipo="fecha"),
+            ColumnaReporte(clave="unidades_predichas", titulo="Unidades previstas", tipo="entero"),
+            ColumnaReporte(clave="minimo", titulo="Mínimo estimado", tipo="entero"),
+            ColumnaReporte(clave="maximo", titulo="Máximo estimado", tipo="entero"),
+        ),
+        grafico=GraficoSugerido(
+            tipo="linea", eje_x="semana", eje_y="unidades_predichas", serie="categoria"
+        ),
+        funcionalidad_plan=FUNC_ANALITICA_ML,
+        requiere_alcance_global=True,
+    ),
+    DefinicionReporte(
+        codigo="segmentacion_clientes",
+        titulo="Segmentación de clientes",
+        descripcion=(
+            "Grupos de clientes según cuánto, cuántas veces y qué tan recientemente compran (RFM), con el tamaño y el "
+            "aporte a las ventas de cada grupo. Es el resultado del modelo de segmentación de la empresa."
+        ),
+        ejemplos=(
+            "segmenta mis clientes",
+            "quienes son mis clientes valiosos",
+            "muestrame los tipos de clientes que tengo",
+        ),
+        filtros=MappingProxyType({}),
+        columnas=(
+            ColumnaReporte(clave="segmento", titulo="Segmento", tipo="texto"),
+            ColumnaReporte(clave="clientes", titulo="Clientes", tipo="entero"),
+            ColumnaReporte(clave="porcentaje_clientes", titulo="% de clientes", tipo="porcentaje"),
+            ColumnaReporte(clave="recencia_media_dias", titulo="Días desde la última compra", tipo="texto"),
+            ColumnaReporte(clave="frecuencia_media", titulo="Compras por cliente", tipo="texto"),
+            ColumnaReporte(clave="monto_medio", titulo="Monto medio por cliente", tipo="moneda"),
+            ColumnaReporte(clave="porcentaje_monto", titulo="% de las ventas", tipo="porcentaje"),
+        ),
+        grafico=GraficoSugerido(tipo="torta", eje_x="segmento", eje_y="clientes"),
+        funcionalidad_plan=FUNC_ANALITICA_ML,
+        requiere_alcance_global=True,
+    ),
+    DefinicionReporte(
+        codigo="metricas_modelos",
+        titulo="Métricas de los modelos",
+        descripcion=(
+            "Qué tan acertados son los modelos de Machine Learning de la empresa: el error de la predicción de demanda "
+            "frente a su línea base (promedio móvil) y la calidad de la separación de los segmentos de clientes."
+        ),
+        ejemplos=(
+            "que tan bueno es el modelo de prediccion",
+            "metricas del modelo",
+            "precision del modelo de demanda",
+        ),
+        filtros=MappingProxyType({}),
+        columnas=(
+            ColumnaReporte(clave="modelo", titulo="Modelo", tipo="texto"),
+            ColumnaReporte(clave="metrica", titulo="Métrica", tipo="texto"),
+            ColumnaReporte(clave="valor", titulo="Valor", tipo="texto"),
+            ColumnaReporte(clave="linea_base", titulo="Línea base", tipo="texto"),
+        ),
+        grafico=GraficoSugerido(tipo="tabla"),
+        funcionalidad_plan=FUNC_ANALITICA_ML,
+        requiere_alcance_global=True,
+    ),
+    DefinicionReporte(
+        codigo="anomalias_ventas",
+        titulo="Días de ventas inusuales",
+        descripcion=(
+            "Días en que una sucursal vendió mucho más o mucho menos de lo esperado según su comportamiento habitual. "
+            "Es el resultado del modelo de detección de anomalías de la empresa; un día inusual no es necesariamente un error."
+        ),
+        ejemplos=(
+            "dias raros en mis ventas",
+            "hubo anomalias en las ventas del ultimo mes",
+            "que dias vendimos algo inusual",
+        ),
+        filtros=MappingProxyType({"periodo": _periodo({"tipo": "ultimos_dias", "n": 90})}),
+        columnas=(
+            ColumnaReporte(clave="fecha", titulo="Fecha", tipo="fecha"),
+            ColumnaReporte(clave="sucursal", titulo="Sucursal", tipo="texto"),
+            ColumnaReporte(clave="total_ventas", titulo="Ventas del día (Bs)", tipo="moneda"),
+            ColumnaReporte(clave="esperado", titulo="Esperado (Bs)", tipo="moneda"),
+            ColumnaReporte(clave="desviacion_pct", titulo="Desviación", tipo="texto"),
+            ColumnaReporte(clave="severidad", titulo="Severidad", tipo="texto"),
+        ),
+        grafico=GraficoSugerido(tipo="tabla"),
+        funcionalidad_plan=FUNC_ANALITICA_ML,
+        requiere_alcance_global=True,
+    ),
+    DefinicionReporte(
+        codigo="reposicion_sugerida",
+        titulo="Reposición sugerida",
+        descripcion=(
+            "Qué categorías se pueden agotar según la demanda prevista y el stock disponible hoy, con una cantidad "
+            "orientativa a reponer. Es por categoría, no por variante ni por sucursal."
+        ),
+        ejemplos=(
+            "que categorias se me van a agotar",
+            "que debo reponer el proximo mes",
+            "reposicion sugerida para las proximas 4 semanas",
+        ),
+        filtros=MappingProxyType(
+            {
+                "categorias": _nombres("categorías"),
+                "horizonte_semanas": _horizonte(),
+            }
+        ),
+        columnas=(
+            ColumnaReporte(clave="categoria", titulo="Categoría", tipo="texto"),
+            ColumnaReporte(clave="disponible", titulo="Disponible hoy", tipo="entero"),
+            ColumnaReporte(clave="demanda_semanal_promedio", titulo="Demanda semanal prevista", tipo="texto"),
+            ColumnaReporte(clave="semanas_cobertura", titulo="Semanas de cobertura", tipo="texto"),
+            ColumnaReporte(clave="estado", titulo="Estado", tipo="texto"),
+            ColumnaReporte(clave="sugerencia_unidades", titulo="Reponer (orientativo)", tipo="entero"),
+        ),
+        grafico=GraficoSugerido(tipo="tabla"),
+        funcionalidad_plan=FUNC_ANALITICA_ML,
+        requiere_alcance_global=True,
+    ),
 )
 
 # Construido una vez al importar. REGISTRO es de solo lectura; lo único que cambia
@@ -359,7 +531,7 @@ def descripcion_para_prompt(funcionalidades: Iterable[str] | None = None) -> str
     )
     lineas = ["Tipos de reporte (usa exactamente uno de estos códigos en tipo_reporte):"]
     for d in definiciones:
-        filtros = ", ".join(_describir_filtro(n, f) for n, f in d.filtros.items())
+        filtros = ", ".join(_describir_filtro(n, f) for n, f in d.filtros.items()) or "ninguno"
         lineas.append(f"- {d.codigo}: {d.descripcion}")
         lineas.append(f"  filtros permitidos: {filtros}")
     lineas.append("")

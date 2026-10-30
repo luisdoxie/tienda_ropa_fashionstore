@@ -113,7 +113,7 @@ def test_ruta_autenticada_rechaza_cualquier_token_invalido(mundo, tokens_a_medid
 
 def test_hay_unas_190_rutas_autenticadas():
     # Si cambia el registro, esta cuenta avisa que la parametrización cubre lo que se espera.
-    assert 150 <= len(AUTENTICADAS) <= 230, len(AUTENTICADAS)
+    assert 150 <= len(AUTENTICADAS) <= 260, len(AUTENTICADAS)  # 233 con las 7 rutas de /analitica (E12)
     assert len(AUTENTICADAS) + sum(1 for c in TODAS if RUTAS[c].clase in CLASES_NO_AUTENTICADAS) == len(RUTAS)
 
 

@@ -50,7 +50,15 @@ from tests.aislamiento.plantillas import ESPEJO_ACEPTADO, PARAMETROS
 from tests.aislamiento.rutas_esperadas import LISTADO, MATRIZ, POR_ID, RUTAS
 from tests.aislamiento.test_matriz_fk_en_cuerpo import _con_valor
 from tests.aislamiento.test_matriz_fk_en_cuerpo import _pedir as _pedir_fk
-from tests.aislamiento.test_matriz_listados import LISTADOS, SIN_MARCA, _consulta, fuga_por_ids
+from tests.aislamiento.test_matriz_listados import (
+    FILTRO_A_RECURSO,
+    LISTADOS,
+    LISTADOS_DE_PLAN_SUPERIOR,
+    SIN_MARCA,
+    _consulta,
+    _filtros_de,
+    fuga_por_ids,
+)
 from tests.aislamiento.test_matriz_listados import _pedir as _pedir_listado
 from tests.aislamiento.test_zz_consistencia_final import contar_inconsistentes, relaciones_entre_tablas_de_empresa
 from tests.aislamiento.universo import TOTAL_VENDIDO, UNIDADES_POR_VENTA, crear, crear_universo
@@ -303,6 +311,61 @@ def test_el_listado_trae_solo_datos_de_la_empresa(mundo, clave):
         assert fuga_por_ids(respuesta.json(), ajena) == [], f"{metodo} {ruta}: ids de la otra empresa"
         if clave not in SIN_MARCA_PG:
             assert propia.m("") in respuesta.text, f"{metodo} {ruta}: no trae datos de la propia empresa"
+
+
+def test_los_listados_de_plan_superior_incluyen_toda_la_analitica_y_no_estan_en_listados():
+    """`LISTADOS` exige 200 a las dos empresas, así que NO contiene a la analítica (B, Básico, recibe 403): sin esta
+    cobertura aparte las 7 rutas de /analitica no se recorrerían en PostgreSQL."""
+    esperadas = {
+        ("GET", f"{API}/analitica/{ruta}") for ruta in ("estado", "demanda", "segmentos", "anomalias", "reposicion", "panel")
+    }
+    assert esperadas <= set(LISTADOS_DE_PLAN_SUPERIOR), sorted(esperadas - set(LISTADOS_DE_PLAN_SUPERIOR))
+    assert not set(LISTADOS_DE_PLAN_SUPERIOR) & set(LISTADOS)
+    assert all(RUTAS[c].funcionalidad == "analitica_ml" for c in esperadas)
+
+
+@pytest.mark.parametrize(
+    "clave", LISTADOS_DE_PLAN_SUPERIOR, ids=[f"{m} {r.removeprefix(API)}" for m, r in LISTADOS_DE_PLAN_SUPERIOR]
+)
+def test_el_listado_de_plan_superior_da_lo_suyo_a_a_y_403_de_plan_a_b(mundo, clave):
+    """A (Profesional): 200, o 409 `modelo_no_entrenado` si la ruta predice con un modelo que aún no existe. B (Básico):
+    403 `plan_no_incluye_funcionalidad`. En ningún caso hay marcas ni ids de la otra empresa."""
+    metodo, ruta = clave
+    for lado, propia, ajena in (("A", mundo.a, mundo.b), ("B", mundo.b, mundo.a)):
+        respuesta = _pedir_listado(mundo, metodo, ruta, propia, _consulta(metodo, ruta, propia))
+        cuerpo = respuesta.json()
+        detalle = f"{metodo} {ruta} ({lado}): {respuesta.status_code} {respuesta.text[:300]}"
+        if lado == "A":
+            if respuesta.status_code == 409:
+                assert cuerpo["codigo"] == "modelo_no_entrenado", detalle
+            else:
+                assert respuesta.status_code == 200, detalle
+        else:
+            assert respuesta.status_code == 403, detalle
+            assert cuerpo["codigo"] == "plan_no_incluye_funcionalidad", detalle
+            assert cuerpo["funcionalidad"] == RUTAS[clave].funcionalidad, detalle
+        assert ajena.m("") not in respuesta.text, f"{detalle} (marca de la otra empresa)"
+        assert fuga_por_ids(cuerpo, ajena) == [], f"{detalle} (ids de la otra empresa)"
+
+
+CASOS_FILTRO_PLAN_SUPERIOR = [(c, f) for c in LISTADOS_DE_PLAN_SUPERIOR for f in _filtros_de(c)]
+
+
+@pytest.mark.parametrize(
+    "caso", CASOS_FILTRO_PLAN_SUPERIOR, ids=[f"{m} {r.removeprefix(API)} ?{f}" for (m, r), f in CASOS_FILTRO_PLAN_SUPERIOR]
+)
+def test_un_filtro_con_id_de_b_no_devuelve_datos_de_b_en_los_de_plan_superior(mundo, caso):
+    (metodo, ruta), filtro = caso
+    a, b = mundo.a, mundo.b
+    consulta = {**_consulta(metodo, ruta, a), filtro: b.ids[FILTRO_A_RECURSO[filtro]]}
+    respuesta = _pedir_listado(mundo, metodo, ruta, a, consulta)
+    # 409: A aún no tiene modelo y no llega a mirar el filtro; 404: la categoría de B se ve como inexistente.
+    assert respuesta.status_code in (200, 404, 409), f"{metodo} {ruta}?{filtro}: {respuesta.status_code} {respuesta.text[:300]}"
+    if respuesta.status_code == 409:
+        assert respuesta.json()["codigo"] == "modelo_no_entrenado"
+    assert b.m("") not in respuesta.text
+    if respuesta.status_code == 200:
+        assert fuga_por_ids(respuesta.json(), b) == [], f"{metodo} {ruta}?{filtro}: ids de B en la respuesta"
 
 
 # =================================================================================================

@@ -30,7 +30,7 @@ from app.inteligencia.schemas import (
     RecomendacionGroq,
     SolicitudReporte,
 )
-from app.inteligencia.registro_reportes import descripcion_para_prompt
+from app.inteligencia.registro_reportes import descripcion_para_prompt, disponibles_para
 
 logger = logging.getLogger(__name__)
 
@@ -348,18 +348,33 @@ _FORMA_SOLICITUD = (
     '"productos": [], "canal": null, "agrupacion": null, "orden": null, "limite": null, '
     '"solicitud_multiple": false}'
 )
+# Con los reportes de analítica (E12) la forma gana `horizonte_semanas`. Solo se le muestra a Groq si el plan de la empresa
+# incluye algún reporte que lo use: un plan sin analitica_ml no ve ni el campo ni la regla.
+_FORMA_SOLICITUD_CON_HORIZONTE = _FORMA_SOLICITUD.replace(
+    '"solicitud_multiple"', '"horizonte_semanas": null, "solicitud_multiple"'
+)
+_REGLA_HORIZONTE = (
+    "- horizonte_semanas es cuántas semanas hacia el futuro quiere predecir (la próxima semana = 1, el "
+    "próximo mes = 4, los próximos 2 meses = 8); solo se usa en los reportes de predicción, en los demás "
+    "déjalo en null.\n"
+)
 _FORMA_PERIODO = '{"tipo": "este_mes", "n": null, "mes": null, "anio": null, "desde": null, "hasta": null}'
 
 
 def armar_prompt_reportes(funcionalidades: Iterable[str]) -> str:
     """Prompt de sistema FIJO del intérprete de reportes: se genera solo desde el registro
-    cerrado (códigos, filtros y enums). Sin datos del negocio y sin el texto del usuario."""
+    cerrado (códigos, filtros y enums). Sin datos del negocio y sin el texto del usuario.
+    Solo describe los reportes que el plan incluye (`funcionalidades`)."""
+    funcionalidades = list(funcionalidades)
+    con_horizonte = any("horizonte_semanas" in d.filtros for d in disponibles_para(funcionalidades))
+    forma = _FORMA_SOLICITUD_CON_HORIZONTE if con_horizonte else _FORMA_SOLICITUD
+    regla_horizonte = _REGLA_HORIZONTE if con_horizonte else ""
     return (
         "Eres el intérprete de solicitudes de reportes del back office de una tienda de "
         "ropa. Conviertes la frase del usuario en una solicitud estructurada. "
         "Devuelve ÚNICAMENTE un objeto JSON con esta forma exacta, sin texto adicional "
         "ni markdown:\n"
-        f"{_FORMA_SOLICITUD}\n"
+        f"{forma}\n"
         "Cuando la frase indica un periodo, 'periodo' tiene esta forma (los campos que no "
         f"aplican van en null):\n{_FORMA_PERIODO}\n\n"
         f"{descripcion_para_prompt(funcionalidades)}\n\n"
@@ -378,6 +393,7 @@ def armar_prompt_reportes(funcionalidades: Iterable[str]) -> str:
         "que el usuario escribió, tal como los dijo. Si no menciona ninguno, lista vacía.\n"
         "- Si el usuario menciona un periodo, un canal, una agrupación, un orden o un límite, "
         "inclúyelos; si no los menciona, déjalos en null. No rellenes valores por defecto.\n"
+        f"{regla_horizonte}"
         "- Si el usuario pide varios reportes distintos a la vez, elige el primero y pon "
         "solicitud_multiple en true.\n"
         "- Nunca generes SQL ni código: solo este JSON."

@@ -31,15 +31,17 @@ from app.core.deps import ParametrosPeriodo
 from app.core.exceptions import ErrorFuncional
 from app.core.tenant import en_empresa
 from app.inteligencia.casos_uso.cu24_analizar_con_machine_learning import (
+    TIPO_ANOMALIAS,
     TIPO_DEMANDA,
     TIPO_SEGMENTOS,
     EntrenarModelosAnaliticos,
+    _a_json,
 )
-from app.inteligencia.ml import demanda, persistencia, segmentos, sintetico
+from app.inteligencia.ml import anomalias, demanda, persistencia, segmentos, sintetico
 from app.inteligencia.ml.limites import ML_MAX_CLIENTES, ML_MAX_SEMANAS
-from app.inteligencia.models import ModeloML
+from app.inteligencia.models import TIPOS_MODELO_ML, ModeloML
 from app.inteligencia.repository import ModeloMLRepository
-from app.plataforma.models import Bitacora, Cliente, Usuario
+from app.plataforma.models import Bitacora, Cliente, Sucursal, Usuario
 from scripts.poblar_demo import seed
 from scripts.seed_ml_sintetico import cargar_historial, correo_cliente
 from tests.inteligencia.ml._escenario import FIN, PASSWORD, cargar_historia, id_de, organizaciones
@@ -50,7 +52,13 @@ from .paralelo import ejecutar_en_paralelo
 CU = EntrenarModelosAnaliticos()
 REPO = ModeloMLRepository()
 CENTAVO = Decimal("0.01")
-TIPOS = (TIPO_DEMANDA, TIPO_SEGMENTOS)
+TIPOS = (TIPO_DEMANDA, TIPO_SEGMENTOS, TIPO_ANOMALIAS)  # lo que entrena `ejecutar` por defecto (E12b: son tres)
+
+
+def _serie_por_sucursal(db, desde_dias: int = anomalias.MAX_DIAS) -> list[dict]:
+    """Lo que `comercial` entrega al detector de anomalías (la sesión ya debe estar en una empresa)."""
+    periodo = ParametrosPeriodo(desde=FIN - dt.timedelta(days=desde_dias), hasta=FIN)
+    return comercial_politicas.reporte_ventas_serie_diaria(db, periodo, desglose=("sucursal",))
 
 
 @pytest.fixture()
@@ -189,8 +197,22 @@ def test_entrenar_en_postgresql_guarda_jsonb_sin_nan_y_un_bytea_que_se_carga_y_p
         asignado = segmentos.asignar_segmento(modelo_rfm, fila["ultima_compra"], fila["frecuencia"], fila["monto_total"], FIN)
         assert asignado in ids_segmento
 
+        # Anomalías: el BYTEA se carga con su huella, lleva la empresa y detecta lo mismo que el modelo recalculado
+        # sin pasar por la base (mismas filas de `comercial`, misma semilla).
+        anomalias_ml = REPO.obtener_activo(db, TIPO_ANOMALIAS, con_artefacto=True)
+        modelo_ano = persistencia.deserializar(anomalias_ml.artefacto, anomalias_ml.artefacto_sha256)
+        assert modelo_ano["empresa_id"] == mundo.fs and modelo_ano["hasta"] == FIN.isoformat()
+        filas_ano = _serie_por_sucursal(db)
+        assert filas_ano and {f["sucursal_id"] for f in filas_ano} >= set(modelo_ano["sucursales"])
+        recalculado_ano = anomalias.entrenar_anomalias(filas_ano, FIN)
+        assert recalculado_ano.estado == "ok" and anomalias_ml.metricas == _a_json(recalculado_ano.metricas)
+        assert anomalias_ml.filas_entrenamiento == recalculado_ano.filas_entrenamiento
+        detectadas = anomalias.detectar_anomalias(modelo_ano, filas_ano, FIN, 365)
+        assert detectadas == anomalias.detectar_anomalias(recalculado_ano.artefacto, filas_ano, FIN, 365)
+        assert len(detectadas) == anomalias_ml.metricas["n_marcados"] > 0  # el generador inyecta días inusuales
+
     segunda = _entrenar(fabrica_pg, mundo.fs)
-    assert [r.version for r in segunda.resultados] == [2, 2]
+    assert [r.version for r in segunda.resultados] == [2] * len(TIPOS)
     modelos = _modelos(fabrica_pg, mundo.fs)
     assert set(modelos) == {(t, v) for t in TIPOS for v in (1, 2)}
     assert all(modelos[(t, 1)].activo is False and modelos[(t, 2)].activo is True for t in TIPOS)
@@ -224,10 +246,27 @@ def test_cada_empresa_entrena_con_lo_suyo_y_no_ve_el_modelo_ni_el_artefacto_de_l
     assert modelos_fs[(TIPO_SEGMENTOS, 1)].metricas["n_clientes"] == len(sintetico.filas_rfm(historial_fs, FIN))
     assert modelos_ch[(TIPO_SEGMENTOS, 1)].metricas["n_clientes"] == len(sintetico.filas_rfm(historial_ch, FIN))
     assert modelos_fs[(TIPO_DEMANDA, 1)].artefacto_sha256 != modelos_ch[(TIPO_DEMANDA, 1)].artefacto_sha256
+    assert modelos_fs[(TIPO_ANOMALIAS, 1)].artefacto_sha256 != modelos_ch[(TIPO_ANOMALIAS, 1)].artefacto_sha256
 
-    # La base tiene las cuatro filas; cada sesión solo ve las suyas, por la API del repositorio y por id.
+    # Anomalías: cada empresa entrenó con las filas por sucursal de SU historial (calculadas aparte con `comercial`) y
+    # su artefacto solo conoce sucursales propias.
+    sucursales_de = {}
+    for nombre, empresa_id in (("fs", mundo.fs), ("ch", mundo.ch)):
+        with fabrica_pg() as db, en_empresa(db, empresa_id):
+            filas = _serie_por_sucursal(db)
+            modelo = REPO.obtener_activo(db, TIPO_ANOMALIAS, con_artefacto=True)
+            artefacto = persistencia.deserializar(modelo.artefacto, modelo.artefacto_sha256)
+            propias = set(db.scalars(select(Sucursal.id)))
+        assert modelo.metricas == _a_json(anomalias.entrenar_anomalias(filas, FIN).metricas)
+        assert artefacto["empresa_id"] == empresa_id
+        assert artefacto["sucursales"] and set(artefacto["sucursales"]) <= propias
+        assert propias >= {f["sucursal_id"] for f in filas}  # y las filas de ventas también son solo de sucursales propias
+        sucursales_de[nombre] = set(artefacto["sucursales"])
+    assert sucursales_de["fs"].isdisjoint(sucursales_de["ch"])
+
+    # La base tiene las seis filas (tres tipos por empresa); cada sesión solo ve las suyas, por la API del repositorio y por id.
     with engine_pg.connect() as conexion:
-        assert conexion.execute(text("SELECT COUNT(*) FROM modelo_ml")).scalar() == 4
+        assert conexion.execute(text("SELECT COUNT(*) FROM modelo_ml")).scalar() == 2 * len(TIPOS) == 6
     id_fs = modelos_fs[(TIPO_DEMANDA, 1)].id
     id_ch = modelos_ch[(TIPO_DEMANDA, 1)].id
     with fabrica_pg() as db:
@@ -285,6 +324,7 @@ def test_el_candado_consultivo_real_bloquea_a_la_segunda_conexion_y_se_suelta_al
 
         # Otro tipo de la misma empresa y el mismo tipo de OTRA empresa no se bloquean con el candado tomado.
         assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.fs, TIPO_SEGMENTOS) is False
+        assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.fs, TIPO_ANOMALIAS) is False
         assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.ch, TIPO_DEMANDA) is False
         db2.rollback()
 
@@ -317,6 +357,49 @@ def test_con_el_candado_de_un_tipo_tomado_el_otro_tipo_si_entrena_y_al_soltarlo_
         db1.rollback()
     assert _entrenar(fabrica_pg, mundo.fs, tipos=[TIPO_SEGMENTOS]).entrenados == [TIPO_SEGMENTOS]
     assert set(_modelos(fabrica_pg, mundo.fs)) == {(TIPO_DEMANDA, 1), (TIPO_SEGMENTOS, 1)}
+
+
+def _candados_consultivos_propios(db) -> set[tuple[int, int]]:
+    """(clase, objeto) de los candados consultivos de dos enteros que tiene esta conexión: son los (empresa, clave de tipo)."""
+    filas = db.execute(
+        text("SELECT classid::int, objid::int FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND objsubid = 2")
+    ).all()
+    return {(f[0], f[1]) for f in filas}
+
+
+def test_cada_tipo_tiene_su_propio_candado_y_el_de_anomalias_solo_bloquea_a_anomalias(fabrica_pg, mundo):
+    """La clave del candado es (empresa, posición del tipo en TIPOS_MODELO_ML + 1): 1, 2 y 3 sin repetirse. Se comprueba
+    en `pg_locks` (no solo por el resultado) y con el tercer tipo que se agregó en la E12b."""
+    claves = {tipo: TIPOS_MODELO_ML.index(tipo) + 1 for tipo in TIPOS}
+    assert claves == {TIPO_DEMANDA: 1, TIPO_SEGMENTOS: 2, TIPO_ANOMALIAS: 3}
+    with fabrica_pg() as db:
+        cargar_historia(db, "fashionstore")
+
+    with fabrica_pg() as db1, fabrica_pg() as db2:
+        for tipo in TIPOS:  # cada tipo toma exactamente su (empresa, clave)
+            assert EntrenarModelosAnaliticos._candado_ocupado(db1, mundo.fs, tipo) is False
+            assert _candados_consultivos_propios(db1) == {(mundo.fs, claves[tipo])}, tipo
+            db1.rollback()
+
+        assert EntrenarModelosAnaliticos._candado_ocupado(db1, mundo.fs, TIPO_ANOMALIAS) is False
+        # Los otros dos tipos de la misma empresa y las anomalías de la OTRA empresa no esperan.
+        assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.fs, TIPO_DEMANDA) is False
+        assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.fs, TIPO_SEGMENTOS) is False
+        assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.ch, TIPO_ANOMALIAS) is False
+        db2.rollback()
+        assert EntrenarModelosAnaliticos._candado_ocupado(db2, mundo.fs, TIPO_ANOMALIAS) is True
+        db2.rollback()
+
+        # Entrenar demanda y segmentos sigue funcionando; entrenar anomalías falla limpio y no guarda nada.
+        assert _entrenar(fabrica_pg, mundo.fs, tipos=[TIPO_DEMANDA, TIPO_SEGMENTOS]).entrenados == [TIPO_DEMANDA, TIPO_SEGMENTOS]
+        with pytest.raises(ErrorFuncional) as error:
+            _entrenar(fabrica_pg, mundo.fs, tipos=[TIPO_ANOMALIAS])
+        assert (error.value.status_code, error.value.codigo, error.value.contexto["tipo"]) == (409, "entrenamiento_en_curso", TIPO_ANOMALIAS)
+        assert set(_modelos(fabrica_pg, mundo.fs)) == {(TIPO_DEMANDA, 1), (TIPO_SEGMENTOS, 1)}
+        db1.rollback()
+
+    assert _entrenar(fabrica_pg, mundo.fs, tipos=[TIPO_ANOMALIAS]).entrenados == [TIPO_ANOMALIAS]
+    assert set(_modelos(fabrica_pg, mundo.fs)) == {(t, 1) for t in TIPOS}
 
 
 # ---- 5. Entrenamientos concurrentes de verdad ------------------------------------------------------------------------------------
@@ -368,6 +451,27 @@ def test_tres_entrenamientos_simultaneos_de_la_demanda_dejan_las_versiones_consi
 
     modelos = _modelos(fabrica_pg, mundo.fs)
     assert sorted(v for (_, v) in modelos) == versiones_devueltas
+    assert [v for (_, v), m in sorted(modelos.items()) if m.activo] == [len(buenos)]
+
+
+def test_tres_entrenamientos_simultaneos_de_anomalias_dejan_las_versiones_consistentes(fabrica_pg, mundo):
+    """Lo mismo para el tercer tipo (E12b): el candado (empresa, 3) hace que solo uno a la vez entrene y el resto falle
+    limpio; las versiones guardadas no se repiten, no tienen huecos y hay UNA sola vigente."""
+    with fabrica_pg() as db:
+        cargar_historia(db, "fashionstore")
+
+    def entrenar_anomalias(db):
+        with en_empresa(db, mundo.fs):
+            return CU.ejecutar(db, None, tipos=[TIPO_ANOMALIAS], hasta=FIN)
+
+    resultados = ejecutar_en_paralelo(fabrica_pg, [entrenar_anomalias] * 3)
+    buenos = [r for r in resultados if r.ok]
+    malos = [r for r in resultados if not r.ok]
+    assert buenos
+    assert all(isinstance(r.error, ErrorFuncional) and r.error.codigo == "entrenamiento_en_curso" for r in malos), [repr(r.error) for r in malos]
+    assert sorted(r.valor.resultados[0].version for r in buenos) == list(range(1, len(buenos) + 1))
+    modelos = _modelos(fabrica_pg, mundo.fs)
+    assert {t for (t, _) in modelos} == {TIPO_ANOMALIAS}  # los otros dos tipos no se tocaron
     assert [v for (_, v), m in sorted(modelos.items()) if m.activo] == [len(buenos)]
 
 

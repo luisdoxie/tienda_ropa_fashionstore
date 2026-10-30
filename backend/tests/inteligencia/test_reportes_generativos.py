@@ -325,9 +325,14 @@ def test_el_catalogo_lista_los_seis_reportes_con_sus_ejemplos(client_por_peticio
 
     assert respuesta.status_code == 200
     catalogo = respuesta.json()
-    assert [r["codigo"] for r in catalogo] == [
+    # La empresa A es Profesional: tras los seis de reportes_ia vienen los tres de analitica_ml (E12b).
+    assert [r["codigo"] for r in catalogo][:6] == [
         "ventas_por_sucursal", "productos_mas_vendidos", "ventas_por_periodo",
         "comparacion_sucursales", "productos_menor_existencia", "ingresos_por_categoria",
     ]
-    assert all(r["ejemplos"] and r["columnas"] and r["grafico"] and r["filtros"] for r in catalogo)
+    assert [r["codigo"] for r in catalogo][6:] == [
+        "prediccion_demanda", "segmentacion_clientes", "metricas_modelos", "anomalias_ventas", "reposicion_sugerida",
+    ]  # fmt: skip
+    assert all(r["ejemplos"] and r["columnas"] and r["grafico"] for r in catalogo)
+    assert all(r["filtros"] for r in catalogo[:6])  # los de analitica pueden no tener filtros
     assert "ejecutor" not in catalogo[0]

@@ -67,7 +67,10 @@ def test_exporta_pdf_con_las_cifras_reales_y_las_cabeceras(client_por_peticion, 
 
 
 @pytest.mark.parametrize("formato", ["xlsx", "pdf"])
-@pytest.mark.parametrize("codigo", list(registro_reportes.REGISTRO))
+# Los de analitica_ml (E12b) necesitan un modelo entrenado: se exportan en test_reportes_inteligentes_cu23.py.
+@pytest.mark.parametrize(
+    "codigo", [c for c, d in registro_reportes.REGISTRO.items() if d.funcionalidad_plan == "reportes_ia"]
+)
 def test_los_seis_reportes_se_exportan_en_ambos_formatos(client_por_peticion, mundo_ia, codigo, formato):
     respuesta = exportar(
         client_por_peticion,

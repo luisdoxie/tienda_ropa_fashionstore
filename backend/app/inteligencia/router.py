@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import ParametrosPeriodo, periodo_reportes
 from app.core.permisos import PERMISO_REPORTES_VER
-from app.core.planes import FUNC_REPORTES_CONVENCIONALES, FUNC_REPORTES_IA, exigir_funcionalidad
+from app.core.planes import FUNC_ANALITICA_ML, FUNC_REPORTES_CONVENCIONALES, FUNC_REPORTES_IA, exigir_funcionalidad
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user, get_current_user_opcional, require_permission
 from app.inteligencia.casos_uso.cu20_recomendar_productos import RecomendarProductos
@@ -25,12 +25,19 @@ from app.inteligencia.casos_uso.cu23_generar_reportes_con_ia import (
     GenerarReporteComandoVoz,
     InterpretarSolicitudReporte,
 )
+from app.inteligencia.casos_uso.cu24_analizar_con_machine_learning import ConsultarAnaliticaML
 from app.inteligencia.politicas import registrar_evento
 from app.inteligencia.schemas import (
+    AnomaliasRespuesta,
     DashboardRespuesta,
+    DemandaRespuesta,
+    EntrenarRequest,
+    EntrenarRespuesta,
+    EstadoAnalitica,
     EventoCrear,
     ExportarReporteRequest,
     FormatoExportacion,
+    PanelAnalitico,
     RecomendacionesRespuesta,
     ReporteGenerativoRequest,
     ReporteGenerativoRespuesta,
@@ -39,6 +46,8 @@ from app.inteligencia.schemas import (
     ReporteVentasRespuesta,
     ReporteVozRequest,
     ReporteVozRespuesta,
+    ReposicionRespuesta,
+    SegmentosRespuesta,
     VozRequest,
     VozRespuesta,
 )
@@ -299,6 +308,95 @@ def exportar_reporte_ia(
 
 _routers_reportes_ia = [reportes_ia_router]
 
+
+# ---- Analítica con Machine Learning (CU-24, E12) -------------------------------------------------
+# Solo el plan con `analitica_ml` (el Profesional) y solo alcance global (administrador de la empresa; lo comprueba el
+# caso de uso). Orden de errores: 401, suscripción, plan, permiso y recién entonces las reglas de negocio. El
+# `empresa_id` NUNCA se lee del cliente: la empresa es la del token.
+
+cu_analitica = ConsultarAnaliticaML()
+
+
+def alcance_global_requerido(usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> None:
+    """403 si el usuario tiene una sucursal asignada: la analítica es de toda la empresa (D28). Va como dependencia,
+    después del plan y del permiso, para que corra ANTES de validar los parámetros (un encargado con `semanas=99`
+    recibe 403, no 422). El caso de uso lo vuelve a comprobar por su cuenta."""
+    cu_analitica.exigir_alcance_global(db, usuario.id)
+
+
+analitica_router = APIRouter(
+    prefix="/api/v1/analitica",
+    tags=["analitica"],
+    dependencies=[Depends(exigir_funcionalidad(FUNC_ANALITICA_ML)), ver_requerido, Depends(alcance_global_requerido)],
+)
+
+
+@analitica_router.get("/estado", response_model=EstadoAnalitica)
+@limiter.limit("30/minute")
+def analitica_estado(request: Request, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> EstadoAnalitica:
+    return cu_analitica.estado(db, usuario.id)
+
+
+@analitica_router.post("/entrenar", response_model=EntrenarRespuesta)
+@limiter.limit("3/minute")
+def analitica_entrenar(
+    request: Request,
+    datos: EntrenarRequest | None = None,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> EntrenarRespuesta:
+    return cu_analitica.entrenar(db, usuario.id, datos.tipos if datos else None, contexto)
+
+
+@analitica_router.get("/demanda", response_model=DemandaRespuesta)
+@limiter.limit("30/minute")
+def analitica_demanda(
+    request: Request,
+    semanas: Annotated[int, Query(ge=1, le=12)] = 4,
+    categoria_id: Annotated[int | None, Query(ge=1)] = None,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DemandaRespuesta:
+    return cu_analitica.demanda(db, usuario.id, semanas, categoria_id)
+
+
+@analitica_router.get("/segmentos", response_model=SegmentosRespuesta)
+@limiter.limit("30/minute")
+def analitica_segmentos(request: Request, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> SegmentosRespuesta:
+    return cu_analitica.segmentos(db, usuario.id)
+
+
+@analitica_router.get("/anomalias", response_model=AnomaliasRespuesta)
+@limiter.limit("30/minute")
+def analitica_anomalias(
+    request: Request,
+    dias: Annotated[int, Query(ge=7, le=365)] = 90,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AnomaliasRespuesta:
+    return cu_analitica.anomalias(db, usuario.id, dias)
+
+
+@analitica_router.get("/reposicion", response_model=ReposicionRespuesta)
+@limiter.limit("30/minute")
+def analitica_reposicion(
+    request: Request,
+    semanas: Annotated[int, Query(ge=1, le=12)] = 4,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReposicionRespuesta:
+    return cu_analitica.reposicion(db, usuario.id, semanas)
+
+
+@analitica_router.get("/panel", response_model=PanelAnalitico)
+@limiter.limit("30/minute")
+def analitica_panel(request: Request, usuario=Depends(get_current_user), db: Session = Depends(get_db)) -> PanelAnalitico:
+    return cu_analitica.panel(db, usuario.id)
+
+
+_routers_analitica = [analitica_router]
+
 # ---- /api/v1/public/{codigo} (tienda pública por empresa) --------------------------
 # Los MISMOS handlers públicos de /ia (voz, recomendaciones, eventos) bajo el
 # código de la tienda (D02, D10). La empresa la fija `contexto_empresa`
@@ -325,4 +423,4 @@ publico_tienda_router.add_api_route(
 )
 
 
-routers = _routers_inteligencia + _routers_reportes + _routers_reportes_ia + [publico_tienda_router]
+routers = _routers_inteligencia + _routers_reportes + _routers_reportes_ia + _routers_analitica + [publico_tienda_router]

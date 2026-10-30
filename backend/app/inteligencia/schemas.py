@@ -356,6 +356,9 @@ class SolicitudReporte(BaseModel):
     agrupacion: AgrupacionReporte | None = None
     orden: OrdenReporte | None = None
     limite: int | None = None  # el rango 1..50 lo valida el caso de uso (estado "invalida", no 422)
+    # E12: semanas a predecir (solo los reportes de analítica). Como `limite`, el rango 1..12 lo valida el caso de
+    # uso (estado "invalida"), de modo que un valor absurdo no se confunda con un JSON mal formado.
+    horizonte_semanas: int | None = None
     solicitud_multiple: bool = False
 
     @field_validator("sucursales", "categorias", "productos", mode="before")
@@ -439,6 +442,7 @@ class SolicitudResuelta(BaseModel):
     agrupacion: AgrupacionReporte | None = None
     orden: OrdenReporte | None = None
     limite: int | None = None
+    horizonte_semanas: int | None = None
 
 
 class ReporteGenerativoRespuesta(BaseModel):
@@ -511,3 +515,215 @@ class ExportarReporteRequest(BaseModel):
         if sum(valor is not None for valor in (self.texto, self.solicitud, self.resuelta)) != 1:
             raise ValueError("Envía exactamente uno de 'texto', 'solicitud' o 'resuelta'.")
         return self
+
+
+# ---- Analítica ML (CU-24, E12) -----------------------------------------------------------------
+# Pensados para que la pantalla dibuje sin transformar nada. Todas las cifras son números JSON; nunca salen el
+# artefacto del modelo, sus bytes ni ids de clientes. La `interpretacion` son frases en español por plantilla.
+
+TipoModeloAnalitico = Literal["demanda_semanal", "segmentos_rfm", "anomalias_ventas"]
+EstadoVigenciaModelo = Literal["sin_entrenar", "vigente", "desactualizado", "obsoleto"]
+EstadoEntrenamiento = Literal["entrenado", "datos_insuficientes"]
+
+
+class PuntoSerie(BaseModel):
+    """Un punto de una serie para graficar. `etiqueta` es la fecha ISO del lunes de la semana (o el valor de k en las
+    curvas). `minimo` y `maximo` forman la banda de la predicción: es un rango estimado (±RMSE), NO un intervalo de
+    confianza."""
+
+    etiqueta: str
+    valor: float
+    minimo: float | None = None
+    maximo: float | None = None
+    es_prediccion: bool = False
+
+
+class KpiAnalitico(BaseModel):
+    clave: str
+    titulo: str
+    valor: float | str | None
+    unidad: str | None = None
+    interpretacion: str | None = None
+
+
+class EstadoModelo(BaseModel):
+    tipo: TipoModeloAnalitico
+    titulo: str
+    entrenado: bool
+    estado: EstadoVigenciaModelo
+    version: int | None = None
+    entrenado_en: FechaUTC | None = None
+    filas_entrenamiento: int | None = None
+    datos_desde: dt.date | None = None
+    datos_hasta: dt.date | None = None
+    metricas: dict[str, Any] = Field(default_factory=dict)
+    mensaje: str
+
+
+class DatosDisponibles(BaseModel):
+    semanas_con_ventas: int
+    categorias_con_ventas: int
+    clientes_con_compras: int
+
+
+class EstadoAnalitica(BaseModel):
+    modelos: list[EstadoModelo]
+    datos: DatosDisponibles
+    puede_entrenar: dict[str, bool]
+    interpretacion: list[str] = Field(default_factory=list)
+
+
+class EntrenarRequest(BaseModel):
+    """`tipos` ausente o vacío = todos los que hay. Un tipo desconocido se rechaza con 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tipos: list[TipoModeloAnalitico] | None = Field(default=None, max_length=3)
+
+
+class ResultadoEntrenamiento(BaseModel):
+    tipo: TipoModeloAnalitico
+    estado: EstadoEntrenamiento
+    version: int | None = None
+    metricas: dict[str, Any] = Field(default_factory=dict)
+    avisos: list[str] = Field(default_factory=list)
+    motivo: str | None = None
+    duracion_ms: int
+
+
+class EntrenarRespuesta(BaseModel):
+    resultados: list[ResultadoEntrenamiento]
+
+
+class DemandaCategoria(BaseModel):
+    categoria_id: int | None  # None = el total de la empresa
+    categoria: str
+    historico: list[PuntoSerie]  # las últimas 12 semanas reales
+    prediccion: list[PuntoSerie]
+    total_predicho: int
+    variacion_pct_vs_ultimas_semanas: float | None = None
+
+
+class MetricasDemanda(BaseModel):
+    mae: float | None = None
+    rmse: float | None = None
+    r2: float | None = None
+    mae_base: float | None = None
+    rmse_base: float | None = None
+    r2_base: float | None = None
+    mejora_mae_pct: float | None = None
+    modelo_elegido: str | None = None
+
+
+class DemandaRespuesta(BaseModel):
+    horizonte_semanas: int
+    modelo: EstadoModelo
+    categorias: list[DemandaCategoria]
+    total_empresa: DemandaCategoria
+    metricas: MetricasDemanda
+    supuestos: list[str]
+    interpretacion: list[str]
+    grafico_sugerido: GraficoSugerido
+    avisos: list[str] = Field(default_factory=list)
+
+
+class SegmentoCliente(BaseModel):
+    id: int
+    nombre: str
+    descripcion: str
+    accion_sugerida: str
+    clientes: int
+    porcentaje_clientes: float
+    recencia_media_dias: float
+    frecuencia_media: float
+    monto_medio: float
+    monto_total: float
+    porcentaje_monto: float
+
+
+class PuntoDispersion(BaseModel):
+    """Un cliente anónimo en el gráfico de dispersión: nunca lleva su id."""
+
+    segmento_id: int
+    frecuencia: int
+    monto: float
+
+
+class SegmentosRespuesta(BaseModel):
+    modelo: EstadoModelo
+    k: int
+    silhouette: float | None
+    clientes_segmentados: int
+    segmentos: list[SegmentoCliente]
+    dispersion: list[PuntoDispersion]  # muestra determinista de a lo sumo 300 puntos
+    curva_silhouette: list[PuntoSerie]
+    curva_codo: list[PuntoSerie]
+    supuestos: list[str]
+    interpretacion: list[str]
+    grafico_sugerido: GraficoSugerido
+    avisos: list[str] = Field(default_factory=list)
+
+
+SeveridadAnomalia = Literal["leve", "fuerte"]
+EstadoReposicion = Literal["critico", "atencion", "ok"]
+
+
+class AnomaliaVenta(BaseModel):
+    """Un día de una sucursal con ventas inusuales respecto a lo esperado. `desviacion_pct` es positiva si vendió más
+    de lo esperado y negativa si vendió menos."""
+
+    fecha: dt.date
+    sucursal_id: int
+    sucursal: str
+    total_ventas: float
+    esperado: float
+    desviacion_pct: float
+    severidad: SeveridadAnomalia
+
+
+class AnomaliasRespuesta(BaseModel):
+    modelo: EstadoModelo
+    dias: int
+    desde: dt.date
+    hasta: dt.date
+    anomalias: list[AnomaliaVenta]
+    total: int
+    fuertes: int
+    supuestos: list[str]
+    interpretacion: list[str]
+    grafico_sugerido: GraficoSugerido
+    avisos: list[str] = Field(default_factory=list)
+
+
+class ItemReposicion(BaseModel):
+    categoria_id: int
+    categoria: str
+    disponible: int
+    demanda_semanal_promedio: float
+    semanas_cobertura: float | None  # None = sin demanda prevista (cobertura infinita)
+    agotado_en_semana: int | None
+    estado: EstadoReposicion
+    sugerencia_unidades: int  # orientativa, con 10% de colchón
+
+
+class ReposicionRespuesta(BaseModel):
+    modelo: EstadoModelo
+    semanas: int
+    items: list[ItemReposicion]
+    criticos: int
+    supuestos: list[str]
+    interpretacion: list[str]
+    grafico_sugerido: GraficoSugerido
+    avisos: list[str] = Field(default_factory=list)
+
+
+class PanelAnalitico(BaseModel):
+    """Todo junto para el dashboard. Un bloque es None si ese modelo aún no está entrenado (su aviso va en `avisos`)."""
+
+    estado: EstadoAnalitica
+    kpis: list[KpiAnalitico]
+    demanda: DemandaRespuesta | None = None
+    segmentos: SegmentosRespuesta | None = None
+    anomalias: AnomaliasRespuesta | None = None
+    reposicion: ReposicionRespuesta | None = None
+    avisos: list[str] = Field(default_factory=list)

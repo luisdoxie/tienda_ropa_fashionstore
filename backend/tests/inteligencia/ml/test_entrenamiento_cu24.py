@@ -19,6 +19,7 @@ from app.core.tenant import en_empresa
 from app.inteligencia.casos_uso import cu24_analizar_con_machine_learning as cu24
 from app.inteligencia.casos_uso.cu24_analizar_con_machine_learning import (
     CACHE_MODELOS,
+    TIPO_ANOMALIAS,
     TIPO_DEMANDA,
     TIPO_SEGMENTOS,
     EntrenarModelosAnaliticos,
@@ -56,19 +57,21 @@ def _modelos(db, empresa_id):
 # ---- Lo básico -----------------------------------------------------------------------------------------------------------
 
 
-def test_entrena_y_guarda_los_dos_tipos_con_su_version_y_su_huella(mundo):
+def test_entrena_y_guarda_los_tres_tipos_con_su_version_y_su_huella(mundo):
     fs, *_ = cargar_historia(mundo, "fashionstore")
     resumen = _entrenar(mundo, fs)
 
-    assert resumen.entrenados == [TIPO_DEMANDA, TIPO_SEGMENTOS]
+    assert resumen.entrenados == [TIPO_DEMANDA, TIPO_SEGMENTOS, TIPO_ANOMALIAS]
     assert all(r.estado == "ok" and r.version == 1 and r.duracion_ms >= 0 for r in resumen.resultados)
     with en_empresa(mundo, fs):
-        for tipo in (TIPO_DEMANDA, TIPO_SEGMENTOS):
+        for tipo in (TIPO_DEMANDA, TIPO_SEGMENTOS, TIPO_ANOMALIAS):
             modelo = REPO.obtener_activo(mundo, tipo, con_artefacto=True)
             assert modelo.activo and modelo.version == 1 and modelo.empresa_id == fs
             assert modelo.artefacto_sha256 == persistencia.huella(modelo.artefacto) and modelo.artefacto_bytes == len(modelo.artefacto)
             assert modelo.filas_entrenamiento > 0 and modelo.datos_hasta <= FIN
             assert modelo.parametros["hasta"] == FIN.isoformat()
+            # El artefacto lleva la empresa a la que pertenece (se comprueba al cargarlo, E12).
+            assert persistencia.deserializar(modelo.artefacto, modelo.artefacto_sha256)["empresa_id"] == fs
 
 
 def test_las_metricas_y_los_parametros_son_json_puro_sin_datos_personales(mundo):
@@ -91,19 +94,19 @@ def test_se_puede_entrenar_un_solo_tipo(mundo):
     assert set(_modelos(mundo, fs)) == {(TIPO_SEGMENTOS, 1)}
 
 
-def test_los_tipos_desconocidos_o_no_disponibles_se_rechazan_antes_de_entrenar(mundo):
+def test_los_tipos_desconocidos_se_rechazan_antes_de_entrenar_y_aunque_vengan_con_uno_valido(mundo):
     fs, *_ = cargar_historia(mundo, "fashionstore")
     with pytest.raises(DomainError, match="desconocido"):
         _entrenar(mundo, fs, tipos=["bola_de_cristal"])
-    with pytest.raises(DomainError, match="todavía no está disponible"):  # D37: las anomalías no se entrenan aún
-        _entrenar(mundo, fs, tipos=["anomalias_ventas"])
+    with pytest.raises(DomainError, match="desconocido"):  # uno malo entre tipos buenos: no se entrena NINGUNO
+        _entrenar(mundo, fs, tipos=[TIPO_DEMANDA, "bola_de_cristal"])
     assert _modelos(mundo, fs) == {}
 
 
 def test_reentrenar_crea_la_version_2_y_la_1_queda_inactiva_con_su_artefacto(mundo):
     fs, *_ = cargar_historia(mundo, "fashionstore")
     primera, segunda = _entrenar(mundo, fs), _entrenar(mundo, fs)
-    assert [r.version for r in primera.resultados] == [1, 1] and [r.version for r in segunda.resultados] == [2, 2]
+    assert [r.version for r in primera.resultados] == [1] * 3 and [r.version for r in segunda.resultados] == [2] * 3
     modelos = _modelos(mundo, fs)
     assert (modelos[(TIPO_DEMANDA, 1)].activo, modelos[(TIPO_DEMANDA, 2)].activo) == (False, True)
     with en_empresa(mundo, fs):
@@ -185,7 +188,7 @@ def test_una_suscripcion_no_activa_no_entrena_nada(mundo):
 def test_sin_ventas_devuelve_datos_insuficientes_y_no_guarda_ninguna_version(mundo):
     chaski = id_de(mundo, "chaski-sport")  # poblada, sin historial de ventas
     resumen = _entrenar(mundo, chaski)
-    assert [r.estado for r in resumen.resultados] == ["datos_insuficientes", "datos_insuficientes"]
+    assert [r.estado for r in resumen.resultados] == ["datos_insuficientes"] * 3
     assert all(r.version is None and r.motivo for r in resumen.resultados)
     assert _modelos(mundo, chaski) == {}
 
@@ -196,7 +199,9 @@ def test_si_un_tipo_no_tiene_datos_el_otro_igual_se_entrena(mundo):
     resumen = _entrenar(mundo, fs)
     por_tipo = {r.tipo: r for r in resumen.resultados}
     assert por_tipo[TIPO_DEMANDA].estado == "ok" and por_tipo[TIPO_SEGMENTOS].estado == "datos_insuficientes"
-    assert set(_modelos(mundo, fs)) == {(TIPO_DEMANDA, 1)}
+    # Solo se guarda lo que entrenó bien: el que no tuvo datos no deja ninguna versión (el de anomalías es independiente).
+    assert set(_modelos(mundo, fs)) == {(r.tipo, 1) for r in resumen.resultados if r.estado == "ok"}
+    assert (TIPO_SEGMENTOS, 1) not in _modelos(mundo, fs)
 
 
 # ---- Aislamiento (D22) -------------------------------------------------------------------------------------------------------

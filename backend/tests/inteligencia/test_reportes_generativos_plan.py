@@ -61,4 +61,6 @@ def test_la_suscripcion_vencida_da_403_suscripcion_no_activa(client_por_peticion
 def test_el_catalogo_solo_lista_lo_que_el_plan_incluye(client_por_peticion, dos_empresas):
     catalogo = client_por_peticion.get(f"{API}/catalogo", headers=dos_empresas.a.headers).json()
 
-    assert len(catalogo) == 6  # hoy todos son de reportes_ia; E12 agregará los de analitica_ml
+    # La empresa A es Profesional: los 6 de reportes_ia y los 5 de analitica_ml (E12). Ver
+    # test_reportes_inteligentes_cu23.py para el caso de un plan con reportes_ia pero sin analitica_ml.
+    assert len(catalogo) == 11

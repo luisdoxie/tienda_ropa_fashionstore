@@ -109,8 +109,8 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
   CU-22 Consultar reportes e indicadores · CU-23 Generar reportes con IA
   (reportes generativos de registro cerrado con intérprete Groq o de reglas,
   más el reporte por voz de siempre; E09) · CU-24 Analizar con Machine
-  Learning (`cu24_...`, clase de control `EntrenarModelosAnaliticos` de la
-  E11; la consulta, la predicción y las rutas `/analitica` son de la E12).
+  Learning (`cu24_...`, clases de control `EntrenarModelosAnaliticos` de la
+  E11 y `ConsultarAnaliticaML` de la E12; las rutas `/api/v1/analitica`).
 - sincronizacion: CU-25 Sincronizar operaciones offline (`cu25_...`, clases de
   control `ProcesarLote`, `ConsultarOperaciones`, `DescargarPaquete` y
   `ResolverConflicto`; las dos últimas son de la E08).
@@ -592,7 +592,7 @@ empresa de la sesión y se guarda en `modelo_ml` con su versión, métricas, hue
 - **`modelo_ml`.** UNIQUE (empresa, tipo, versión) e índice parcial único (empresa, tipo) WHERE activo: una sola
   versión vigente. `activo` aquí marca la VIGENTE (no es borrado lógico). El artefacto es BYTEA (el disco de Railway
   es efímero), tope 8 MB, `deferred` (los listados no lo traen); solo conserva el artefacto de las 3 últimas
-  versiones (las viejas quedan con sus métricas). Admite 'anomalias_ventas' desde ya (D37: no se implementa aún).
+  versiones (las viejas quedan con sus métricas). El tercer tipo, 'anomalias_ventas', se entrena desde la E12.
 - **El modelo de demanda.** Predice la DIFERENCIA contra la media móvil de 4 semanas (no la demanda cruda), con un
   ciclo anual propio por categoría; candidatos Ridge, Random Forest y su promedio ("mezcla"), elegido por validación
   cruzada temporal; las últimas 12 semanas son TEST y la línea base es la media móvil. Predicción recursiva a 1..12
@@ -610,6 +610,32 @@ empresa de la sesión y se guarda en `modelo_ml` con su versión, métricas, hue
   importación diferida), `tests/comercial/test_reportes_ml.py`, `tests/scripts/test_seed_ml_sintetico.py` y
   `tests/postgres/test_ml_postgres.py` (más `test_cu24_postgres.py`). `tests/conftest.py` fuerza vacías las claves
   de Groq, Cloudinary, Vertex y PayPal: las pruebas nunca usan servicios reales aunque exista un `backend/.env`.
+
+### Analítica ML por HTTP (E12, CU-24 y puente con CU-23, `backend/app/inteligencia/`)
+Expone los modelos de la E11, solo para el plan con `analitica_ml` (el Profesional) y solo al administrador de la empresa
+(alcance global: un encargado de sucursal recibe 403, D28). Sin tablas ni migraciones nuevas.
+- **Rutas** `/api/v1/analitica` (permiso `reportes.ver`; 30/min en las GET y 3/min en `POST /entrenar`): `GET /estado`,
+  `POST /entrenar` (cuerpo opcional `{tipos}`; sin cuerpo entrena los 3), `GET /demanda?semanas=1..12&categoria_id`,
+  `GET /segmentos`, `GET /anomalias?dias=7..365`, `GET /reposicion?semanas=1..12` y `GET /panel` (todo junto con KPIs).
+  Orden de errores: 401, suscripción, plan, permiso, alcance global (dependencia del router, ANTES de validar parámetros) y
+  recién después las reglas. El `empresa_id` del cliente se ignora.
+- **Errores:** 409 `modelo_no_entrenado`, 409 `modelo_obsoleto` (otra versión de scikit-learn, huella alterada o artefacto de
+  otra empresa: el artefacto lleva su `empresa_id`), 409 `entrenamiento_en_curso`. Un modelo de más de 30 días o con datos de
+  más de 4 semanas atrás se usa igual con estado `desactualizado` y un aviso. Nunca un 500. El artefacto jamás sale.
+- **Clase** `ConsultarAnaliticaML` en `cu24_...py`: `estado`, `entrenar`, `demanda`, `segmentos`, `anomalias`, `reposicion`,
+  `panel`. Esquemas en `schemas.py` (bloque "Analítica ML"); frases de interpretación por plantilla en `politicas.py`
+  (`interpretar_*`). La variación de demanda se mide SIEMPRE contra las últimas 4 semanas reales.
+- **Tercer modelo (anomalías):** `ml/anomalias.py`, Isolation Forest más una regla de desviación robusta, por (sucursal, día).
+  Costo medido: ~0,2 a 1 s y <1 MB. Detecta SIEMPRE la "liquidación" inyectada por el generador (24 de 24 historiales), el
+  "cierre" solo a veces (9 de 24) y no ve las devoluciones (no cambian las ventas); marca ~2,5 % de los días-sucursal. No
+  es evidencia con datos reales. **Reposición:** `ml/reposicion.py`, por categoría, orientativa (no descuenta órdenes en camino).
+- **Puente con CU-23:** `SolicitudReporte.horizonte_semanas` y cinco reportes nuevos en el registro (`prediccion_demanda`,
+  `segmentacion_clientes`, `metricas_modelos`, `anomalias_ventas`, `reposicion_sugerida`; `funcionalidad_plan=analitica_ml`,
+  `requiere_alcance_global=True`). Sin modelo entrenado: estado `no_disponible` (HTTP 200, sin filas, con sugerencia).
+  El catálogo y el prompt de Groq solo muestran los tipos que el plan incluye. Las columnas decimales van como "texto".
+- Pruebas: `tests/inteligencia/test_analitica_*.py`, `test_interpretacion_analitica.py`, `test_reportes_inteligentes_cu23.py`,
+  `tests/inteligencia/ml/test_anomalias.py` y `test_reposicion.py`, `tests/postgres/test_analitica_pg.py`. Las 7 rutas están
+  en `tests/aislamiento/rutas_esperadas.py` (LISTADO y CREA_O_ACCION, cobertura MATRIZ).
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

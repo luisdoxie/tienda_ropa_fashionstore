@@ -11,6 +11,7 @@
 """
 
 import datetime as dt
+import math
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
@@ -458,6 +459,8 @@ def lineas_de_filtros(solicitud: SolicitudResuelta) -> list[str]:
         lineas.append(f"Orden: {_ETIQUETA_ORDEN.get(solicitud.orden, solicitud.orden)}")
     if solicitud.limite is not None:
         lineas.append(f"Máximo de filas: {solicitud.limite}")
+    if "horizonte_semanas" in admitidos and solicitud.horizonte_semanas is not None:
+        lineas.append(f"Horizonte: {_cantidad(solicitud.horizonte_semanas, 'semana', 'semanas')}")
     return lineas
 
 
@@ -515,4 +518,365 @@ def solicitud_desde_resuelta(resuelta: SolicitudResuelta) -> SolicitudReporte:
         agrupacion=resuelta.agrupacion,
         orden=resuelta.orden,
         limite=resuelta.limite,
+        horizonte_semanas=resuelta.horizonte_semanas,
     )
+
+
+# ---- Interpretación de analítica ML --------------------------------------------------------
+# Frases en español, con tuteo, para un administrador de tienda. Son funciones PURAS: reciben
+# diccionarios simples y devuelven listas de frases. No tocan la base, no importan numpy ni
+# scikit-learn y no usan IA: cada cifra que se dice viene de los datos recibidos. Nunca salen
+# "None", "nan" ni "inf": un dato ausente o no finito simplemente no se menciona.
+
+# Una variación de la demanda dentro de este margen (en puntos porcentuales) se considera ruido.
+UMBRAL_VARIACION_SIGNIFICATIVA_PCT = 5.0
+# Una mejora menor a esto sobre la línea base se dice como "pequeña".
+UMBRAL_MEJORA_PEQUENA_PCT = 5.0
+# Silhouette: a partir de qué valor los grupos de clientes se consideran bien o aceptablemente separados.
+SILHOUETTE_BIEN_SEPARADOS = 0.5
+SILHOUETTE_ACEPTABLE = 0.25
+
+_NOMBRES_ALGORITMO = {
+    "ridge": "Ridge (una regresión lineal regularizada)",
+    "random_forest": "Random Forest (un bosque de árboles de decisión)",
+    "mezcla": "una mezcla de Ridge y Random Forest",
+}
+_SEGMENTOS_EN_RIESGO = ("En riesgo", "Por reactivar", "Grandes dormidos")
+_SEGMENTO_CAMPEONES = "Campeones"
+
+
+def _finito_o_none(valor) -> float | None:
+    """El número como float, o None si falta, no es número o no es finito (nan, inf)."""
+    if valor is None or isinstance(valor, bool):
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def _entero_no_negativo(valor) -> int:
+    numero = _finito_o_none(valor)
+    return 0 if numero is None else max(0, int(round(numero)))
+
+
+def _nombre_o(valor, por_defecto: str) -> str:
+    nombre = " ".join(str(valor).split()) if valor is not None else ""
+    return nombre if nombre and nombre.lower() not in ("none", "nan") else por_defecto
+
+
+def _unidades(n: float) -> str:
+    """12 unidades / 1 unidad / 2,5 unidades."""
+    if float(n).is_integer():
+        return _cantidad(int(n), "unidad", "unidades")
+    return f"{formato_numero(n, 2)} unidades"
+
+
+def _dias(n: float) -> str:
+    entero = int(round(n))
+    return _cantidad(entero, "día", "días")
+
+
+def _horizonte_texto(horizonte_semanas) -> tuple[str, str]:
+    """('las próximas 4 semanas', 'las últimas 4 semanas reales'); sin horizonte válido, texto genérico para lo previsto.
+    La variación de cada categoría siempre se mide contra el promedio de sus últimas 4 semanas REALES (no contra un
+    periodo del tamaño del horizonte): así lo calcula `ConsultarAnaliticaML`."""
+    semanas = _finito_o_none(horizonte_semanas)
+    base = "las últimas 4 semanas reales"
+    if semanas is None or semanas < 1:
+        return "el periodo previsto", base
+    n = int(semanas)
+    return ("la próxima semana" if n == 1 else f"las próximas {n} semanas"), base
+
+
+def interpretar_metricas_demanda(metricas: dict) -> list[str]:
+    """Explica las métricas del modelo de demanda contra la línea base (media móvil de 4 semanas).
+
+    Cualquier clave puede faltar o ser None: solo se dice lo que se puede sostener con los datos."""
+    metricas = metricas or {}
+    mae = _finito_o_none(metricas.get("mae"))
+    mae_base = _finito_o_none(metricas.get("mae_base"))
+    r2 = _finito_o_none(metricas.get("r2"))
+    r2_base = _finito_o_none(metricas.get("r2_base"))
+    mejora = _finito_o_none(metricas.get("mejora_mae_pct"))
+    frases: list[str] = []
+
+    if mae is not None:
+        frase = f"El modelo se equivoca en promedio {formato_numero(mae, 2)} unidades por categoría y semana"
+        if mae_base is not None:
+            frase += f"; el promedio móvil de 4 semanas se equivoca {formato_numero(mae_base, 2)}"
+            if mejora is not None and mejora > 0:
+                frase += f": es {_porcentaje_100(mejora)} más preciso"
+                if mejora < UMBRAL_MEJORA_PEQUENA_PCT:
+                    frase += ", una mejora pequeña"
+        frases.append(frase + ".")
+        if mae_base is not None:
+            if mejora is None:
+                frases.append("No se pudo medir con certeza si el modelo mejora al promedio móvil de 4 semanas.")
+            elif mejora <= 0:
+                frases.append(
+                    "El modelo no mejora a la línea base (el promedio móvil de 4 semanas)"
+                    + (f": es {_porcentaje_100(abs(mejora))} menos preciso." if mejora < 0 else ": empatan.")
+                    + " Toma sus previsiones como orientativas."
+                )
+    elif mae_base is not None:
+        frases.append(f"El promedio móvil de 4 semanas se equivoca en promedio {formato_numero(mae_base, 2)} unidades por categoría y semana.")
+
+    if r2 is not None:
+        if r2 < 0:
+            frases.append(
+                f"El R2 es negativo ({formato_numero(r2, 2)}): el modelo no explica la variación de la demanda mejor que un promedio simple."
+            )
+        else:
+            frase = f"El modelo explica el {_porcentaje_100(min(r2, 1.0) * 100)} de la variación de la demanda semanal en datos que no vio al entrenarse"
+            if r2_base is not None:
+                if r2_base >= 0:
+                    frase += f"; el promedio móvil explica el {_porcentaje_100(min(r2_base, 1.0) * 100)}"
+                else:
+                    frase += "; el promedio móvil no logra explicarla"
+            frases.append(frase + ".")
+
+    elegido = metricas.get("modelo_elegido")
+    if isinstance(elegido, str) and elegido.strip() and elegido.strip().lower() not in ("none", "nan"):
+        clave = elegido.strip().lower()
+        nombre = _NOMBRES_ALGORITMO.get(clave, clave.replace("_", " "))
+        frases.append(f"El algoritmo que mejor funcionó en la validación fue {nombre}.")
+    return frases
+
+
+def interpretar_demanda(categorias: list[dict], horizonte_semanas: int) -> list[str]:
+    """Resume la demanda prevista: total, categoría líder y la que más crece y la que más cae.
+
+    Cada dict: {"categoria", "total_predicho", "variacion_pct"} (la variación puede ser None). Una
+    categoría solo se señala como "la que más crece" o "la que más cae" si su variación supera
+    UMBRAL_VARIACION_SIGNIFICATIVA_PCT puntos; si ninguna lo hace se dice que la demanda se mantiene estable."""
+    if not categorias:
+        return []
+    prevision, anterior = _horizonte_texto(horizonte_semanas)
+    filas = []
+    for fila in categorias:
+        fila = fila or {}
+        filas.append(
+            (
+                _nombre_o(fila.get("categoria"), "Sin categoría"),
+                _entero_no_negativo(fila.get("total_predicho")),
+                _finito_o_none(fila.get("variacion_pct")),
+            )
+        )
+    total = sum(f[1] for f in filas)
+    frases: list[str] = []
+
+    if total == 0:
+        frases.append(f"No se prevén ventas para {prevision}.")
+        return frases
+    frases.append(
+        f"Para {prevision} se prevén {_unidades(total)} en total, repartidas en {_cantidad(len(filas), 'categoría', 'categorías')}."
+    )
+
+    maximo = max(f[1] for f in filas)
+    lideres = sorted(f[0] for f in filas if f[1] == maximo)
+    participacion = _porcentaje_100(maximo * 100 / total)
+    if len(filas) > 1:
+        if len(lideres) == 1:
+            frases.append(f"La categoría con más demanda prevista es {lideres[0]}: {_unidades(maximo)}, el {participacion} del total.")
+        else:
+            frases.append(
+                f"Las categorías {', '.join(lideres[:-1])} y {lideres[-1]} empatan con más demanda prevista: "
+                f"{_unidades(maximo)} cada una."
+            )
+
+    con_variacion = [f for f in filas if f[2] is not None]
+    # Desempate determinista: la de mayor volumen previsto y, si persiste, el nombre.
+    crece = max(con_variacion, key=lambda f: (f[2], f[1], f[0]), default=None)
+    cae = min(con_variacion, key=lambda f: (f[2], -f[1], f[0]), default=None)
+    sube = crece is not None and crece[2] > UMBRAL_VARIACION_SIGNIFICATIVA_PCT
+    baja = cae is not None and cae[2] < -UMBRAL_VARIACION_SIGNIFICATIVA_PCT
+    if sube:
+        frases.append(f"La que más crece es {crece[0]}: {_porcentaje_100(crece[2])} más que {anterior}.")
+    if baja:
+        frases.append(f"La que más cae es {cae[0]}: {_porcentaje_100(abs(cae[2]))} menos que {anterior}.")
+    if con_variacion and not sube and not baja:
+        frases.append(
+            f"La demanda se mantiene estable: ninguna categoría cambia más de {_porcentaje_100(UMBRAL_VARIACION_SIGNIFICATIVA_PCT)} "
+            f"frente a {anterior}."
+        )
+    return frases
+
+
+def _es_segmento(nombre: str, base: str) -> bool:
+    """'Campeones' o 'Campeones (2)': el nombre base, con o sin el sufijo que desambigua."""
+    return nombre == base or nombre.startswith(base + " ")
+
+
+def interpretar_segmentos(segmentos: list[dict], silhouette: float | None) -> list[str]:
+    """Explica los segmentos de clientes (RFM): quién genera las ventas, quién está en riesgo y
+    qué tan separados quedaron los grupos.
+
+    Cada dict trae las claves del modelo guardado: nombre, n_clientes, pct_clientes, monto_total,
+    recencia_media y frecuencia_media (esta última y la recencia pueden faltar)."""
+    if not segmentos:
+        return []
+    filas = []
+    for s in segmentos:
+        s = s or {}
+        filas.append(
+            {
+                "nombre": _nombre_o(s.get("nombre"), "Sin nombre"),
+                "n": _entero_no_negativo(s.get("n_clientes")),
+                "pct": _finito_o_none(s.get("pct_clientes")),
+                "monto": max(0.0, _finito_o_none(s.get("monto_total")) or 0.0),
+                "recencia": _finito_o_none(s.get("recencia_media")),
+                "frecuencia": _finito_o_none(s.get("frecuencia_media")),
+            }
+        )
+    total_clientes = sum(f["n"] for f in filas)
+    total_monto = sum(f["monto"] for f in filas)
+    for f in filas:  # sin porcentaje guardado, se calcula con los conteos
+        if f["pct"] is None and total_clientes > 0:
+            f["pct"] = f["n"] * 100 / total_clientes
+        f["pct_monto"] = f["monto"] * 100 / total_monto if total_monto > 0 else None
+
+    if len(filas) == 1:
+        unico = filas[0]
+        cuantos = f" ({_cantidad(unico['n'], 'cliente', 'clientes')})" if unico["n"] else ""
+        return [
+            f"Todos tus clientes{cuantos} se comportan de forma parecida: hay un solo segmento ({unico['nombre']}) "
+            "y no hay grupos distintos que separar."
+        ]
+
+    frases: list[str] = []
+
+    # 1) Quién genera las ventas: Campeones si existen; si no, el segmento de mayor monto.
+    campeones = [f for f in filas if _es_segmento(f["nombre"], _SEGMENTO_CAMPEONES)]
+    candidatos = campeones or filas
+    estrella = max(candidatos, key=lambda f: (f["monto"], f["n"], f["nombre"]))
+    if estrella["pct_monto"] is not None and estrella["monto"] > 0:
+        sujeto = (
+            f"El {_porcentaje_100(estrella['pct'])} de tus clientes ({estrella['nombre']})"
+            if estrella["pct"] is not None
+            else f"Tus clientes del grupo {estrella['nombre']}"
+        )
+        frases.append(f"{sujeto} genera el {_porcentaje_100(estrella['pct_monto'])} de las ventas.")
+        detalle = []
+        if estrella["frecuencia"] is not None:
+            detalle.append(f"compró en promedio {formato_numero(estrella['frecuencia'], 1)} veces")
+        if estrella["recencia"] is not None:
+            detalle.append(f"su última compra fue hace {_dias(estrella['recencia'])} en promedio")
+        if detalle:
+            frases.append(f"Cada cliente de {estrella['nombre']} " + " y ".join(detalle) + ".")
+    else:
+        frases.append("Todavía no hay montos de compra para repartir entre los grupos.")
+
+    # 2) El grupo más numeroso, si no es el que ya se nombró.
+    numeroso = max(filas, key=lambda f: (f["n"], f["monto"], f["nombre"]))
+    if numeroso is not estrella and numeroso["n"] > 0:
+        pct = f", el {_porcentaje_100(numeroso['pct'])} de tus clientes" if numeroso["pct"] is not None else ""
+        frases.append(f"El grupo más numeroso es {numeroso['nombre']}: {_cantidad(numeroso['n'], 'cliente', 'clientes')}{pct}.")
+
+    # 3) Clientes en riesgo de irse.
+    en_riesgo = [f for f in filas if any(_es_segmento(f["nombre"], base) for base in _SEGMENTOS_EN_RIESGO) and f["n"] > 0]
+    if en_riesgo:
+        peor = max(en_riesgo, key=lambda f: (f["n"], f["monto"], f["nombre"]))
+        pct = f" ({_porcentaje_100(peor['pct'])} de tus clientes)" if peor["pct"] is not None else ""
+        frase = f"El grupo en riesgo más grande es {peor['nombre']}, con {_cantidad(peor['n'], 'cliente', 'clientes')}{pct}"
+        if peor["recencia"] is not None:
+            frase += f", que no compra hace {_dias(peor['recencia'])} en promedio"
+        frases.append(frase + ". Conviene contactarlos antes de perderlos.")
+        if len(en_riesgo) > 1:
+            suma = sum(f["n"] for f in en_riesgo)
+            frases.append(f"En total, {_cantidad(suma, 'cliente', 'clientes')} están en riesgo o dormidos.")
+    else:
+        frases.append("Ningún segmento aparece en riesgo de abandono entre los grupos actuales.")
+
+    # 4) Qué tan separados quedaron los grupos.
+    s = _finito_o_none(silhouette)
+    if s is None:
+        frases.append("No se pudo medir qué tan separados están los grupos, así que toma la segmentación como orientativa.")
+    elif s >= SILHOUETTE_BIEN_SEPARADOS:
+        frases.append(f"Los grupos están bien separados (silhouette de {formato_numero(s, 2)}): la segmentación es confiable.")
+    elif s >= SILHOUETTE_ACEPTABLE:
+        frases.append(f"Los grupos se separan de forma aceptable (silhouette de {formato_numero(s, 2)}): úsalos como guía.")
+    else:
+        frases.append(
+            f"Los grupos están poco separados (silhouette de {formato_numero(s, 2)}): "
+            "hay clientes que podrían estar en más de un grupo, así que toma la segmentación como orientativa."
+        )
+    return frases
+
+
+def interpretar_anomalias(anomalias: list[dict], dias: int) -> list[str]:
+    """Frases sobre los días de ventas inusuales. Cada dict: {"sucursal", "desviacion_pct", "severidad"}."""
+    ventana = f"los últimos {int(dias)} días" if _finito_o_none(dias) else "el periodo consultado"
+    if not anomalias:
+        return [f"No se detectaron días de ventas inusuales en {ventana}: todas las sucursales vendieron dentro de lo esperado."]
+    fuertes = [a for a in anomalias if (a or {}).get("severidad") == "fuerte"]
+    frases = [
+        f"Se detectaron {_cantidad(len(anomalias), 'día inusual', 'días inusuales')} de ventas en {ventana}, "
+        f"{_cantidad(len(fuertes), 'de ellos fuerte', 'de ellos fuertes')}."
+    ]
+    por_sucursal: dict[str, int] = {}
+    for a in anomalias:
+        nombre = _nombre_o((a or {}).get("sucursal"), "una sucursal")
+        por_sucursal[nombre] = por_sucursal.get(nombre, 0) + 1
+    nombre, cantidad = max(sorted(por_sucursal.items()), key=lambda par: par[1])
+    frases.append(f"La sucursal con más días inusuales es {nombre} ({cantidad}).")
+    sube = [a for a in anomalias if (_finito_o_none((a or {}).get("desviacion_pct")) or 0) > 0]
+    baja = [a for a in anomalias if (_finito_o_none((a or {}).get("desviacion_pct")) or 0) < 0]
+    frases.append(f"{_cantidad(len(sube), 'día vendió', 'días vendieron')} más de lo esperado y {_cantidad(len(baja), 'vendió', 'vendieron')} menos.")
+    frases.append("Un día inusual no es un error: revisa si hubo una promoción, un feriado, un cierre o un problema en la tienda.")
+    return frases
+
+
+def interpretar_reposicion(items: list[dict], semanas: int) -> list[str]:
+    """Frases sobre qué categorías se pueden agotar. Cada dict: {"categoria", "estado", "agotado_en_semana",
+    "sugerencia_unidades"}."""
+    if not items:
+        return ["No hay categorías con demanda prevista para evaluar la reposición."]
+    criticos = [i for i in items if (i or {}).get("estado") == "critico"]
+    atencion = [i for i in items if (i or {}).get("estado") == "atencion"]
+    if not criticos and not atencion:
+        return [f"Con la demanda prevista para las próximas {int(semanas)} semanas, ninguna categoría corre riesgo de agotarse."]
+    frases = []
+    if criticos:
+        nombres = ", ".join(_nombre_o((i or {}).get("categoria"), "una categoría") for i in criticos)
+        frases.append(f"{_cantidad(len(criticos), 'categoría está', 'categorías están')} en estado crítico (menos de 2 semanas de cobertura): {nombres}.")
+    if atencion:
+        nombres = ", ".join(_nombre_o((i or {}).get("categoria"), "una categoría") for i in atencion)
+        frases.append(f"{_cantidad(len(atencion), 'categoría requiere', 'categorías requieren')} atención (no alcanzan para las {int(semanas)} semanas): {nombres}.")
+    sugeridas = sum(_entero_no_negativo((i or {}).get("sugerencia_unidades")) for i in criticos + atencion)
+    frases.append(f"La reposición orientativa suma {_cantidad(sugeridas, 'unidad', 'unidades')}, con un colchón de 10%.")
+    return frases
+
+
+def interpretar_estado(modelos: list[dict]) -> list[str]:
+    """Una frase por modelo que orienta qué hacer según su vigencia.
+
+    Cada dict: {"titulo", "estado" ('sin_entrenar'|'vigente'|'desactualizado'|'obsoleto'), "version",
+    "dias_desde_entrenamiento"}."""
+    frases = []
+    for modelo in modelos or []:
+        modelo = modelo or {}
+        titulo = _nombre_o(modelo.get("titulo"), "El modelo")
+        estado = modelo.get("estado")
+        version = _finito_o_none(modelo.get("version"))
+        dias = _finito_o_none(modelo.get("dias_desde_entrenamiento"))
+        dias = None if dias is None else max(0, int(dias))
+        sufijo_version = f" (versión {int(version)})" if version is not None else ""
+        if estado == "sin_entrenar":
+            frases.append(f"{titulo}: aún no está entrenado. Entrénalo desde Analítica para ver resultados.")
+        elif estado == "vigente":
+            cuando = "hoy" if dias == 0 else f"hace {_dias(dias)}" if dias is not None else None
+            detalle = f", entrenado {cuando}" if cuando else ""
+            frases.append(f"{titulo}: está al día{sufijo_version}{detalle}. No necesitas hacer nada.")
+        elif estado == "desactualizado":
+            tiene = f"Tiene {_dias(dias)}" if dias is not None else "Lleva un tiempo sin entrenarse"
+            frases.append(f"{titulo}: {tiene}{sufijo_version}; conviene reentrenarlo para incluir las ventas recientes.")
+        elif estado == "obsoleto":
+            tiene = f"Lleva {_dias(dias)} sin entrenarse" if dias is not None else "Lleva mucho tiempo sin entrenarse"
+            frases.append(
+                f"{titulo}: {tiene}{sufijo_version}. Sus resultados pueden no reflejar cómo vende tu tienda hoy; reentrénalo pronto."
+            )
+        else:
+            frases.append(f"{titulo}: no se pudo determinar su estado. Revisa o reentrena el modelo desde Analítica.")
+    return frases

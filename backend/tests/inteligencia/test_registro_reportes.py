@@ -24,6 +24,14 @@ CODIGOS = {
     "productos_menor_existencia",
     "ingresos_por_categoria",
 }
+# E12: los reportes que salen del Machine Learning (plan con analitica_ml); el resto es de reportes_ia.
+CODIGOS_ANALITICA = {
+    "prediccion_demanda",
+    "segmentacion_clientes",
+    "metricas_modelos",
+    "anomalias_ventas",
+    "reposicion_sugerida",
+}
 
 FRASES_DEL_ENUNCIADO = {
     "ventas_por_sucursal": "Mostrame las ventas de septiembre agrupadas por sucursal",
@@ -51,7 +59,7 @@ def test_cada_reporte_tiene_columnas_grafico_y_ejemplos():
         assert len(definicion.columnas) >= 3, definicion.codigo
         assert definicion.grafico.tipo, definicion.codigo
         assert 2 <= len(definicion.ejemplos) <= 3, definicion.codigo
-        assert definicion.funcionalidad_plan == "reportes_ia"
+        assert definicion.funcionalidad_plan == ("analitica_ml" if definicion.codigo in CODIGOS_ANALITICA else "reportes_ia")
         claves = {c.clave for c in definicion.columnas}
         for eje in (definicion.grafico.eje_x, definicion.grafico.eje_y, definicion.grafico.serie):
             assert eje is None or eje in claves, (definicion.codigo, eje)
@@ -59,7 +67,8 @@ def test_cada_reporte_tiene_columnas_grafico_y_ejemplos():
 
 def test_los_filtros_declarados_tienen_tipo_y_rango():
     for definicion in registro.REGISTRO.values():
-        assert definicion.filtros, definicion.codigo
+        # Solo la segmentación y las métricas (E12) no tienen filtros: son del modelo entero de la empresa.
+        assert definicion.filtros or definicion.codigo in {"segmentacion_clientes", "metricas_modelos"}, definicion.codigo
         for nombre, filtro in definicion.filtros.items():
             assert filtro.tipo in {"periodo", "lista_nombres", "enum", "entero"}, nombre
             if filtro.tipo == "entero":
@@ -100,9 +109,10 @@ def test_disponibles_para_filtra_por_funcionalidad():
     assert registro.disponibles_para(["reportes_convencionales"]) == []
     assert registro.disponibles_para([]) == []
     assert [d["codigo"] for d in registro.catalogo_para(["reportes_ia"])] == [
-        d.codigo for d in registro.REGISTRO.values()
+        d.codigo for d in registro.REGISTRO.values() if d.codigo not in CODIGOS_ANALITICA
     ]
-    assert registro.catalogo_para(["analitica_ml"]) == []
+    assert {d["codigo"] for d in registro.catalogo_para(["analitica_ml"])} == CODIGOS_ANALITICA
+    assert registro.catalogo_para(["gestion_ventas"]) == []
 
 
 def test_descripcion_para_prompt_lista_codigos_filtros_y_enums_sin_datos():
@@ -111,7 +121,12 @@ def test_descripcion_para_prompt_lista_codigos_filtros_y_enums_sin_datos():
         assert codigo in texto
     for valor in ("digital", "presencial", "mayor_a_menor", "menor_a_mayor", "ultimos_meses", "mes_calendario"):
         assert valor in texto
-    assert registro.descripcion_para_prompt(["analitica_ml"]).count("- ") == 0
+    assert registro.descripcion_para_prompt(["gestion_ventas"]).count("- ") == 0
+    # Con solo reportes_ia no se describe ningún reporte de analítica, y viceversa.
+    solo_ia = registro.descripcion_para_prompt(["reportes_ia"])
+    assert not any(codigo in solo_ia for codigo in CODIGOS_ANALITICA)
+    solo_ml = registro.descripcion_para_prompt(["analitica_ml"])
+    assert all(codigo in solo_ml for codigo in CODIGOS_ANALITICA) and not any(codigo in solo_ml for codigo in CODIGOS)
 
 
 def test_el_registro_es_cerrado_y_conectar_ejecutor_solo_acepta_codigos_existentes():

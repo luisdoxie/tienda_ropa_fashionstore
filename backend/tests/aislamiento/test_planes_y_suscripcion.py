@@ -264,7 +264,6 @@ RUTAS_POR_FUNCIONALIDAD = {
     f: sorted(clave for clave, ruta in RUTAS.items() if ruta.funcionalidad == f) for f in FUNCIONALIDADES
 }
 ETAPA_QUE_AGREGA_LA_RUTA = {
-    "analitica_ml": "E11 (analítica con ML)",
     "copias_seguridad": "E22 (copias de seguridad)",
 }
 
@@ -780,12 +779,13 @@ def test_cada_grupo_exento_tiene_razon_y_rutas_vivas(indice):
     assert vivas, f"el grupo {prefijos} no coincide con ninguna ruta de negocio: sobra en EXENTOS_DE_PLAN"
 
 
-def test_las_compuertas_declaradas_cubren_las_cinco_funcionalidades_con_rutas():
+def test_las_compuertas_declaradas_cubren_las_funcionalidades_con_rutas():
     cubiertas = {r.funcionalidad for r in RUTAS.values() if r.funcionalidad}
     assert cubiertas == {
         "gestion_productos", "gestion_ventas", "reservas", "reportes_convencionales", "reportes_ia", "operacion_offline",
+        "analitica_ml",
     }, (
-        "cambió el conjunto de funcionalidades con rutas: ¿E11 o E22 agregaron las suyas? "
+        "cambió el conjunto de funcionalidades con rutas: ¿E22 (copias de seguridad) agregó las suyas? "
         "Entonces quita el skip de la tabla de verdad y actualiza esta prueba"
     )
     sin_compuerta = len(RUTAS_DE_NEGOCIO) - sum(1 for k in RUTAS_DE_NEGOCIO if RUTAS[k].funcionalidad)
