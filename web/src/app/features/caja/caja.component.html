@@ -513,6 +513,18 @@
   [modal]="true"
   [style]="{ width: '680px', maxWidth: '96vw' }"
 >
+  @if (cambioPendiente()) {
+    <div class="fs-aviso fs-aviso--exito aviso-cambio" role="status" data-estado="cambio-pendiente">
+      <fs-icono nombre="check" [tam]="24" />
+      <span class="aviso-cambio__texto">
+        Devolución registrada. Para el cambio, registra la nueva venta con la prenda elegida.
+      </span>
+      <button type="button" class="fs-btn fs-btn--secundario btn-nueva-venta" (click)="irANuevaVenta()">
+        <fs-icono nombre="carrito" [tam]="24" />
+        Nueva venta
+      </button>
+    </div>
+  }
   <div class="panel__scroll">
     <p-table
       [value]="historialHoy()"
@@ -531,7 +543,16 @@
       </ng-template>
       <ng-template #body let-venta>
         <tr>
-          <td class="fuerte">{{ venta.codigo }}</td>
+          <td class="fuerte">
+            {{ venta.codigo }}
+            @let plazo = indicadorPlazo(venta.id);
+            @if (plazo && permiteDevolucion(venta)) {
+              <span class="plazo" [class.plazo--vencido]="plazo.vencido" data-estado="plazo-cambio">
+                <fs-icono [nombre]="plazo.vencido ? 'alerta' : 'reloj'" [tam]="20" />
+                {{ plazo.texto }}
+              </span>
+            }
+          </td>
           <td class="fs-num">{{ venta.fecha | date: 'shortTime' }}</td>
           <td>
             <span [class]="'fs-chip ' + claseEstadoVenta(venta.estado)">{{ venta.estado }}</span>
@@ -539,11 +560,13 @@
           <td class="num">{{ venta.total | number: '1.2-2' }}</td>
           <td class="num">
             @if (venta.estado === 'pagada' || venta.estado === 'entregada') {
+              @let plazoBoton = indicadorPlazo(venta.id);
               <button
                 type="button"
                 class="btn-texto"
-                [disabled]="sinConexion()"
-                [attr.title]="sinConexion() ? 'Requiere conexión' : null"
+                [disabled]="sinConexion() || !!plazoBoton?.vencido"
+                [attr.title]="sinConexion() ? 'Requiere conexión' : plazoBoton?.vencido ? plazoBoton?.titulo : null"
+                [attr.aria-label]="!sinConexion() && plazoBoton?.vencido ? 'Devolución. ' + plazoBoton?.titulo : null"
                 (click)="abrirDevolucion(venta)"
               >
                 <fs-icono nombre="deshacer" [tam]="24" />
@@ -570,7 +593,14 @@
   [style]="{ width: '520px', maxWidth: '96vw' }"
 >
   @if (ventaParaDevolucion(); as venta) {
+    @let plazoDialogo = indicadorPlazo(venta.id);
     <p class="ayuda">Venta {{ venta.codigo }} — indica cuánto se devuelve de cada línea.</p>
+    @if (plazoDialogo) {
+      <p class="plazo plazo--dialogo" [class.plazo--vencido]="plazoDialogo.vencido" role="status" data-estado="plazo-cambio-dialogo">
+        <fs-icono [nombre]="plazoDialogo.vencido ? 'alerta' : 'reloj'" [tam]="24" />
+        {{ plazoDialogo.texto }}
+      </p>
+    }
     <div class="panel__scroll">
       <table class="tabla-carrito">
         <thead>
@@ -601,14 +631,20 @@
         </tbody>
       </table>
     </div>
+    @if (errorDevolucion(); as mensaje) {
+      <p class="fs-aviso fs-aviso--error aviso-devolucion" role="alert" data-estado="error-devolucion">
+        <fs-icono nombre="alerta" [tam]="24" />
+        {{ mensaje }}
+      </p>
+    }
     <div class="dialogo-acciones">
       <p-button label="Cancelar" [outlined]="true" (onClick)="devolucionVisible.set(false)" />
       <p-button
         label="Confirmar devolución"
         icon="pi pi-undo"
         [loading]="registrandoDevolucion()"
-        [disabled]="sinConexion()"
-        [attr.title]="sinConexion() ? 'Requiere conexión' : null"
+        [disabled]="sinConexion() || !!plazoDialogo?.vencido"
+        [attr.title]="sinConexion() ? 'Requiere conexión' : plazoDialogo?.vencido ? plazoDialogo?.titulo : null"
         (onClick)="confirmarDevolucion()"
       />
     </div>

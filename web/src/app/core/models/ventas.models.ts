@@ -41,6 +41,16 @@ export interface Venta {
   detalle: VentaDetalle[];
 }
 
+/** `GET /ventas/{id}/plazo-cambio` (D19): el servidor decide; las marcas van en UTC con "Z". */
+export interface PlazoCambio {
+  venta_id: number;
+  fecha_venta: string;
+  plazo_horas: number;
+  vence_en: string;
+  vigente: boolean;
+  estado_venta: string;
+}
+
 export interface DevolucionDetalleCrear {
   venta_detalle_id: number;
   cantidad: number;

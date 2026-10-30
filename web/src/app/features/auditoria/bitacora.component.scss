@@ -1,0 +1,134 @@
+.filtros {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-4);
+
+  &__campo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--fs-espacio-1);
+    min-width: 0;
+
+    label {
+      font-size: 13px;
+      color: var(--fs-texto-tenue);
+    }
+  }
+}
+
+.aviso {
+  margin: 0 0 var(--fs-espacio-4);
+  flex-wrap: wrap;
+
+  fs-icono {
+    flex: none;
+  }
+}
+
+.estado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fs-espacio-2);
+  padding: var(--fs-espacio-8) var(--fs-espacio-4);
+  color: var(--fs-texto-tenue);
+  font-size: 14px;
+}
+
+.numero {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.resumen {
+  color: var(--fs-texto-tenue);
+  font-size: 13px;
+  max-width: 28rem;
+}
+
+.entidad-id {
+  margin-left: var(--fs-espacio-1);
+  color: var(--fs-texto-tenue);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-detalle {
+  width: var(--fs-toque);
+  padding-left: var(--fs-espacio-1);
+  padding-right: 0;
+}
+
+// Botón de la fila: área tocable de 44 px.
+.detalle-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--fs-toque);
+  height: var(--fs-toque);
+  padding: 0;
+  border: 0;
+  border-radius: var(--fs-radio-md);
+  background: none;
+  color: var(--fs-texto);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fs-neutro-suave);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-acento);
+    outline-offset: 2px;
+  }
+}
+
+.fila-detalle td {
+  background: var(--fs-fondo-alt);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+}
+
+// JSON como texto: se respeta el formato y se parte la línea larga en vez de desbordar.
+.datos {
+  margin: 0;
+  padding: var(--fs-espacio-3);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-superficie);
+  color: var(--fs-texto);
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.paginacion {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--fs-espacio-2);
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .filtros__campo {
+    flex: 1 1 100%;
+  }
+}

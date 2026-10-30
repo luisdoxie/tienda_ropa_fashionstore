@@ -308,6 +308,15 @@ export const routes: Routes = [
           ),
       },
       {
+        // Operaciones que llegaron de los dispositivos y sus conflictos (E16). Quien supervisa las ve.
+        path: 'sincronizacion',
+        canActivate: [permisoGuard('sincronizacion.supervisar')],
+        loadComponent: () =>
+          import('./features/sincronizacion/operaciones-sincronizadas.component').then(
+            (m) => m.OperacionesSincronizadasComponent,
+          ),
+      },
+      {
         path: 'promociones',
         canActivate: [permisoGuard('ventas.gestionar')],
         loadComponent: () =>
@@ -347,7 +356,21 @@ export const routes: Routes = [
                 (m) => m.SuscripcionesComponent,
               ),
           },
+          {
+            // La misma pantalla de auditoría, con filtro y columna de empresa (`data.plataforma`).
+            path: 'auditoria',
+            data: { plataforma: true },
+            loadComponent: () =>
+              import('./features/auditoria/bitacora.component').then((m) => m.BitacoraComponent),
+          },
         ],
+      },
+      {
+        // Bitácora de auditoría de la empresa (solo lectura; el administrador).
+        path: 'auditoria',
+        canActivate: [permisoGuard('bitacora.ver')],
+        loadComponent: () =>
+          import('./features/auditoria/bitacora.component').then((m) => m.BitacoraComponent),
       },
       {
         // Plan, límites y funcionalidades de la empresa (solo su administrador).

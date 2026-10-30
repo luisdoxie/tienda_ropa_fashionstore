@@ -45,6 +45,9 @@ export const PARAMS_EXPLICACION_PLAN = { ver: 'funcionalidades' };
 /** Ruta de "Pendientes de envío" (E14b): su ítem del menú lleva el contador de la cola. */
 export const RUTA_PENDIENTES = '/operaciones-pendientes';
 
+/** Ruta de "Sincronización" (E16): las operaciones de toda la empresa tal como las guardó el servidor. */
+export const RUTA_SINCRONIZACION = '/sincronizacion';
+
 export interface ItemMenu {
   etiqueta: string;
   /** Nombre de un `fs-icono` (24 px en el menú). */
@@ -104,6 +107,8 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       { etiqueta: 'Empleados', icono: 'carnet', ruta: '/empleados', permiso: 'organizacion.gestionar' },
       { etiqueta: 'Ciudades', icono: 'ubicacion', ruta: '/ciudades', permiso: 'organizacion.gestionar' },
       { etiqueta: 'Sucursales', icono: 'tienda', ruta: '/sucursales', permiso: 'organizacion.gestionar' },
+      // Bitácora de auditoría de la empresa (solo lectura): solo quien tiene bitacora.ver (el administrador).
+      { etiqueta: 'Auditoría', icono: 'historial', ruta: '/auditoria', permiso: 'bitacora.ver' },
     ],
   },
   {
@@ -146,6 +151,14 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         permisos: ['ventas.presencial', 'reservas.gestionar_sucursal'],
         funcion: 'operacion_offline',
       },
+      {
+        // Lo que llegó de los dispositivos de toda la empresa y sus conflictos de stock (E16). Lo ve quien supervisa.
+        etiqueta: 'Sincronización',
+        icono: 'refrescar',
+        ruta: RUTA_SINCRONIZACION,
+        permiso: 'sincronizacion.supervisar',
+        funcion: 'operacion_offline',
+      },
     ],
   },
   {
@@ -161,6 +174,7 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         ruta: '/plataforma/suscripciones',
         rol: ROL_SUPERADMINISTRADOR,
       },
+      { etiqueta: 'Auditoría', icono: 'historial', ruta: '/plataforma/auditoria', rol: ROL_SUPERADMINISTRADOR },
     ],
   },
 ];
@@ -202,20 +216,20 @@ const SECCIONES_MENU: SeccionDef[] = [
     id: 'comercial',
     etiqueta: 'Comercial',
     plegable: true,
-    rutas: ['/reservas', '/envios', '/zonas-envio', '/promociones', '/catalogo-local', RUTA_PENDIENTES],
+    rutas: ['/reservas', '/envios', '/zonas-envio', '/promociones', '/catalogo-local', RUTA_PENDIENTES, RUTA_SINCRONIZACION],
   },
   { id: 'analisis', etiqueta: 'Análisis', plegable: false, rutas: ['/reportes'] },
   {
     id: 'organizacion',
     etiqueta: 'Organización',
     plegable: true,
-    rutas: ['/sucursales', '/ciudades', '/empleados', '/usuarios', '/roles', '/mi-empresa'],
+    rutas: ['/sucursales', '/ciudades', '/empleados', '/usuarios', '/roles', '/mi-empresa', '/auditoria'],
   },
   {
     id: 'plataforma',
     etiqueta: 'Plataforma',
     plegable: false,
-    rutas: ['/plataforma/empresas', '/plataforma/planes', '/plataforma/suscripciones'],
+    rutas: ['/plataforma/empresas', '/plataforma/planes', '/plataforma/suscripciones', '/plataforma/auditoria'],
   },
 ];
 const SECCION_POR_DEFECTO = 'organizacion';

@@ -569,6 +569,43 @@
   margin-top: var(--fs-espacio-4);
 }
 
+// ---- Plazo para devolver o cambiar (D19) -------------------------------------------------
+.plazo {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  margin: var(--fs-espacio-1) 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fs-texto-tenue);
+
+  &--vencido {
+    color: var(--fs-error);
+  }
+
+  &--dialogo {
+    margin: 0 0 var(--fs-espacio-3);
+    font-size: 14px;
+  }
+}
+
+.aviso-cambio {
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-3);
+
+  &__texto {
+    flex: 1 1 240px;
+  }
+}
+
+.btn-nueva-venta {
+  min-height: var(--fs-toque);
+}
+
+.aviso-devolucion {
+  margin: var(--fs-espacio-3) 0 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

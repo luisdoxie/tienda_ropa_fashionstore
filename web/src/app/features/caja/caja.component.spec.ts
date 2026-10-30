@@ -7,6 +7,8 @@ import { MessageService } from 'primeng/api';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth.service';
 import { ConectividadService, EstadoConexion } from '../../core/conectividad.service';
+import { SIN_TOAST_ERROR } from '../../core/http-contexts';
+import type { PlazoCambio } from '../../core/models/ventas.models';
 import { ColaSincronizacionService } from '../../core/offline/cola-sincronizacion.service';
 import { BaseOffline } from '../../core/offline/db-offline';
 import { metaSucursalCaja } from '../../core/offline/offline.config';
@@ -56,6 +58,23 @@ const VENTA = {
     },
   ],
 };
+
+const HORA_MS = 3_600_000;
+const MINUTO_MS = 60_000;
+
+/** Respuesta de `GET /ventas/{id}/plazo-cambio` con `restanteMs` por delante (negativo: ya venció). */
+function respuestaPlazo(ventaId: number, restanteMs: number, extra: Partial<PlazoCambio> = {}): PlazoCambio {
+  const vence = Date.now() + restanteMs;
+  return {
+    venta_id: ventaId,
+    fecha_venta: new Date(vence - 24 * HORA_MS).toISOString(),
+    plazo_horas: 24,
+    vence_en: new Date(vence).toISOString(),
+    vigente: restanteMs > 0,
+    estado_venta: 'pagada',
+    ...extra,
+  };
+}
 
 function fechaDeHoy(): string {
   const hoy = new Date();
@@ -1177,6 +1196,11 @@ describe('CajaComponent', () => {
       // Historial abierto en línea; luego se pierde la conexión.
       botonHistorial().click();
       http.expectOne(`${API}/ventas/sucursal/${SUCURSAL}`).flush([{ ...VENTA, estado: 'pagada', fecha: fechaDeHoy() }]);
+      // E16 4.10: al abrir el historial se consulta el plazo de cambio de cada venta; aquí se responde para que
+      // la comprobación de "sin peticiones al perder la conexión" (más abajo) siga midiendo solo lo que debe.
+      http
+        .expectOne(`${API}/ventas/${VENTA.id}/plazo-cambio`)
+        .flush(respuestaPlazo(VENTA.id, 5 * HORA_MS));
       fixture.detectChanges();
       const devolucion = () => botonDe('Devolución') as HTMLButtonElement;
       expect(devolucion().disabled).toBe(false);
@@ -1262,6 +1286,564 @@ describe('CajaComponent', () => {
       expect(pedidosAlRepositorio).toBe(0);
       expect(cola.notificarNuevaOperacion).not.toHaveBeenCalled();
       expect(cola.refrescarConteos).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('devoluciones y cambios en 24 h (E16 4.10)', () => {
+    const urlPlazo = (ventaId: number) => `${API}/ventas/${ventaId}/plazo-cambio`;
+    const pagada = (id: number) => ({
+      ...VENTA,
+      id,
+      codigo: `V-${String(id).padStart(4, '0')}`,
+      estado: 'pagada',
+      fecha: fechaDeHoy(),
+    });
+    const limpio = (texto: string | null | undefined) => (texto ?? '').replace(/\s+/g, ' ').trim();
+    const filas = () => Array.from(document.body.querySelectorAll('.p-dialog tbody tr')) as HTMLElement[];
+    const botonDeFila = (fila: HTMLElement) => fila.querySelector('button') as HTMLButtonElement;
+    const indicadorDeFila = (fila: HTMLElement) => limpio(fila.querySelector('[data-estado="plazo-cambio"]')?.textContent);
+    const indicadorDelDialogo = () =>
+      limpio(document.body.querySelector('[data-estado="plazo-cambio-dialogo"]')?.textContent);
+    const botonConfirmar = () =>
+      Array.from(document.body.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Confirmar devolución'),
+      ) as HTMLButtonElement;
+    const errorDelDialogo = () => document.body.querySelector('[data-estado="error-devolucion"]');
+    const avisoDelCambio = () => document.body.querySelector('[data-estado="cambio-pendiente"]');
+    const peticionesDePlazo = () => http.match((r) => r.url.endsWith('/plazo-cambio'));
+
+    type Estado = {
+      historialVisible(): boolean;
+      devolucionVisible(): boolean;
+      fase(): string;
+      lineas(): unknown[];
+    };
+    const estadoDe = (pantalla: Pantalla) => pantalla.fixture.componentInstance as unknown as Estado;
+
+    function abrirElHistorial(pantalla: Pantalla, ventas: object[]): void {
+      Array.from(pantalla.el.querySelectorAll('button'))
+        .find((b) => b.textContent?.includes('Historial de hoy'))!
+        .click();
+      http.expectOne(`${API}/ventas/sucursal/1`).flush(ventas);
+      pantalla.fixture.detectChanges();
+    }
+
+    /** Abre el historial con las ventas dadas y responde el plazo de cada una (`restantes`: id -> milisegundos). */
+    function historialConPlazos(
+      pantalla: Pantalla,
+      restantes: Record<number, number>,
+      extra: Record<number, Partial<PlazoCambio>> = {},
+    ): void {
+      abrirElHistorial(
+        pantalla,
+        Object.keys(restantes).map((id) => pagada(Number(id))),
+      );
+      for (const [id, ms] of Object.entries(restantes)) {
+        http.expectOne(urlPlazo(Number(id))).flush(respuestaPlazo(Number(id), ms, extra[Number(id)]));
+      }
+      pantalla.fixture.detectChanges();
+    }
+
+    function abrirDialogoDeLaFila(pantalla: Pantalla, indice = 0): void {
+      botonDeFila(filas()[indice]).click();
+      pantalla.fixture.detectChanges();
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    describe('indicador del tiempo restante', () => {
+      it('cada fila pide su plazo al servidor, sin toast de error, y dice cuánto queda', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        abrirElHistorial(pantalla, [pagada(55), pagada(56)]);
+
+        for (const id of [55, 56]) {
+          const peticion = http.expectOne(urlPlazo(id));
+          expect(peticion.request.method).toBe('GET');
+          // Un fallo de esta consulta no debe abrir el toast rojo del interceptor.
+          expect(peticion.request.context.get(SIN_TOAST_ERROR)).toBe(true);
+          peticion.flush(respuestaPlazo(id, id === 55 ? 5 * HORA_MS + 12 * MINUTO_MS + 30_000 : 40_000));
+        }
+        pantalla.fixture.detectChanges();
+
+        // Orden del historial: la venta más reciente (id mayor) primero.
+        const [fila56, fila55] = filas();
+        expect(indicadorDeFila(fila55)).toBe('Quedan 5 h 12 min para devolver o cambiar');
+        expect(indicadorDeFila(fila56)).toBe('Quedan menos de 1 min para devolver o cambiar');
+        expect(botonDeFila(fila55).disabled).toBe(false);
+        expect(botonDeFila(fila56).disabled).toBe(false);
+        expect(botonDeFila(fila55).getAttribute('title')).toBeNull();
+      });
+
+      it('formato: horas y minutos, solo minutos, horas justas y menos de un minuto', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, {
+          61: 23 * HORA_MS + 59 * MINUTO_MS + 30_000,
+          62: 2 * HORA_MS + 30_000,
+          63: 45 * MINUTO_MS + 30_000,
+          64: 59_000,
+        });
+
+        const textos = Object.fromEntries(filas().map((f) => [limpio(f.querySelector('.fuerte')?.textContent).slice(0, 6), indicadorDeFila(f)]));
+        expect(textos['V-0061']).toContain('Quedan 23 h 59 min para devolver o cambiar');
+        expect(textos['V-0062']).toContain('Quedan 2 h para devolver o cambiar');
+        expect(textos['V-0063']).toContain('Quedan 45 min para devolver o cambiar');
+        expect(textos['V-0064']).toContain('Quedan menos de 1 min para devolver o cambiar');
+      });
+
+      it('un plazo ya vencido dice "Pasó el plazo de N horas" con las horas reales del servidor', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: -HORA_MS }, { 55: { plazo_horas: 48 } });
+
+        expect(indicadorDeFila(filas()[0])).toBe('Pasó el plazo de 48 horas');
+      });
+
+      it('al abrir el diálogo de una venta vuelve a pedir el plazo y el dato fresco manda', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 5 * HORA_MS + 12 * MINUTO_MS + 30_000 });
+        expect(indicadorDeFila(filas()[0])).toBe('Quedan 5 h 12 min para devolver o cambiar');
+
+        abrirDialogoDeLaFila(pantalla);
+        // Una consulta nueva, aunque la fila ya tenía el dato.
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 2 * HORA_MS + 5 * MINUTO_MS + 30_000));
+        pantalla.fixture.detectChanges();
+
+        expect(indicadorDelDialogo()).toBe('Quedan 2 h 5 min para devolver o cambiar');
+        expect(indicadorDeFila(filas()[0])).toBe('Quedan 2 h 5 min para devolver o cambiar');
+      });
+
+      it('si el dato fresco dice que venció mientras el cajero atendía, el diálogo no deja confirmar', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 3 * HORA_MS });
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, -MINUTO_MS, { plazo_horas: 24 }));
+        pantalla.fixture.detectChanges();
+
+        expect(indicadorDelDialogo()).toBe('Pasó el plazo de 24 horas');
+        expect(botonConfirmar().disabled).toBe(true);
+        expect(botonConfirmar().closest('p-button')?.getAttribute('title')).toBe(
+          'Pasó el plazo de 24 horas para devolver o cambiar',
+        );
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        expect(http.match((r) => r.method === 'POST')).toHaveLength(0);
+      });
+
+      it('solo las primeras 30 ventas con devolución piden su plazo; el resto queda con su botón de siempre', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        // 35 pagadas (ids 1..35) y una anulada: las anuladas no ofrecen devolución y no piden plazo.
+        const ventas = [...Array.from({ length: 35 }, (_, i) => pagada(i + 1)), { ...pagada(99), estado: 'anulada' }];
+        abrirElHistorial(pantalla, ventas);
+
+        const pedidas = peticionesDePlazo().map((p) => Number(/ventas\/(\d+)\//.exec(p.request.url)![1]));
+        expect(pedidas).toHaveLength(30);
+        // Las 30 más recientes (ids 35 hasta 6): no se pide la 99 (anulada) ni las más viejas.
+        expect(Math.min(...pedidas)).toBe(6);
+        expect(Math.max(...pedidas)).toBe(35);
+        const filaVieja = filas().find((f) => f.textContent?.includes('V-0001'))!;
+        expect(indicadorDeFila(filaVieja)).toBe('');
+        expect(botonDeFila(filaVieja).disabled).toBe(false);
+      });
+    });
+
+    describe('plazo vencido', () => {
+      it('el botón "Devolución" queda deshabilitado, con title y texto accesible con las horas reales', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: -HORA_MS }, { 55: { plazo_horas: 48 } });
+
+        const boton = botonDeFila(filas()[0]);
+        expect(boton.disabled).toBe(true);
+        expect(boton.getAttribute('title')).toBe('Pasó el plazo de 48 horas para devolver o cambiar');
+        expect(boton.getAttribute('aria-label')).toContain('Pasó el plazo de 48 horas para devolver o cambiar');
+        expect(boton.textContent).toContain('Devolución');
+        boton.click();
+        pantalla.fixture.detectChanges();
+        expect(estadoDe(pantalla).devolucionVisible()).toBe(false);
+        // Solo la consulta inicial: abrir el diálogo no pidió nada más.
+        expect(peticionesDePlazo()).toHaveLength(0);
+      });
+
+      it('con una sola hora de plazo el texto va en singular', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: -MINUTO_MS }, { 55: { plazo_horas: 1 } });
+
+        expect(indicadorDeFila(filas()[0])).toBe('Pasó el plazo de 1 hora');
+      });
+    });
+
+    describe('cuenta regresiva', () => {
+      beforeEach(() => {
+        // Solo se simulan el reloj y los temporizadores de la cuenta; lo demás (IndexedDB de prueba) sigue real.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        vi.setSystemTime(new Date(2026, 9, 30, 15, 0, 0));
+      });
+
+      it('al llegar a cero pasa a vencido y deshabilita el botón sin recargar el historial', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 90_000 });
+        expect(indicadorDeFila(filas()[0])).toBe('Quedan 1 min para devolver o cambiar');
+
+        // Pasa un minuto: quedan 30 s.
+        vi.advanceTimersByTime(MINUTO_MS);
+        pantalla.fixture.detectChanges();
+        expect(indicadorDeFila(filas()[0])).toBe('Quedan menos de 1 min para devolver o cambiar');
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+
+        // Llega a cero.
+        vi.advanceTimersByTime(30_500);
+        pantalla.fixture.detectChanges();
+        expect(indicadorDeFila(filas()[0])).toBe('Pasó el plazo de 24 horas');
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        expect(botonDeFila(filas()[0]).getAttribute('title')).toBe('Pasó el plazo de 24 horas para devolver o cambiar');
+        // Sin recargar el historial; sí se confirma con el servidor, que es quien decide.
+        http.expectNone(`${API}/ventas/sucursal/1`);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, -1_000));
+        pantalla.fixture.detectChanges();
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+      });
+
+      it('si el servidor dice que sigue vigente al llegar a cero (reloj de este equipo adelantado), manda el servidor', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 40_000 });
+
+        vi.advanceTimersByTime(41_000);
+        pantalla.fixture.detectChanges();
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+
+        // El servidor, que tiene el reloj bueno, responde que todavía hay tiempo.
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, -5_000, { vigente: true }));
+        pantalla.fixture.detectChanges();
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+        expect(indicadorDeFila(filas()[0])).not.toContain('Pasó el plazo');
+      });
+
+      it('el temporizador se limpia al destruir el componente', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 90_000 });
+        const antes = vi.getTimerCount();
+        expect(antes).toBeGreaterThan(0);
+
+        pantalla.fixture.destroy();
+        expect(vi.getTimerCount()).toBeLessThan(antes);
+
+        // Pasa el vencimiento: ya nadie consulta ni cuenta nada.
+        vi.advanceTimersByTime(5 * MINUTO_MS);
+        http.expectNone(urlPlazo(55));
+      });
+
+      it('el temporizador se limpia al cerrar el historial', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 90_000 });
+        const antes = vi.getTimerCount();
+
+        (pantalla.fixture.componentInstance as unknown as { historialVisible: { set(v: boolean): void } }).historialVisible.set(false);
+        pantalla.fixture.detectChanges();
+        expect(vi.getTimerCount()).toBeLessThan(antes);
+
+        vi.advanceTimersByTime(5 * MINUTO_MS);
+        http.expectNone(urlPlazo(55));
+      });
+    });
+
+    describe('el servidor decide', () => {
+      it('un fallo de la consulta del plazo no pone indicador ni bloquea la devolución', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        abrirElHistorial(pantalla, [pagada(55)]);
+        http.expectOne(urlPlazo(55)).flush({ detail: 'Error' }, { status: 500, statusText: 'Server Error' });
+        pantalla.fixture.detectChanges();
+
+        expect(indicadorDeFila(filas()[0])).toBe('');
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).error(new ProgressEvent('error'));
+        pantalla.fixture.detectChanges();
+        expect(indicadorDelDialogo()).toBe('');
+        expect(botonConfirmar().disabled).toBe(false);
+
+        const cantidad = document.body.querySelector('input.input-cantidad') as HTMLInputElement;
+        cantidad.value = '1';
+        cantidad.dispatchEvent(new Event('input'));
+        botonConfirmar().click();
+        const devolucion = http.expectOne((r) => r.method === 'POST' && r.url === `${API}/devoluciones`);
+        expect(devolucion.request.body).toEqual({ venta_id: 55, detalle: [{ venta_detalle_id: 9, cantidad: 1 }] });
+      });
+
+      it('con vigente:true del servidor se respeta aunque la fecha local diga que ya pasó el plazo', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        // La venta se hizo hace 3 días según las fechas, pero el servidor responde vigente: el web no recalcula.
+        historialConPlazos(pantalla, { 55: -3 * 24 * HORA_MS }, { 55: { vigente: true } });
+
+        const fila = filas()[0];
+        expect(botonDeFila(fila).disabled).toBe(false);
+        expect(botonDeFila(fila).getAttribute('title')).toBeNull();
+        expect(indicadorDeFila(fila)).not.toContain('Pasó el plazo');
+        expect(fila.querySelector('.plazo--vencido')).toBeNull();
+
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, -3 * 24 * HORA_MS, { vigente: true }));
+        pantalla.fixture.detectChanges();
+        expect(botonConfirmar().disabled).toBe(false);
+      });
+
+      it('con vigente:false del servidor se respeta aunque la fecha local diga que todavía hay tiempo', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 10 * HORA_MS }, { 55: { vigente: false } });
+
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        expect(indicadorDeFila(filas()[0])).toBe('Pasó el plazo de 24 horas');
+      });
+
+      it('un 409 de plazo al confirmar muestra el mensaje del servidor en el diálogo y marca la venta como vencida', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 10 * MINUTO_MS });
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 10 * MINUTO_MS));
+        pantalla.fixture.detectChanges();
+        expect(botonConfirmar().disabled).toBe(false);
+
+        const cantidad = document.body.querySelector('input.input-cantidad') as HTMLInputElement;
+        cantidad.value = '1';
+        cantidad.dispatchEvent(new Event('input'));
+        botonConfirmar().click();
+        const mensaje =
+          'El plazo para cambiar prendas de esta venta ya venció: se hizo hace 24 h 3 min y el plazo es de 24 horas.';
+        http
+          .expectOne((r) => r.method === 'POST' && r.url === `${API}/devoluciones`)
+          .flush({ detail: mensaje }, { status: 409, statusText: 'Conflict' });
+        pantalla.fixture.detectChanges();
+
+        expect(limpio(errorDelDialogo()?.textContent)).toBe(mensaje);
+        expect(errorDelDialogo()?.getAttribute('role')).toBe('alert');
+        // Vencida ya, antes de que llegue la consulta nueva.
+        expect(botonConfirmar().disabled).toBe(true);
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        // El diálogo sigue abierto para que el cajero lea el motivo.
+        expect(estadoDe(pantalla).devolucionVisible()).toBe(true);
+
+        // La consulta nueva confirma con las horas reales.
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, -3 * MINUTO_MS, { plazo_horas: 24 }));
+        pantalla.fixture.detectChanges();
+        expect(indicadorDelDialogo()).toBe('Pasó el plazo de 24 horas');
+        expect(indicadorDeFila(filas()[0])).toBe('Pasó el plazo de 24 horas');
+      });
+
+      it('si tras el 409 de plazo la consulta nueva falla, la venta sigue marcada como vencida', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 10 * MINUTO_MS });
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 10 * MINUTO_MS));
+        const cantidad = document.body.querySelector('input.input-cantidad') as HTMLInputElement;
+        cantidad.value = '1';
+        cantidad.dispatchEvent(new Event('input'));
+        botonConfirmar().click();
+        http
+          .expectOne((r) => r.method === 'POST' && r.url === `${API}/devoluciones`)
+          .flush({ detail: 'El plazo para cambiar prendas ya venció.' }, { status: 409, statusText: 'Conflict' });
+        http.expectOne(urlPlazo(55)).error(new ProgressEvent('error'));
+        pantalla.fixture.detectChanges();
+
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        expect(errorDelDialogo()?.textContent).toContain('El plazo para cambiar prendas ya venció.');
+      });
+
+      it('un 409 que no es de plazo muestra su mensaje pero NO marca la venta como vencida', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 3 * HORA_MS });
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 3 * HORA_MS));
+        const cantidad = document.body.querySelector('input.input-cantidad') as HTMLInputElement;
+        cantidad.value = '1';
+        cantidad.dispatchEvent(new Event('input'));
+        botonConfirmar().click();
+        http
+          .expectOne((r) => r.method === 'POST' && r.url === `${API}/devoluciones`)
+          .flush({ detail: 'La cantidad supera lo vendido.' }, { status: 409, statusText: 'Conflict' });
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 3 * HORA_MS));
+        pantalla.fixture.detectChanges();
+
+        expect(limpio(errorDelDialogo()?.textContent)).toBe('La cantidad supera lo vendido.');
+        expect(botonConfirmar().disabled).toBe(false);
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+      });
+    });
+
+    describe('el cambio de prenda: devolución y luego nueva venta', () => {
+      /** Hasta confirmar una devolución exitosa: la venta 55 se devuelve y el historial se vuelve a cargar. */
+      function devolverVenta55(pantalla: Pantalla): void {
+        historialConPlazos(pantalla, { 55: 3 * HORA_MS });
+        abrirDialogoDeLaFila(pantalla);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 3 * HORA_MS));
+        const cantidad = document.body.querySelector('input.input-cantidad') as HTMLInputElement;
+        cantidad.value = '1';
+        cantidad.dispatchEvent(new Event('input'));
+        botonConfirmar().click();
+        http.expectOne((r) => r.method === 'POST' && r.url === `${API}/devoluciones`).flush({});
+        pantalla.fixture.detectChanges();
+        // El historial se recarga como siempre y vuelve a consultar el plazo.
+        http.expectOne(`${API}/ventas/sucursal/1`).flush([pagada(55)]);
+        http.expectOne(urlPlazo(55)).flush(respuestaPlazo(55, 3 * HORA_MS));
+        pantalla.fixture.detectChanges();
+      }
+
+      it('sin devolución previa el historial no muestra el aviso del cambio', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 3 * HORA_MS });
+
+        expect(avisoDelCambio()).toBeNull();
+      });
+
+      it('tras una devolución exitosa dice cuál es el paso siguiente y ofrece [Nueva venta]', () => {
+        configurar(['cajero']);
+        const toast = vi.spyOn(TestBed.inject(MessageService), 'add');
+        const pantalla = abrir(1);
+        devolverVenta55(pantalla);
+
+        // El flujo de siempre sigue: aviso de éxito, diálogo cerrado e historial recargado.
+        expect(toast).toHaveBeenCalledWith({ severity: 'success', summary: 'Devolución registrada' });
+        expect(estadoDe(pantalla).devolucionVisible()).toBe(false);
+        expect(estadoDe(pantalla).historialVisible()).toBe(true);
+        expect(filas()).toHaveLength(1);
+
+        expect(limpio(avisoDelCambio()?.textContent)).toContain(
+          'Devolución registrada. Para el cambio, registra la nueva venta con la prenda elegida.',
+        );
+        const boton = avisoDelCambio()?.querySelector('button');
+        expect(limpio(boton?.textContent)).toBe('Nueva venta');
+      });
+
+      it('[Nueva venta] cierra el diálogo y el historial y vuelve al formulario con el carrito vacío y el foco en la búsqueda', async () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        devolverVenta55(pantalla);
+
+        (avisoDelCambio()!.querySelector('button') as HTMLButtonElement).click();
+        pantalla.fixture.detectChanges();
+
+        expect(estadoDe(pantalla).historialVisible()).toBe(false);
+        expect(estadoDe(pantalla).devolucionVisible()).toBe(false);
+        expect(avisoDelCambio()).toBeNull();
+        expect(estadoDe(pantalla).fase()).toBe('armando');
+        expect(estadoDe(pantalla).lineas()).toHaveLength(0);
+        expect(pantalla.el.querySelector('.btn-cobrar')?.textContent).toContain('Cobrar (F9)');
+        await vi.waitFor(() => expect(document.activeElement?.id).toBe('busqueda'));
+      });
+
+      it('el formulario sigue siendo el de siempre: tras [Nueva venta] se puede vender una prenda', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        devolverVenta55(pantalla);
+        (avisoDelCambio()!.querySelector('button') as HTMLButtonElement).click();
+        pantalla.fixture.detectChanges();
+
+        buscarYAgregar(pantalla);
+        cobrar(pantalla);
+        expect(pantalla.el.querySelector('.total-panel__valor')?.textContent).toContain('Bs 180.00');
+      });
+
+      it('si ya había una venta a medias, [Nueva venta] no la borra', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        buscarYAgregar(pantalla);
+        devolverVenta55(pantalla);
+
+        (avisoDelCambio()!.querySelector('button') as HTMLButtonElement).click();
+        pantalla.fixture.detectChanges();
+
+        expect(estadoDe(pantalla).historialVisible()).toBe(false);
+        expect(estadoDe(pantalla).lineas()).toHaveLength(1);
+        expect(pantalla.el.querySelector('.linea-nombre')?.textContent).toBe('Camisa Oxford');
+      });
+
+      it('el aviso del cambio se va al cerrar el historial y no reaparece al abrirlo de nuevo', () => {
+        configurar(['cajero']);
+        const pantalla = abrir(1);
+        devolverVenta55(pantalla);
+        expect(avisoDelCambio()).not.toBeNull();
+
+        (pantalla.fixture.componentInstance as unknown as { historialVisible: { set(v: boolean): void } }).historialVisible.set(false);
+        pantalla.fixture.detectChanges();
+        abrirElHistorial(pantalla, [pagada(55)]);
+
+        expect(avisoDelCambio()).toBeNull();
+      });
+    });
+
+    describe('sin conexión', () => {
+      let estado: WritableSignal<EstadoConexion>;
+
+      function configurarConEstado(inicial: EstadoConexion): void {
+        estado = signal<EstadoConexion>(inicial);
+        configurar(['cajero'], 'Boutique Andina', [
+          { provide: ConectividadService, useValue: { estado } },
+          {
+            provide: SesionOfflineService,
+            useValue: {
+              guardarSucursalDeCaja: () => Promise.resolve(),
+              sucursalDeCajaGuardada: async () => null,
+            },
+          },
+        ]);
+      }
+
+      it('con el historial y la devolución deshabilitados no se consulta el plazo', () => {
+        configurarConEstado('sin_conexion');
+        const pantalla = abrir(1);
+        const boton = pantalla.el.querySelector('.btn-historial') as HTMLButtonElement;
+        expect(boton.disabled).toBe(true);
+        expect(boton.getAttribute('title')).toBe('Requiere conexión');
+
+        const instancia = pantalla.fixture.componentInstance as unknown as {
+          abrirHistorial(): void;
+          abrirDevolucion(venta: object): void;
+        };
+        instancia.abrirHistorial();
+        instancia.abrirDevolucion(pagada(55));
+        pantalla.fixture.detectChanges();
+
+        expect(http.match(() => true)).toHaveLength(0);
+        expect(estadoDe(pantalla).historialVisible()).toBe(false);
+        expect(estadoDe(pantalla).devolucionVisible()).toBe(false);
+      });
+
+      it('si se pierde la conexión con el historial abierto el botón dice "Requiere conexión" y la cuenta no consulta', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        vi.setSystemTime(new Date(2026, 9, 30, 15, 0, 0));
+        configurarConEstado('en_linea');
+        const pantalla = abrir(1);
+        historialConPlazos(pantalla, { 55: 90_000 });
+        expect(botonDeFila(filas()[0]).disabled).toBe(false);
+
+        estado.set('sin_conexion');
+        pantalla.fixture.detectChanges();
+        expect(botonDeFila(filas()[0]).disabled).toBe(true);
+        expect(botonDeFila(filas()[0]).getAttribute('title')).toBe('Requiere conexión');
+
+        // Aunque la cuenta llegue a cero, sin conexión no se pregunta al servidor.
+        vi.advanceTimersByTime(2 * MINUTO_MS);
+        pantalla.fixture.detectChanges();
+        http.expectNone(urlPlazo(55));
+        expect(botonDeFila(filas()[0]).getAttribute('title')).toBe('Requiere conexión');
+      });
     });
   });
 });

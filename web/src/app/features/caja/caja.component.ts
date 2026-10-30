@@ -1,6 +1,21 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, ElementRef, HostListener, Injector, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { HttpClient, HttpContext, HttpErrorResponse } from '@angular/common/http';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  Injector,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -10,12 +25,13 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth.service';
 import { ConectividadService } from '../../core/conectividad.service';
 import { fechaLocalIso } from '../../core/date-utils';
+import { SIN_TOAST_ERROR } from '../../core/http-contexts';
 import { VarianteBusqueda } from '../../core/models/catalogo.models';
 import { Empleado } from '../../core/models/organizacion.models';
 import { MetodoPagoCaja, Pago, PagoCajaRequest, PagoCajaRespuesta } from '../../core/models/pagos.models';
 import { FilaVentasPorSucursal, ReporteVentas } from '../../core/models/reportes.models';
 import { Reserva } from '../../core/models/reservas.models';
-import { DevolucionCrear, Venta, VentaPresencialCrear } from '../../core/models/ventas.models';
+import { DevolucionCrear, PlazoCambio, Venta, VentaPresencialCrear } from '../../core/models/ventas.models';
 import { CatalogoLocalService, VarianteBusquedaLocal } from '../../core/offline/catalogo-local.service';
 import { ColaSincronizacionService } from '../../core/offline/cola-sincronizacion.service';
 import { SesionOfflineService } from '../../core/offline/sesion-offline.service';
@@ -51,6 +67,28 @@ interface CobroOffline {
 
 type FaseVenta = 'armando' | 'cobrando';
 
+/** Cada cuánto como máximo se refresca la cuenta regresiva del plazo de cambio. */
+const INTERVALO_PLAZO_MS = 60_000;
+/** Tope de ventas del historial cuyo plazo se consulta a la vez; las demás quedan sin indicador (el botón sigue como siempre). */
+const MAX_PLAZOS_PARALELOS = 30;
+
+/** El plazo de una venta tal como lo dijo el servidor, más el reloj local al recibirlo (solo para la cuenta regresiva visible). */
+interface PlazoVenta {
+  /** null solo cuando se supo que venció (409) sin haber podido consultar el plazo. */
+  plazoHoras: number | null;
+  venceMs: number;
+  /** Lo que respondió el servidor: él decide. */
+  vigente: boolean;
+  obtenidoMs: number;
+}
+
+/** Lo que se muestra de un plazo: el texto del indicador, el del botón y si ya venció. */
+interface IndicadorPlazo {
+  vencido: boolean;
+  texto: string;
+  titulo: string;
+}
+
 const OPCIONES_METODO_PAGO: { label: string; value: MetodoPagoCaja; icono: NombreIcono }[] = [
   { label: 'Efectivo', value: 'efectivo', icono: 'dinero' },
   { label: 'QR', value: 'qr', icono: 'qr' },
@@ -73,8 +111,9 @@ const OPCIONES_METODO_PAGO: { label: string; value: MetodoPagoCaja; icono: Nombr
   templateUrl: './caja.component.html',
   styleUrl: './caja.component.scss',
 })
-export class CajaComponent implements OnInit {
+export class CajaComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly messageService = inject(MessageService);
   private readonly authService = inject(AuthService);
   private readonly conectividad = inject(ConectividadService);
@@ -209,6 +248,41 @@ export class CajaComponent implements OnInit {
   protected readonly ventaParaDevolucion = signal<Venta | null>(null);
   protected readonly cantidadesDevolucion = signal<Record<number, number>>({});
   protected readonly registrandoDevolucion = signal(false);
+  /** Mensaje del servidor cuando rechaza (409) la devolución: se muestra dentro del diálogo. */
+  protected readonly errorDevolucion = signal<string | null>(null);
+  /** Se registró una devolución: el historial muestra el paso siguiente del CAMBIO (la nueva venta). */
+  protected readonly cambioPendiente = signal(false);
+
+  // ---- Plazo para devolver o cambiar (D19) ---------------------------------------
+  // El servidor decide: el plazo y su vencimiento salen de GET /ventas/{id}/plazo-cambio. El reloj
+  // del navegador solo mueve la cuenta regresiva visible y, al llegar a cero, se vuelve a preguntar.
+
+  private readonly plazos = signal<Record<number, PlazoVenta>>({});
+  /** Reloj local de la cuenta regresiva (se actualiza con la consulta y con cada tic). */
+  private readonly ahora = signal(Date.now());
+  private temporizadorPlazo: ReturnType<typeof setTimeout> | null = null;
+  /** Última consulta pedida por venta: una respuesta vieja no pisa a una más nueva. */
+  private readonly secuenciaPlazo = new Map<number, number>();
+  /** Ventas cuya cuenta llegó a cero y ya se volvió a preguntar al servidor. */
+  private readonly vencimientoConfirmado = new Set<number>();
+
+  constructor() {
+    // El reloj de la cuenta regresiva corre solo mientras se ve el historial o el diálogo de devolución.
+    effect(() => {
+      const historial = this.historialVisible();
+      this.devolucionVisible();
+      this.plazos();
+      untracked(() => {
+        this.programarTic();
+        // El aviso del cambio vive en el historial: al cerrarlo (con la X o con "Nueva venta") se va.
+        if (!historial) this.cambioPendiente.set(false);
+      });
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.detenerTic();
+  }
 
   ngOnInit(): void {
     this.http.get<Empleado>(`${environment.apiUrl}/empleados/yo`).subscribe({
@@ -806,6 +880,8 @@ export class CajaComponent implements OnInit {
     if (sucursalId === null || this.sinConexion()) return;
     this.historialVisible.set(true);
     this.cargandoHistorial.set(true);
+    this.plazos.set({});
+    this.vencimientoConfirmado.clear();
     this.http.get<Venta[]>(`${environment.apiUrl}/ventas/sucursal/${sucursalId}`).subscribe({
       next: (ventas) => {
         // `venta.fecha` viene del backend en hora LOCAL del servidor, sin
@@ -813,13 +889,130 @@ export class CajaComponent implements OnInit {
         // toISOString() (UTC) desalinea la fecha cerca de medianoche. Se
         // arma "hoy" con el mismo calendario local, no UTC.
         const hoy = fechaLocalIso(new Date());
-        this.historialHoy.set(
-          ventas.filter((v) => v.fecha.slice(0, 10) === hoy).sort((a, b) => b.id - a.id),
-        );
+        const deHoy = ventas.filter((v) => v.fecha.slice(0, 10) === hoy).sort((a, b) => b.id - a.id);
+        this.historialHoy.set(deHoy);
         this.cargandoHistorial.set(false);
+        // Solo las ventas que ofrecen devolución necesitan su plazo; las más recientes primero.
+        deHoy
+          .filter((v) => this.permiteDevolucion(v))
+          .slice(0, MAX_PLAZOS_PARALELOS)
+          .forEach((v) => this.pedirPlazo(v.id));
       },
       error: () => this.cargandoHistorial.set(false),
     });
+  }
+
+  /** Solo una venta pagada o entregada ofrece el botón "Devolución". */
+  protected permiteDevolucion(venta: Venta): boolean {
+    return venta.estado === 'pagada' || venta.estado === 'entregada';
+  }
+
+  // ---- Plazo para devolver o cambiar ---------------------------------------------
+
+  /** Lo que se dice del plazo de una venta; null si no se conoce (consulta pendiente, fallida o fuera del tope). */
+  protected indicadorPlazo(ventaId: number): IndicadorPlazo | null {
+    const plazo = this.plazos()[ventaId];
+    if (!plazo) return null;
+    const ahora = this.ahora();
+    // La cuenta solo "llega a cero" si al recibirla todavía faltaba tiempo: si el reloj de este equipo va
+    // adelantado y el servidor sigue diciendo "vigente", manda el servidor.
+    const cuentaTerminada = plazo.venceMs > plazo.obtenidoMs && ahora >= plazo.venceMs;
+    if (!plazo.vigente || cuentaTerminada) {
+      const horas = plazo.plazoHoras;
+      return {
+        vencido: true,
+        texto: horas === null ? 'Pasó el plazo para devolver o cambiar' : `Pasó el plazo de ${textoHoras(horas)}`,
+        titulo:
+          horas === null
+            ? 'Pasó el plazo para devolver o cambiar'
+            : `Pasó el plazo de ${textoHoras(horas)} para devolver o cambiar`,
+      };
+    }
+    const texto = `Quedan ${textoRestante(plazo.venceMs - ahora)} para devolver o cambiar`;
+    return { vencido: false, texto, titulo: texto };
+  }
+
+  /** Pide el plazo de una venta. Un fallo no muestra aviso ni bloquea nada: el servidor decide al confirmar. */
+  private pedirPlazo(ventaId: number, forzarVencido = false): void {
+    if (this.sinConexion()) return;
+    const secuencia = (this.secuenciaPlazo.get(ventaId) ?? 0) + 1;
+    this.secuenciaPlazo.set(ventaId, secuencia);
+    this.http
+      .get<PlazoCambio>(`${environment.apiUrl}/ventas/${ventaId}/plazo-cambio`, {
+        context: new HttpContext().set(SIN_TOAST_ERROR, true),
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (respuesta) => {
+          if (this.secuenciaPlazo.get(ventaId) !== secuencia) return;
+          this.guardarPlazo(respuesta, forzarVencido);
+        },
+        error: () => undefined,
+      });
+  }
+
+  private guardarPlazo(respuesta: PlazoCambio, forzarVencido: boolean): void {
+    const venceMs = Date.parse(respuesta.vence_en);
+    if (Number.isNaN(venceMs) || typeof respuesta.vigente !== 'boolean') return;
+    const ahora = Date.now();
+    this.vencimientoConfirmado.delete(respuesta.venta_id);
+    this.ahora.set(ahora);
+    this.plazos.update((actuales) => ({
+      ...actuales,
+      [respuesta.venta_id]: {
+        plazoHoras: respuesta.plazo_horas,
+        venceMs,
+        vigente: respuesta.vigente && !forzarVencido,
+        obtenidoMs: ahora,
+      },
+    }));
+  }
+
+  /** El servidor rechazó por plazo (409): la venta queda vencida aunque aún no llegue la consulta nueva. */
+  private marcarPlazoVencido(ventaId: number): void {
+    const ahora = Date.now();
+    // Subir la secuencia descarta las consultas anteriores que sigan en camino.
+    this.secuenciaPlazo.set(ventaId, (this.secuenciaPlazo.get(ventaId) ?? 0) + 1);
+    this.ahora.set(ahora);
+    this.plazos.update((actuales) => ({
+      ...actuales,
+      [ventaId]: { ...(actuales[ventaId] ?? { plazoHoras: null, venceMs: ahora, obtenidoMs: ahora }), vigente: false },
+    }));
+  }
+
+  private detenerTic(): void {
+    if (this.temporizadorPlazo !== null) {
+      clearTimeout(this.temporizadorPlazo);
+      this.temporizadorPlazo = null;
+    }
+  }
+
+  /** Programa el próximo tic: como mucho en un minuto, o antes si un plazo vence antes (así el botón se apaga a tiempo). */
+  private programarTic(): void {
+    this.detenerTic();
+    if (!this.historialVisible() && !this.devolucionVisible()) return;
+    const ahora = Date.now();
+    const faltantes = Object.values(this.plazos())
+      .filter((p) => p.vigente && p.venceMs > ahora)
+      .map((p) => p.venceMs - ahora);
+    if (faltantes.length === 0) return;
+    const espera = Math.min(INTERVALO_PLAZO_MS, Math.max(100, Math.min(...faltantes) + 100));
+    this.temporizadorPlazo = setTimeout(() => this.alPasarElTiempo(), espera);
+  }
+
+  private alPasarElTiempo(): void {
+    this.temporizadorPlazo = null;
+    const ahora = Date.now();
+    this.ahora.set(ahora);
+    // Una cuenta que llegó a cero se confirma con el servidor (una sola vez por consulta recibida).
+    for (const [id, plazo] of Object.entries(this.plazos())) {
+      const ventaId = Number(id);
+      if (plazo.vigente && plazo.venceMs > plazo.obtenidoMs && ahora >= plazo.venceMs && !this.vencimientoConfirmado.has(ventaId)) {
+        this.vencimientoConfirmado.add(ventaId);
+        this.pedirPlazo(ventaId);
+      }
+    }
+    this.programarTic();
   }
 
   // ---- Devoluciones --------------------------------------------------------------
@@ -828,7 +1021,10 @@ export class CajaComponent implements OnInit {
     if (this.sinConexion()) return;
     this.ventaParaDevolucion.set(venta);
     this.cantidadesDevolucion.set(Object.fromEntries(venta.detalle.map((d) => [d.id, 0])));
+    this.errorDevolucion.set(null);
     this.devolucionVisible.set(true);
+    // El dato fresco manda: el de la fila pudo quedar viejo mientras el cajero atendía.
+    this.pedirPlazo(venta.id);
   }
 
   actualizarCantidadDevolucion(detalleId: number, cantidad: number | null): void {
@@ -847,18 +1043,67 @@ export class CajaComponent implements OnInit {
     }
     const payload: DevolucionCrear = { venta_id: venta.id, detalle };
     this.registrandoDevolucion.set(true);
+    this.errorDevolucion.set(null);
     this.http.post(`${environment.apiUrl}/devoluciones`, payload).subscribe({
       next: () => {
         this.registrandoDevolucion.set(false);
         this.messageService.add({ severity: 'success', summary: 'Devolución registrada' });
         this.devolucionVisible.set(false);
+        // Un cambio de prenda es esta devolución más una venta nueva: el historial dice cuál es el paso siguiente.
+        this.cambioPendiente.set(true);
         this.abrirHistorial();
       },
-      error: () => this.registrandoDevolucion.set(false),
+      error: (error: HttpErrorResponse) => {
+        this.registrandoDevolucion.set(false);
+        if (error.status !== 409) return;
+        // 409: el servidor rechazó la devolución (p. ej. venció el plazo con el diálogo abierto). Su mensaje se ve aquí.
+        const mensaje = mensajeDeConflicto(error);
+        this.errorDevolucion.set(mensaje);
+        const porPlazo = /plazo/i.test(mensaje);
+        if (porPlazo) this.marcarPlazoVencido(venta.id);
+        this.pedirPlazo(venta.id, porPlazo);
+      },
     });
+  }
+
+  /** "Nueva venta" tras una devolución: cierra los diálogos y deja el formulario de venta listo con foco en la búsqueda. */
+  irANuevaVenta(): void {
+    this.devolucionVisible.set(false);
+    this.historialVisible.set(false);
+    this.cambioPendiente.set(false);
+    // Una venta a medias (carrito armado o cobro en curso) no se borra: solo se vuelve a ella.
+    if (this.fase() === 'armando' && !this.hayVentaEnCurso()) {
+      this.nuevaVenta();
+    } else {
+      this.enfocarBusqueda();
+    }
   }
 }
 
 function redondear(valor: number): number {
   return Math.round(valor * 100) / 100;
+}
+
+/** "24 horas" / "1 hora": las horas reales del plazo que dijo el servidor. */
+function textoHoras(horas: number): string {
+  return `${horas} ${horas === 1 ? 'hora' : 'horas'}`;
+}
+
+/** Tiempo que falta, en horas y minutos enteros ("5 h 12 min"); menos de un minuto se dice como tal. */
+function textoRestante(milisegundos: number): string {
+  const minutos = Math.floor(milisegundos / 60_000);
+  if (minutos < 1) return 'menos de 1 min';
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (horas === 0) return `${resto} min`;
+  return resto === 0 ? `${horas} h` : `${horas} h ${resto} min`;
+}
+
+/** El texto con que el servidor explicó el 409 (`detail` en texto, o `detail.mensaje` / `mensaje`). */
+function mensajeDeConflicto(error: HttpErrorResponse): string {
+  const detalle = error.error?.detail;
+  if (typeof detalle === 'string' && detalle.trim()) return detalle;
+  if (typeof detalle?.mensaje === 'string' && detalle.mensaje.trim()) return detalle.mensaje;
+  if (typeof error.error?.mensaje === 'string' && error.error.mensaje.trim()) return error.error.mensaje;
+  return 'El servidor no aceptó la devolución. Revisa la venta e inténtalo de nuevo.';
 }

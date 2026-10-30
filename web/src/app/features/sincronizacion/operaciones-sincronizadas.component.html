@@ -1,0 +1,489 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Comercial</span>
+    <h1>Operaciones sincronizadas</h1>
+    <p>Las ventas y reservas que llegaron desde los dispositivos, tal como las guardó el servidor, y lo que pasó con cada una.</p>
+  </div>
+</div>
+
+<!-- Acceso rápido a lo que espera una decisión -->
+@if (conflictos() > 0 && filtroEstado() !== 'en_conflicto') {
+  <button type="button" class="acceso-conflictos" data-accion="ver-conflictos" (click)="verConflictos()">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    <span class="fuerte">{{ textoConflictos() }}</span>
+    <span class="acceso-conflictos__ir">Ver cuáles</span>
+  </button>
+}
+
+<!-- Filtros -->
+<div class="filtros">
+  <p-select
+    [options]="opcionesEstado"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Estado"
+    [ngModel]="filtroEstado()"
+    (ngModelChange)="cambiarEstado($event)"
+  />
+  <p-select
+    [options]="opcionesTipo"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Tipo de operación"
+    [ngModel]="filtroTipo()"
+    (ngModelChange)="cambiarTipo($event)"
+  />
+  <p-select
+    [options]="sucursales()"
+    optionLabel="nombre"
+    optionValue="id"
+    placeholder="Todas las sucursales"
+    ariaLabel="Sucursal"
+    [showClear]="true"
+    [ngModel]="filtroSucursal()"
+    (ngModelChange)="cambiarSucursal($event)"
+  />
+  @if (opcionesUsuario().length > 0) {
+    <p-select
+      [options]="opcionesUsuario()"
+      optionLabel="etiqueta"
+      optionValue="id"
+      placeholder="Todos los usuarios"
+      ariaLabel="Usuario"
+      [filter]="true"
+      filterBy="etiqueta"
+      [showClear]="true"
+      [ngModel]="filtroUsuario()"
+      (ngModelChange)="cambiarUsuario($event)"
+    />
+  }
+  <p-datepicker
+    selectionMode="range"
+    placeholder="Rango de fechas"
+    ariaLabel="Rango de fechas"
+    dateFormat="dd/mm/yy"
+    [showIcon]="true"
+    [showClear]="true"
+    [readonlyInput]="true"
+    [ngModel]="filtroRango()"
+    (ngModelChange)="cambiarRango($event)"
+  />
+  <span class="filtros__fin conteo fs-num" data-conteo>{{ total() }} {{ total() === 1 ? 'operación' : 'operaciones' }}</span>
+</div>
+
+<section class="panel">
+  @if (errorLista()) {
+    <div class="vacio" role="alert" data-estado="error">
+      <fs-icono nombre="alerta" [tam]="36" />
+      <p>No pudimos cargar las operaciones sincronizadas.</p>
+      <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar" (click)="cargar()">Reintentar</button>
+    </div>
+  } @else {
+    @if (cargando() && operaciones().length === 0) {
+      <div class="vacio" role="status" data-estado="cargando">
+        <fs-icono nombre="reloj-arena" [tam]="36" />
+        <p>Cargando las operaciones…</p>
+      </div>
+    }
+    <div class="panel__scroll" [hidden]="cargando() && operaciones().length === 0">
+      <p-table
+        [value]="operaciones()"
+        [lazy]="true"
+        [lazyLoadOnInit]="false"
+        (onLazyLoad)="alPaginar($event)"
+        [loading]="cargando()"
+        [paginator]="total() > tamanioPagina"
+        [rows]="tamanioPagina"
+        [totalRecords]="total()"
+        [first]="primero()"
+        styleClass="p-datatable-sm"
+        [tableStyle]="{ 'min-width': '1080px' }"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Recibida</th>
+            <th>Fecha real</th>
+            <th>Tipo</th>
+            <th>Sucursal</th>
+            <th>Usuario</th>
+            <th class="num">Total</th>
+            <th>Estado</th>
+            <th class="num">Intentos</th>
+            <th class="num"><span class="sr-solo">Detalle</span></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-op>
+          @let vista = vistaEstado(op.estado);
+          <tr [attr.data-operacion]="op.operacion_id">
+            <td class="celda-fecha">
+              <span class="fs-num">{{ op.recibida_en | date: 'dd/MM/yyyy HH:mm' }}</span>
+              @if (textoRetraso(op); as retraso) {
+                <span class="retraso" data-retraso>
+                  <fs-icono nombre="reloj" [tam]="20" />
+                  {{ retraso }}
+                </span>
+              }
+            </td>
+            <td class="fs-num celda-fecha">{{ op.fecha_operacion | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <span class="tipo">
+                <fs-icono [nombre]="op.tipo === 'reserva' ? 'calendario' : 'dinero'" [tam]="20" />
+                {{ etiquetaTipo(op.tipo) }}
+              </span>
+            </td>
+            <td>{{ nombreSucursal(op.sucursal_id) }}</td>
+            <td>{{ nombreUsuario(op.usuario_id) }}</td>
+            <td class="num fs-num">{{ totalDeFila(op) }}</td>
+            <td>
+              <p-tag [severity]="vista.severidad" class="etiqueta-estado" [attr.data-estado-operacion]="op.estado">
+                <fs-icono [nombre]="vista.icono" [tam]="20" />
+                <span>{{ vista.texto }}</span>
+              </p-tag>
+            </td>
+            <td class="num fs-num">{{ op.intentos }}</td>
+            <td class="num">
+              <button
+                type="button"
+                class="btn-icono"
+                data-accion="detalle"
+                [attr.aria-label]="'Ver detalle de la operación del ' + (op.fecha_operacion | date: 'dd/MM/yyyy HH:mm')"
+                (click)="abrirDetalle(op)"
+              >
+                <fs-icono nombre="ojo" [tam]="24" />
+              </button>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template #emptymessage>
+          <tr>
+            <td colspan="9">
+              @if (hayFiltros()) {
+                <div class="vacio" data-estado="sin-resultados">
+                  <fs-icono nombre="sin-resultados" [tam]="36" />
+                  <p>No encontramos operaciones con esos filtros.</p>
+                  <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="quitarFiltros()">Quitar los filtros</button>
+                </div>
+              } @else {
+                <div class="vacio" data-estado="vacio">
+                  <fs-icono nombre="bandeja" [tam]="36" />
+                  <p class="vacio__titulo">Todavía no hay operaciones sincronizadas.</p>
+                  <p>Cuando un dispositivo envíe ventas o reservas hechas sin conexión, aparecerán aquí.</p>
+                </div>
+              }
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  }
+</section>
+
+<!-- Detalle -->
+<p-dialog
+  header="Detalle de la operación"
+  styleClass="dlg-detalle"
+  [visible]="detalleVisible()"
+  (visibleChange)="alCambiarDetalle($event)"
+  [modal]="true"
+  [style]="{ width: '760px', maxWidth: '96vw' }"
+>
+  @if (cargandoDetalle()) {
+    <div class="vacio" role="status" data-detalle="cargando">
+      <fs-icono nombre="reloj-arena" [tam]="36" />
+      <p>Cargando el detalle…</p>
+    </div>
+  }
+  @if (detalle(); as op) {
+    @let vista = vistaEstado(op.estado);
+    <div class="detalle-cabecera">
+      <p-tag [severity]="vista.severidad" [attr.data-detalle-estado]="op.estado">
+        <fs-icono [nombre]="vista.icono" [tam]="20" />
+        <span>{{ vista.texto }}</span>
+      </p-tag>
+      <span class="fs-num">{{ etiquetaTipo(op.tipo) }} del {{ op.fecha_operacion | date: 'dd/MM/yyyy HH:mm' }}</span>
+    </div>
+
+    @if (motivoClaro(op); as motivo) {
+      <div class="fs-aviso detalle-motivo" [class.fs-aviso--error]="op.estado === 'rechazada'" role="status" data-detalle="motivo">
+        <fs-icono [nombre]="op.estado === 'rechazada' ? 'cerrar' : 'advertencia'" [tam]="24" />
+        <span>{{ motivo }}</span>
+      </div>
+    }
+
+    @if (op.faltantes.length) {
+      <h3>Prendas sin stock suficiente</h3>
+      <ul class="lista-simple" data-detalle="faltantes">
+        @for (faltante of op.faltantes; track faltante.variante_id) {
+          <li>
+            <span class="fuerte">{{ prenda(faltante.variante_id) }}</span>
+            <span class="fs-num">pedidas {{ faltante.solicitado }} / disponibles {{ faltante.disponible }}</span>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (op.avisos.length) {
+      <h3>Diferencia de precio</h3>
+      <ul class="lista-simple" data-detalle="avisos">
+        @for (aviso of op.avisos; track $index) {
+          <li>
+            <span class="fuerte">{{ prenda(aviso.variante_id) }}</span>
+            <span class="fs-num">El cliente pagó {{ bs(aviso.precio_operacion) }}; el precio actual es {{ bs(aviso.precio_actual) }}</span>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (op.resolucion; as resolucion) {
+      <h3>Cómo se resolvió</h3>
+      <div class="resolucion" data-detalle="resolucion">
+        <p>
+          <strong>{{ textoDecision(resolucion) }}.</strong>
+        </p>
+        <p class="fs-num">
+          Por {{ nombreUsuario(resolucion.por_usuario_id) }} el {{ resolucion.en | date: 'dd/MM/yyyy HH:mm' }}.
+        </p>
+        @if (resolucion.motivo) {
+          <p data-detalle="resolucion-motivo">Motivo: {{ resolucion.motivo }}</p>
+        }
+        @if (resolucion.ajustes.length) {
+          <ul class="lista-simple" data-detalle="ajustes">
+            @for (ajuste of resolucion.ajustes; track ajuste.movimiento_id) {
+              <li>
+                <span class="fuerte">{{ prenda(ajuste.variante_id) }}</span>
+                <span class="fs-num">+{{ ajuste.cantidad }} al inventario (movimiento n.º {{ ajuste.movimiento_id }})</span>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+
+    <dl class="datos">
+      <div>
+        <dt>Sucursal</dt>
+        <dd>{{ nombreSucursal(op.sucursal_id) }}</dd>
+      </div>
+      <div>
+        <dt>Usuario</dt>
+        <dd>{{ nombreUsuario(op.usuario_id) }}</dd>
+      </div>
+      <div>
+        <dt>Cliente</dt>
+        <dd data-detalle="cliente">{{ textoCliente(op) }}</dd>
+      </div>
+      <div>
+        <dt>Recibida por el servidor</dt>
+        <dd class="fs-num">
+          {{ op.recibida_en | date: 'dd/MM/yyyy HH:mm' }}
+          @if (textoRetraso(op); as retraso) {
+            <span class="retraso" data-detalle="retraso">({{ retraso }})</span>
+          }
+        </dd>
+      </div>
+      <div>
+        <dt>Dispositivo</dt>
+        <dd data-detalle="dispositivo">{{ op.dispositivo ?? '—' }}</dd>
+      </div>
+      <div>
+        <dt>Intentos de envío</dt>
+        <dd class="fs-num" data-detalle="intentos">{{ op.intentos }}</dd>
+      </div>
+      @if (op.recurso; as recurso) {
+        <div>
+          <dt>{{ recurso.tipo === 'reserva' ? 'Reserva creada' : 'Venta creada' }}</dt>
+          <dd class="fs-num fuerte" data-detalle="recurso">{{ recurso.codigo }}</dd>
+        </div>
+      }
+      @if (op.tipo === 'venta_contado' && op.payload?.pago; as pago) {
+        <div>
+          <dt>Forma de pago</dt>
+          <dd data-detalle="pago">
+            {{ textoMetodo(pago.metodo) }} · recibido <span class="fs-num">{{ bs(pago.monto_recibido) }}</span>
+            @if (op.cambio) {
+              · cambio <span class="fs-num">{{ bs(op.cambio) }}</span>
+            }
+          </dd>
+        </div>
+      }
+      @if (op.tipo === 'reserva' && op.payload?.fecha_visita; as visita) {
+        <div>
+          <dt>Visita</dt>
+          <dd class="fs-num" data-detalle="visita">{{ visita }} · {{ op.payload?.hora_visita_desde }} - {{ op.payload?.hora_visita_hasta }}</dd>
+        </div>
+      }
+      @if (op.payload?.observacion; as observacion) {
+        <div>
+          <dt>Observación</dt>
+          <dd>{{ observacion }}</dd>
+        </div>
+      }
+    </dl>
+
+    <h3>Prendas</h3>
+    @if (lineasDetalle().length) {
+      <div class="panel__scroll">
+        <table class="tabla-lineas" data-detalle="lineas">
+          <thead>
+            <tr>
+              <th>Prenda</th>
+              <th class="num">Cant.</th>
+              @if (op.tipo === 'venta_contado') {
+                <th class="num">Precio</th>
+                <th class="num">Subtotal</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (linea of lineasDetalle(); track linea.variante_id) {
+              <tr>
+                <td>
+                  <span class="fuerte">{{ producto(linea.variante_id) }}</span>
+                  <span class="tenue bloque">{{ tallaYColor(linea.variante_id) }}</span>
+                </td>
+                <td class="num fs-num">{{ linea.cantidad }}</td>
+                @if (op.tipo === 'venta_contado') {
+                  <td class="num fs-num">{{ bs(linea.precio_unitario) }}</td>
+                  <td class="num fs-num">{{ subtotal(linea) }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (op.tipo === 'venta_contado' && op.payload?.total != null) {
+        <p class="total">
+          Total
+          <strong class="fs-num" data-detalle="total">{{ bs(op.payload?.total) }}</strong>
+        </p>
+      }
+    } @else {
+      <p class="ayuda" data-detalle="sin-lineas">Este detalle no trae el contenido de la operación.</p>
+    }
+
+    <!-- Acciones: solo para un conflicto y solo para quien puede resolver. Nada se borra. -->
+    @if (op.estado === 'en_conflicto' && puedeResolver()) {
+      <div class="dialogo-acciones" data-detalle="acciones">
+        @if (op.tipo === 'venta_contado') {
+          <button type="button" class="fs-btn fs-btn--primario fs-btn--sm" data-accion="forzar" (click)="abrirAccion('forzar')">
+            <fs-icono nombre="check" [tam]="24" />
+            Forzar
+          </button>
+        }
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="rechazar" (click)="abrirAccion('rechazar')">
+          <fs-icono nombre="cerrar" [tam]="24" />
+          Rechazar
+        </button>
+      </div>
+      @if (op.tipo === 'reserva') {
+        <p class="ayuda" data-detalle="solo-rechazar">Una reserva en conflicto solo se puede rechazar.</p>
+      }
+    }
+  }
+</p-dialog>
+
+<!-- Forzar -->
+<p-dialog
+  header="Forzar la venta"
+  styleClass="dlg-forzar"
+  [visible]="accionPendiente() === 'forzar'"
+  (visibleChange)="!$event && cerrarAccion()"
+  [modal]="true"
+  [closable]="!enviando()"
+  [closeOnEscape]="!enviando()"
+  [style]="{ width: '520px', maxWidth: '96vw' }"
+>
+  <p class="explicacion" data-forzar="explicacion">
+    Forzar significa que la prenda <strong>ya salió de la tienda</strong> y el cliente ya pagó en efectivo. Se sumará al inventario lo que
+    faltó, se confirmará la venta y el stock no quedará en negativo.
+  </p>
+  @if (ajustesPrevistos().length) {
+    <ul class="lista-simple" data-forzar="ajustes">
+      @for (ajuste of ajustesPrevistos(); track ajuste.variante_id) {
+        <li>
+          <span class="fuerte">{{ prenda(ajuste.variante_id) }}</span>
+          <span class="fs-num">+{{ ajuste.cantidad }} al inventario</span>
+        </li>
+      }
+    </ul>
+  }
+  <div class="campo">
+    <label for="sync-motivo-forzar">Motivo (mínimo {{ motivoMinimoForzar }} caracteres)</label>
+    <textarea
+      id="sync-motivo-forzar"
+      class="fs-input"
+      rows="3"
+      [attr.maxlength]="motivoMaximo"
+      [value]="motivoAccion()"
+      (input)="motivoAccion.set($any($event.target).value)"
+    ></textarea>
+    @if (motivoAccion().length > 0 && !motivoValido()) {
+      <small class="fs-error-texto" data-forzar="error-motivo">Escribe al menos {{ motivoMinimoForzar }} caracteres.</small>
+    }
+  </div>
+  <label class="casilla" for="sync-entiendo">
+    <input
+      id="sync-entiendo"
+      type="checkbox"
+      [checked]="entiendeAjuste()"
+      (change)="entiendeAjuste.set($any($event.target).checked)"
+    />
+    <span>Entiendo que se descontará el stock y se registrará un ajuste de inventario.</span>
+  </label>
+  <div class="dialogo-acciones">
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="cancelar-accion" [disabled]="enviando()" (click)="cerrarAccion()">
+      Volver
+    </button>
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario fs-btn--sm"
+      data-accion="confirmar-forzar"
+      [disabled]="!puedeConfirmar()"
+      (click)="confirmarAccion()"
+    >
+      {{ enviando() ? 'Forzando…' : 'Forzar venta' }}
+    </button>
+  </div>
+</p-dialog>
+
+<!-- Rechazar -->
+<p-dialog
+  header="Rechazar la operación"
+  styleClass="dlg-rechazar"
+  [visible]="accionPendiente() === 'rechazar'"
+  (visibleChange)="!$event && cerrarAccion()"
+  [modal]="true"
+  [closable]="!enviando()"
+  [closeOnEscape]="!enviando()"
+  [style]="{ width: '520px', maxWidth: '96vw' }"
+>
+  <p class="explicacion" data-rechazar="explicacion">
+    Rechazar cierra la operación <strong>sin tocar el inventario</strong>. Si el cliente ya pagó en la tienda, el dinero se devuelve fuera
+    del sistema. El operador recibirá un aviso con tu motivo.
+  </p>
+  <div class="campo">
+    <label for="sync-motivo-rechazar">Motivo (obligatorio)</label>
+    <textarea
+      id="sync-motivo-rechazar"
+      class="fs-input"
+      rows="3"
+      [attr.maxlength]="motivoMaximo"
+      [value]="motivoAccion()"
+      (input)="motivoAccion.set($any($event.target).value)"
+    ></textarea>
+  </div>
+  <div class="dialogo-acciones">
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="cancelar-accion" [disabled]="enviando()" (click)="cerrarAccion()">
+      Volver
+    </button>
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario fs-btn--sm"
+      data-accion="confirmar-rechazar"
+      [disabled]="!puedeConfirmar()"
+      (click)="confirmarAccion()"
+    >
+      {{ enviando() ? 'Rechazando…' : 'Rechazar operación' }}
+    </button>
+  </div>
+</p-dialog>

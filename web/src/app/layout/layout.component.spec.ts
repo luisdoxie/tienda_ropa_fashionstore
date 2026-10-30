@@ -46,14 +46,16 @@ const PERMISOS_ADMIN = [
   'entregas.gestionar',
   'probador.gestionar',
   'empresa.gestionar',
+  'sincronizacion.supervisar',
+  'bitacora.ver',
 ];
 
 // El orden del menú de antes. Esta lista NO se reordena: los ítems nuevos van al final de su lista.
 const INICIO_ESPERADO = ['Dashboard', 'Reportes'];
 const GRUPOS_ESPERADOS: Record<string, string[]> = {
-  Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales'],
+  Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales', 'Auditoría'],
   Catálogo: ['Productos', 'Categorías', 'Tallas', 'Colores', 'Temporadas', 'Colecciones'],
-  Ventas: ['Caja', 'Promociones', 'Reservas', 'Catálogo local', 'Pendientes de envío'],
+  Ventas: ['Caja', 'Promociones', 'Reservas', 'Catálogo local', 'Pendientes de envío', 'Sincronización'],
 };
 const FIN_ESPERADO_PREVIO = ['Inventario', 'Proveedores', 'Envíos', 'Zonas de envío', 'Assets del probador'];
 
@@ -165,21 +167,15 @@ describe('LayoutComponent', () => {
 
   describe('funcionalidades que el plan no incluye', () => {
     const itemIa: ItemMenu = { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', funcion: 'reportes_ia' };
-    const itemOffline: ItemMenu = {
-      etiqueta: 'Operaciones sincronizadas',
-      icono: 'refrescar',
-      ruta: '/sincronizacion',
-      funcion: 'operacion_offline',
-    };
 
     beforeEach(() => {
-      // Etapas siguientes (E17, E16 parte 2) agregan estos ítems: se simulan al final de la lista.
-      ITEMS_FIN.push(itemIa, itemOffline);
+      // Una etapa siguiente (E17) agrega este ítem: se simula al final de la lista.
+      // "Sincronización" (E16 parte 2) ya es real: está en el grupo Ventas y se prueba aparte.
+      ITEMS_FIN.push(itemIa);
     });
 
     afterEach(() => {
       ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemIa), 1);
-      ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemOffline), 1);
     });
 
     it('con plan Básico sale deshabilitado, en su lugar, con candado y enlace a Mi empresa', () => {
@@ -191,7 +187,7 @@ describe('LayoutComponent', () => {
       const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
       const textos = enlaces.map((a) => (a.textContent ?? '').trim());
       // Mismo lugar y orden: después de "Mi empresa", en el orden en que se agregaron.
-      expect(textos.slice(-3)).toEqual(['Mi empresa', 'Reportes con IA', 'Operaciones sincronizadas']);
+      expect(textos.slice(-3)).toEqual(['Mi empresa', 'Auditoría', 'Reportes con IA']);
 
       const ia = enlaces.find((a) => (a.textContent ?? '').includes('Reportes con IA')) as HTMLElement;
       expect(ia.classList).toContain('layout__enlace--deshabilitado');
@@ -201,7 +197,7 @@ describe('LayoutComponent', () => {
       expect(ia.getAttribute('title')).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
 
       // Lo que el plan sí incluye es un enlace normal.
-      const offline = enlaces.find((a) => (a.textContent ?? '').includes('Operaciones sincronizadas')) as HTMLElement;
+      const offline = enlaces.find((a) => (a.textContent ?? '').includes('Sincronización')) as HTMLElement;
       expect(offline.classList).not.toContain('layout__enlace--deshabilitado');
       expect(offline.getAttribute('href')).toBe('/sincronizacion');
       fixture.destroy();
@@ -238,11 +234,12 @@ describe('LayoutComponent', () => {
       expect(comp.itemsInicio()).toEqual([]);
       expect(comp.itemsFin()).toEqual([]);
       expect(etiquetas(comp.gruposMenu())).toEqual(['Plataforma']);
-      expect(etiquetas(comp.gruposMenu()[0].items)).toEqual(['Empresas', 'Planes', 'Suscripciones']);
+      expect(etiquetas(comp.gruposMenu()[0].items)).toEqual(['Empresas', 'Planes', 'Suscripciones', 'Auditoría']);
       expect(comp.gruposMenu()[0].items.map((i: ItemMenu) => i.ruta)).toEqual([
         '/plataforma/empresas',
         '/plataforma/planes',
         '/plataforma/suscripciones',
+        '/plataforma/auditoria',
       ]);
       fixture.destroy();
     });
@@ -300,9 +297,17 @@ describe('LayoutComponent', () => {
           'Proveedores',
           'Assets del probador',
         ],
-        Comercial: ['Reservas', 'Envíos', 'Zonas de envío', 'Promociones', 'Catálogo local', 'Pendientes de envío'],
+        Comercial: [
+          'Reservas',
+          'Envíos',
+          'Zonas de envío',
+          'Promociones',
+          'Catálogo local',
+          'Pendientes de envío',
+          'Sincronización',
+        ],
         Análisis: ['Reportes'],
-        Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa'],
+        Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa', 'Auditoría'],
       });
       fixture.destroy();
     });
@@ -376,6 +381,54 @@ describe('LayoutComponent', () => {
       });
     });
 
+    describe('"Sincronización" (sincronizacion.supervisar y plan con operación sin conexión)', () => {
+      const comercial = (comp: any): string[] => seccionesVista(comp)['Comercial'] ?? [];
+      const enlaceSincronizacion = (el: HTMLElement) =>
+        Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+          (a.textContent ?? '').includes('Sincronización'),
+        ) as HTMLElement | undefined;
+
+      it('va al final de Comercial para quien supervisa', () => {
+        iniciarSesion(['encargado'], ['sincronizacion.supervisar'], 7);
+        const { fixture, comp } = crear();
+
+        expect(comercial(comp)).toEqual(['Sincronización']);
+        fixture.destroy();
+      });
+
+      it('no la ve quien tiene otros permisos de venta pero no sincronizacion.supervisar', () => {
+        iniciarSesion(['cajero'], ['ventas.presencial', 'sincronizacion.operar', 'sincronizacion.resolver'], 7);
+        const { fixture, comp } = crear();
+
+        expect(comercial(comp)).not.toContain('Sincronización');
+        fixture.destroy();
+      });
+
+      it('con un plan sin operación sin conexión queda en su lugar, deshabilitada y con candado', () => {
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        plan.suscripcion.set(suscripcion([]));
+        const { fixture, el } = crear();
+        fixture.detectChanges();
+
+        const enlace = enlaceSincronizacion(el)!;
+        expect(enlace.classList).toContain('layout__enlace--deshabilitado');
+        expect(enlace.querySelector('.layout__candado')).not.toBeNull();
+        fixture.destroy();
+      });
+
+      it('con un plan que la incluye es un enlace normal a /sincronizacion', () => {
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        plan.suscripcion.set(suscripcion(['operacion_offline'], 'Profesional'));
+        const { fixture, el } = crear();
+        fixture.detectChanges();
+
+        const enlace = enlaceSincronizacion(el)!;
+        expect(enlace.classList).not.toContain('layout__enlace--deshabilitado');
+        expect(enlace.getAttribute('href')).toBe('/sincronizacion');
+        fixture.destroy();
+      });
+    });
+
     it('las secciones plegables arrancan cerradas y se abren con su rótulo; las fijas siempre están abiertas', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
       const { fixture, comp, el } = crear();
@@ -429,8 +482,69 @@ describe('LayoutComponent', () => {
       iniciarSesion(['superadministrador'], ['plataforma.gestionar'], null);
       const { fixture, comp, el } = crear();
 
-      expect(seccionesVista(comp)).toEqual({ Plataforma: ['Empresas', 'Planes', 'Suscripciones'] });
+      expect(seccionesVista(comp)).toEqual({ Plataforma: ['Empresas', 'Planes', 'Suscripciones', 'Auditoría'] });
       expect(el.querySelector('.layout__marca-sub')?.textContent).toContain('Modo plataforma');
+      fixture.destroy();
+    });
+  });
+
+  describe('Auditoría en el menú (bitácora)', () => {
+    const enlacesDelMenu = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('nav a.layout__enlace')).map((a) => ({
+        texto: (a.textContent ?? '').trim(),
+        href: a.getAttribute('href'),
+      }));
+
+    it('el administrador (bitacora.ver) la ve al final de Organización, enlazada a /auditoria', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, comp, el } = crear();
+
+      const organizacion = (comp.secciones() as { id: string; items: { etiqueta: string; ruta: string }[] }[]).find(
+        (s) => s.id === 'organizacion',
+      )!;
+      expect(organizacion.items.at(-1)).toMatchObject({ etiqueta: 'Auditoría', ruta: '/auditoria' });
+      expect(enlacesDelMenu(el)).toContainEqual({ texto: 'Auditoría', href: '/auditoria' });
+      fixture.destroy();
+    });
+
+    it('el cajero no la ve', () => {
+      iniciarSesion(['cajero'], ['ventas.presencial', 'inventario.ver'], 7);
+      const { fixture, el } = crear();
+
+      expect(enlacesDelMenu(el).map((e) => e.texto)).not.toContain('Auditoría');
+      fixture.destroy();
+    });
+
+    it('el encargado (sin bitacora.ver) no la ve aunque tenga otros permisos de gestión', () => {
+      iniciarSesion(['encargado'], ['reportes.ver', 'inventario.ver', 'reservas.gestionar_sucursal', 'organizacion.gestionar'], 7);
+      const { fixture, el } = crear();
+
+      expect(enlacesDelMenu(el).map((e) => e.texto)).not.toContain('Auditoría');
+      fixture.destroy();
+    });
+
+    it('un administrador sin el permiso bitacora.ver no la ve', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN.filter((p) => p !== 'bitacora.ver'), 7);
+      const { fixture, el } = crear();
+
+      expect(enlacesDelMenu(el).map((e) => e.texto)).not.toContain('Auditoría');
+      fixture.destroy();
+    });
+
+    it('el superadministrador la ve en Plataforma, enlazada a /plataforma/auditoria, y solo esa', () => {
+      iniciarSesion(['superadministrador'], ['plataforma.gestionar', 'bitacora.ver'], null);
+      const { fixture, el } = crear();
+
+      const auditorias = enlacesDelMenu(el).filter((e) => e.texto === 'Auditoría');
+      expect(auditorias).toEqual([{ texto: 'Auditoría', href: '/plataforma/auditoria' }]);
+      fixture.destroy();
+    });
+
+    it('un administrador de empresa nunca ve la entrada de Plataforma (/plataforma/auditoria)', () => {
+      iniciarSesion(['administrador'], [...PERMISOS_ADMIN, 'plataforma.gestionar'], 7);
+      const { fixture, el } = crear();
+
+      expect(enlacesDelMenu(el).map((e) => e.href)).not.toContain('/plataforma/auditoria');
       fixture.destroy();
     });
   });
