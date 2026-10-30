@@ -1,0 +1,160 @@
+<app-escena-tienda
+  [planes]="planesEscena()"
+  [tiendas]="tiendasEscena()"
+  [marca]="marca()"
+  (tiendaElegida)="tiendaElegida.emit($event)"
+  (sinEscena)="sinEscena.emit()"
+/>
+
+<header class="barra" [class.barra--solida]="sobreLista()">
+  <a class="barra__marca" href="#inicio" aria-label="FashionStore, inicio">
+    <fs-marca nombre="FashionStore" variante="oscuro" />
+  </a>
+  <nav class="barra__menu" aria-label="Principal">
+    <a href="#caja">Servicios</a>
+    <a href="#planes">Planes</a>
+    <a href="#tiendas">Tiendas</a>
+  </nav>
+  <a class="barra__acceso" [routerLink]="rutaAccesoPersonal">
+    <fs-icono nombre="candado" [tam]="24" />
+    <span>Acceso del personal</span>
+  </a>
+</header>
+
+<nav class="puntos" [class.puntos--oculto]="pasada()" aria-label="Recorrido de la tienda">
+  @for (punto of puntos; track punto; let i = $index) {
+    <button
+      type="button"
+      class="punto"
+      [attr.aria-label]="punto"
+      [attr.aria-current]="indice() === i ? 'true' : null"
+      [title]="punto"
+      (click)="irAPaso(i)"
+    ></button>
+  }
+</nav>
+
+<div class="recorrido">
+  <section id="inicio" class="paso paso--inicio">
+    <div class="inicio__texto">
+      <p class="etiqueta">Plataforma para tiendas de ropa</p>
+      <h1 class="titular">Tu tienda,<br />tu inventario<br /><span>y tus ventas</span><br />en un solo lugar</h1>
+      <p class="lead">
+        Cada empresa tiene su tienda en línea, su caja y su stock por sucursal. Tus clientes se prueban las prendas con
+        IA desde la app.
+      </p>
+      <div class="acciones">
+        <a class="fs-btn fs-btn--acento" href="#tiendas">
+          Ver tiendas activas
+          <fs-icono nombre="flecha-derecha" [tam]="24" />
+        </a>
+        <a class="fs-btn fs-btn--contorno" href="#caja">Conocer los servicios</a>
+      </div>
+    </div>
+
+    <div class="config tarjeta" role="group" aria-labelledby="historia-config-titulo">
+      <p class="etiqueta etiqueta--acento" id="historia-config-titulo">Pruébalo con tu marca</p>
+      <label class="config__campo" for="historia-nombre-tienda">
+        Nombre de tu tienda
+        <input
+          id="historia-nombre-tienda"
+          type="text"
+          [maxLength]="maxCaracteres"
+          [value]="nombre()"
+          autocomplete="off"
+          (input)="onNombre($any($event.target).value)"
+        />
+      </label>
+      <div class="muestras" role="group" aria-label="Color de tu tienda">
+        @for (color of colores; track color.nombre) {
+          <button
+            type="button"
+            class="muestra"
+            [style.background]="color.tela"
+            [attr.aria-label]="'Color ' + color.nombre"
+            [attr.aria-pressed]="colorElegido() === color"
+            (click)="elegirColor(color)"
+          ></button>
+        }
+      </div>
+      <p class="pista">Arrastra la polera para girarla. Es solo una prueba: no se guarda nada.</p>
+    </div>
+
+    <p class="bajar" aria-hidden="true">
+      <fs-icono nombre="chevron-abajo" [tam]="24" />
+      Desplázate para recorrer la tienda
+    </p>
+  </section>
+
+  <section id="caja" class="paso paso--der">
+    <div class="tarjeta">
+      <p class="etiqueta etiqueta--acento">Caja y ventas</p>
+      <h2>Cobra en cada sucursal</h2>
+      <p class="texto">
+        Ventas, reservas y pagos desde una sola caja. Tus cajeros siguen vendiendo aunque se caiga el internet, y todo se
+        sincroniza cuando vuelve.
+      </p>
+    </div>
+  </section>
+
+  <section id="inventario" class="paso">
+    <div class="tarjeta">
+      <p class="etiqueta etiqueta--acento">Inventario</p>
+      <h2>Stock claro en cada sucursal</h2>
+      <p class="texto">
+        Cada sede tiene su existencia por talla y color. Ves dónde hay prendas, dónde faltan y qué conviene reponer.
+      </p>
+    </div>
+  </section>
+
+  <section id="probador" class="paso paso--der">
+    <div class="tarjeta">
+      <p class="etiqueta etiqueta--acento">Probador virtual con IA en la app</p>
+      <h2>Se prueban la prenda antes de comprar</h2>
+      <p class="texto">
+        Desde la app móvil, con una foto, tus clientes ven cómo les queda una polera, una camisa o una chamarra.
+      </p>
+    </div>
+  </section>
+
+  <section id="planes" class="paso paso--planes">
+    <div class="planes__cabecera">
+      <div class="tarjeta tarjeta--titulo">
+        <p class="etiqueta etiqueta--acento">Planes</p>
+        <h2 class="sin-margen">Crece a tu ritmo</h2>
+      </div>
+    </div>
+    <div class="planes__pie">
+      @if (cargandoPlanes()) {
+        <div class="planes__carga" aria-busy="true" aria-label="Cargando planes">
+          @for (n of esqueletosPlanes; track n) {
+            <div class="planes__esqueleto">
+              <span class="linea"></span>
+              <span class="linea"></span>
+              <span class="linea"></span>
+            </div>
+          }
+        </div>
+      } @else if (errorPlanes()) {
+        <div class="planes__estado tarjeta" role="alert">
+          <p class="planes__estado-titulo">No pudimos cargar los planes</p>
+          <p class="texto">Revisa tu conexión e inténtalo de nuevo.</p>
+          <button type="button" class="fs-btn fs-btn--contorno fs-btn--sm" (click)="reintentarPlanes.emit()">
+            Reintentar
+          </button>
+        </div>
+      } @else {
+        <app-planes-comparativo [planes]="planes()" variante="oscuro" />
+      }
+    </div>
+  </section>
+
+  <section id="calle" class="paso paso--calle">
+    <div class="tarjeta">
+      <p class="etiqueta etiqueta--acento">Tiendas activas</p>
+      <h2>Entra a una tienda</h2>
+      <p class="texto">Cada empresa tiene su propia tienda, con su nombre y su color. Pasa el mouse por un local.</p>
+      <p class="nota">Al hacer clic en un local se abre su tienda. Más abajo también puedes buscarla por nombre.</p>
+    </div>
+  </section>
+</div>

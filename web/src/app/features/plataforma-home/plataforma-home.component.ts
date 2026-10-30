@@ -1,18 +1,31 @@
-import { NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet, isPlatformBrowser } from '@angular/common';
 import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, DestroyRef, InjectionToken, OnInit, PLATFORM_ID, inject, signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { RUTA_LOGIN_PERSONAL } from '../../core/auth.service';
 import { SIN_TOAST_ERROR } from '../../core/http-contexts';
 import { EmpresaPublica, ResumenTienda } from '../../core/models/empresa.models';
+import { PlanesPublicosService } from '../../core/planes-publicos.service';
 import { SeoService, esUrlHttp } from '../../core/seo.service';
 import { calcularPaletaAcento } from '../../core/utils/color';
 import { IconoComponent } from '../../shared/icono/icono.component';
 import { NombreIcono } from '../../shared/icono/iconos';
 import { MarcaComponent } from '../../shared/marca/marca.component';
 import { TiendaActualService } from '../tienda/state/tienda-actual.service';
+import { puedeUsarEscena3D } from './escena-3d/capacidades';
+import { HistoriaTiendaComponent } from './historia-tienda/historia-tienda.component';
+import { PlanesComparativoComponent } from './planes-comparativo/planes-comparativo.component';
+
+/**
+ * Decide si la portada usa el modo historia (escena 3D). Es un token para que las pruebas lo simulen
+ * con TestBed (vi.mock no sirve con imports relativos en el sistema de pruebas de Angular).
+ */
+export const PUEDE_USAR_ESCENA_3D = new InjectionToken<() => boolean>('PUEDE_USAR_ESCENA_3D', {
+  providedIn: 'root',
+  factory: () => puedeUsarEscena3D,
+});
 
 /** Acceso del personal (back office). */
 export const RUTA_ACCESO_PERSONAL = RUTA_LOGIN_PERSONAL;
@@ -30,6 +43,8 @@ interface TarjetaTienda {
   logo: string | null;
   /** Color de la franja y de las siglas; null = acento base de la app. */
   acento: string | null;
+  /** El acento de la empresa ya resuelto para superficies oscuras (la calle 3D); null si no definió uno. */
+  acentoOscuro: string | null;
 }
 
 /** Un bloque de texto con ícono de la página (banda de confianza, servicios). */
@@ -46,6 +61,7 @@ function aTarjeta(tienda: ResumenTienda): TarjetaTienda {
     nombre: tienda.nombre,
     logo: esUrlHttp(tienda.logo_url) ? tienda.logo_url.trim() : null,
     acento: paleta?.acento ?? null,
+    acentoOscuro: paleta?.sobreOscuro.acento ?? null,
   };
 }
 
@@ -56,14 +72,26 @@ function aTarjeta(tienda: ResumenTienda): TarjetaTienda {
 @Component({
   selector: 'app-plataforma-home',
   standalone: true,
-  imports: [NgTemplateOutlet, RouterLink, IconoComponent, MarcaComponent],
+  imports: [
+    NgTemplateOutlet,
+    RouterLink,
+    IconoComponent,
+    MarcaComponent,
+    PlanesComparativoComponent,
+    HistoriaTiendaComponent,
+  ],
   templateUrl: './plataforma-home.component.html',
-  styleUrl: './plataforma-home.component.scss',
+  // El segundo archivo solo vale para el modo historia (escena 3D): deja la lista de tiendas, la CTA y el pie
+  // por encima del canvas fijo. El primero no se toca.
+  styleUrls: ['./plataforma-home.component.scss', './plataforma-home-3d.component.scss'],
+  host: { '[class.home--3d]': 'modo3d()' },
 })
 export class PlataformaHomeComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly tiendaActual = inject(TiendaActualService);
   private readonly seo = inject(SeoService);
+  private readonly router = inject(Router);
+  protected readonly planesPublicos = inject(PlanesPublicosService);
 
   protected readonly rutaAccesoPersonal = RUTA_ACCESO_PERSONAL;
   protected readonly esqueletos = [1, 2, 3, 4, 5, 6];
@@ -123,33 +151,19 @@ export class PlataformaHomeComponent implements OnInit {
     },
   ];
 
-  /** Los dos planes sembrados (sin precio: la plataforma no lo maneja). */
-  protected readonly planes: readonly { nombre: string; oscuro: boolean; items: readonly string[] }[] = [
-    {
-      nombre: 'Básico',
-      oscuro: false,
-      items: [
-        'Hasta 2 sucursales activas',
-        'Tienda en línea, inventario y reservas',
-        'Caja y ventas',
-        'Sin funciones de IA, analítica ni copias de seguridad',
-      ],
-    },
-    {
-      nombre: 'Profesional',
-      oscuro: true,
-      items: [
-        'Hasta 10 sucursales activas',
-        'Todo lo del plan Básico',
-        'Reportes con IA',
-        'Analítica con aprendizaje automático (próximamente)',
-        'Trabajo sin conexión (próximamente)',
-        'Copias de seguridad (próximamente)',
-      ],
-    },
-  ];
+  protected readonly esqueletosPlanes = [1, 2, 3];
+
+  /**
+   * Modo historia (escena 3D con el recorrido por scroll). Se decide UNA vez, en el navegador y con
+   * `puedeUsarEscena3D()`; si la escena falla después, `sinEscena` lo apaga y vuelve el diseño clásico.
+   */
+  protected readonly modo3d = signal(
+    isPlatformBrowser(inject(PLATFORM_ID)) && inject(PUEDE_USAR_ESCENA_3D)(),
+  );
 
   protected readonly tiendas = signal<TarjetaTienda[]>([]);
+  /** Las tiendas que ve la calle 3D: las de la lista sin filtrar (buscar en la lista no cambia la calle). */
+  protected readonly tiendasCalle = signal<TarjetaTienda[]>([]);
   protected readonly cargando = signal(true);
   protected readonly cargandoMas = signal(false);
   protected readonly error = signal(false);
@@ -173,12 +187,18 @@ export class PlataformaHomeComponent implements OnInit {
     this.seo.fijarPlataforma();
     this.cargarUltimaTienda();
     this.cargar();
+    this.planesPublicos.cargar();
   }
 
   protected onBuscar(valor: string): void {
     this.texto = valor;
     clearTimeout(this.temporizador);
     this.temporizador = setTimeout(() => this.cargar(), DEMORA_BUSQUEDA_MS);
+  }
+
+  /** Clic en un local de la calle 3D. */
+  protected irATienda(codigo: string): void {
+    void this.router.navigate(['/t', codigo]);
   }
 
   /** Primera página: reemplaza la grilla. */
@@ -192,6 +212,7 @@ export class PlataformaHomeComponent implements OnInit {
     this.peticion = this.pedirPagina(1, true).subscribe({
       next: (filas) => {
         this.tiendas.set(filas.map(aTarjeta));
+        if (this.texto.trim() === '') this.tiendasCalle.set(this.tiendas());
         this.hayMas.set(filas.length === TAMANIO_PAGINA_TIENDAS);
         this.cargando.set(false);
       },

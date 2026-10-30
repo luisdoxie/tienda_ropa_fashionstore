@@ -12,6 +12,15 @@ export type FuncionPlan =
 /** Estado de la suscripción de la empresa de la sesión (`GET /mi-empresa/suscripcion`). */
 export type EstadoSuscripcion = 'activa' | 'suspendida' | 'vencida' | 'cancelada' | 'sin_suscripcion';
 
+/** `GET /public/planes`: un plan activo tal como lo ve quien visita la portada (sin precio ni ids). */
+export interface PlanPublico extends Record<FuncionPlan, boolean> {
+  codigo: string;
+  nombre: string;
+  max_sucursales: number;
+  max_copias_historial: number;
+  plazo_cambio_horas_defecto: number;
+}
+
 /** `GET /mi-empresa/suscripcion`. */
 export interface MiSuscripcion {
   plan_codigo: string | null;

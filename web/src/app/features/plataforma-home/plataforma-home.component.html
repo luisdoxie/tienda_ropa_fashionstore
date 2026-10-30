@@ -25,156 +25,174 @@
   </a>
 </ng-template>
 
-<div class="home-hero fs-zona-oscura">
-  <header class="home-cabecera">
-    <a class="home-logo" routerLink="/" aria-label="FashionStore, inicio">
-      <fs-marca nombre="FashionStore" variante="oscuro" />
-    </a>
-    <nav class="home-nav" aria-label="Principal">
-      <a href="#servicios">Servicios</a>
-      <a href="#planes">Planes</a>
-      <a href="#tiendas">Tiendas</a>
-    </nav>
-    <a class="home-acceso" [routerLink]="rutaAccesoPersonal">
-      <fs-icono nombre="candado" [tam]="24" />
-      Acceso del personal
-    </a>
-  </header>
+@if (modo3d()) {
+  <app-historia-tienda
+    [planes]="planesPublicos.planes()"
+    [tiendas]="tiendasCalle()"
+    [cargandoPlanes]="planesPublicos.cargando()"
+    [errorPlanes]="planesPublicos.error()"
+    (tiendaElegida)="irATienda($event)"
+    (reintentarPlanes)="planesPublicos.cargar()"
+    (sinEscena)="modo3d.set(false)"
+  />
+} @else {
+  <div class="home-hero fs-zona-oscura">
+    <header class="home-cabecera">
+      <a class="home-logo" routerLink="/" aria-label="FashionStore, inicio">
+        <fs-marca nombre="FashionStore" variante="oscuro" />
+      </a>
+      <nav class="home-nav" aria-label="Principal">
+        <a href="#servicios">Servicios</a>
+        <a href="#planes">Planes</a>
+        <a href="#tiendas">Tiendas</a>
+      </nav>
+      <a class="home-acceso" [routerLink]="rutaAccesoPersonal">
+        <fs-icono nombre="candado" [tam]="24" />
+        Acceso del personal
+      </a>
+    </header>
 
-  <section class="home-presentacion">
-    <div class="home-presentacion__texto">
-      <span class="home-eyebrow">Plataforma para tiendas de ropa</span>
-      <h1 class="home-titular">Tu tienda,<br />tu inventario<br /><em>y tus ventas</em><br />en un solo lugar</h1>
-      <p class="home-lead">
-        Cada empresa tiene su tienda en línea, su caja y su stock por sucursal. Tus clientes se prueban las prendas con
-        IA desde la app.
-      </p>
-      <div class="home-acciones">
-        <a class="fs-btn fs-btn--acento" href="#tiendas">
-          Ver tiendas activas
-          <fs-icono nombre="flecha-derecha" [tam]="24" />
-        </a>
-        <a class="fs-btn fs-btn--contorno" href="#servicios">Conocer los servicios</a>
+    <section class="home-presentacion">
+      <div class="home-presentacion__texto">
+        <span class="home-eyebrow">Plataforma para tiendas de ropa</span>
+        <h1 class="home-titular">Tu tienda,<br />tu inventario<br /><em>y tus ventas</em><br />en un solo lugar</h1>
+        <p class="home-lead">
+          Cada empresa tiene su tienda en línea, su caja y su stock por sucursal. Tus clientes se prueban las prendas con
+          IA desde la app.
+        </p>
+        <div class="home-acciones">
+          <a class="fs-btn fs-btn--acento" href="#tiendas">
+            Ver tiendas activas
+            <fs-icono nombre="flecha-derecha" [tam]="24" />
+          </a>
+          <a class="fs-btn fs-btn--contorno" href="#servicios">Conocer los servicios</a>
+        </div>
       </div>
-    </div>
 
-    <div
-      class="home-vista"
-      role="img"
-      aria-label="Vista previa ilustrativa del panel de una empresa, con datos de ejemplo"
-    >
-      <div class="home-vista__cabecera">
-        <div class="home-vista__empresa">
-          <fs-marca nombre="Tu empresa" variante="oscuro" tam="sm" [soloMonograma]="true" />
-          <div>
-            <div class="home-vista__nombre">Tu empresa</div>
-            <div class="home-vista__sub">Vista previa del panel · datos de ejemplo</div>
+      <div
+        class="home-vista"
+        role="img"
+        aria-label="Vista previa ilustrativa del panel de una empresa, con datos de ejemplo"
+      >
+        <div class="home-vista__cabecera">
+          <div class="home-vista__empresa">
+            <fs-marca nombre="Tu empresa" variante="oscuro" tam="sm" [soloMonograma]="true" />
+            <div>
+              <div class="home-vista__nombre">Tu empresa</div>
+              <div class="home-vista__sub">Vista previa del panel · datos de ejemplo</div>
+            </div>
+          </div>
+          <span class="fs-chip home-vista__estado">Activa</span>
+        </div>
+        <div class="home-vista__cifras">
+          <div class="home-vista__cifra">
+            <div class="home-vista__etiqueta">Ventas de hoy</div>
+            <div class="home-vista__valor fs-num">Bs 3.450</div>
+          </div>
+          <div class="home-vista__cifra">
+            <div class="home-vista__etiqueta">Reservas pendientes</div>
+            <div class="home-vista__valor fs-num">14</div>
           </div>
         </div>
-        <span class="fs-chip home-vista__estado">Activa</span>
-      </div>
-      <div class="home-vista__cifras">
-        <div class="home-vista__cifra">
-          <div class="home-vista__etiqueta">Ventas de hoy</div>
-          <div class="home-vista__valor fs-num">Bs 3.450</div>
+        <svg class="home-vista__grafico" viewBox="0 0 420 120" width="100%" aria-hidden="true" focusable="false">
+          <line x1="0" y1="100" x2="420" y2="100" stroke="currentColor" opacity="0.25" />
+          <g fill="currentColor">
+            <rect x="12" y="62" width="38" height="38" rx="1" opacity="0.55" />
+            <rect x="72" y="46" width="38" height="54" rx="1" opacity="0.55" />
+            <rect x="132" y="54" width="38" height="46" rx="1" opacity="0.55" />
+            <rect x="192" y="30" width="38" height="70" rx="1" opacity="0.55" />
+            <rect x="252" y="14" width="38" height="86" rx="1" />
+            <rect x="312" y="4" width="38" height="96" rx="1" />
+            <rect x="372" y="48" width="38" height="52" rx="1" opacity="0.55" />
+          </g>
+        </svg>
+        <div class="home-vista__filas">
+          <div class="home-vista__fila"><span>Camisa Oxford · Celeste · M</span><span>2 u.</span></div>
+          <div class="home-vista__fila"><span>Chamarra de lana · Carbón · L</span><span>1 u.</span></div>
         </div>
-        <div class="home-vista__cifra">
-          <div class="home-vista__etiqueta">Reservas pendientes</div>
-          <div class="home-vista__valor fs-num">14</div>
-        </div>
       </div>
-      <svg class="home-vista__grafico" viewBox="0 0 420 120" width="100%" aria-hidden="true" focusable="false">
-        <line x1="0" y1="100" x2="420" y2="100" stroke="currentColor" opacity="0.25" />
-        <g fill="currentColor">
-          <rect x="12" y="62" width="38" height="38" rx="1" opacity="0.55" />
-          <rect x="72" y="46" width="38" height="54" rx="1" opacity="0.55" />
-          <rect x="132" y="54" width="38" height="46" rx="1" opacity="0.55" />
-          <rect x="192" y="30" width="38" height="70" rx="1" opacity="0.55" />
-          <rect x="252" y="14" width="38" height="86" rx="1" />
-          <rect x="312" y="4" width="38" height="96" rx="1" />
-          <rect x="372" y="48" width="38" height="52" rx="1" opacity="0.55" />
-        </g>
-      </svg>
-      <div class="home-vista__filas">
-        <div class="home-vista__fila"><span>Camisa Oxford · Celeste · M</span><span>2 u.</span></div>
-        <div class="home-vista__fila"><span>Chamarra de lana · Carbón · L</span><span>1 u.</span></div>
-      </div>
+    </section>
+
+    <div class="home-confianza">
+      <ul class="home-confianza__lista">
+        @for (beneficio of confianza; track beneficio.titulo) {
+          <li class="home-confianza__item">
+            <fs-icono [nombre]="beneficio.icono" [tam]="40" />
+            <div>
+              <div class="home-confianza__titulo">{{ beneficio.titulo }}</div>
+              <div class="home-confianza__texto">{{ beneficio.texto }}</div>
+            </div>
+          </li>
+        }
+      </ul>
+    </div>
+  </div>
+
+  <section id="servicios" class="home-seccion">
+    <div class="home-seccion__cabecera">
+      <span class="fs-eyebrow">Servicios</span>
+      <h2 class="home-h2">Todo lo que una tienda de ropa necesita</h2>
+    </div>
+    <div class="home-servicios">
+      @for (servicio of servicios; track servicio.titulo) {
+        <article class="home-servicio">
+          <span class="home-servicio__icono"><fs-icono [nombre]="servicio.icono" [tam]="32" /></span>
+          <h3>{{ servicio.titulo }}</h3>
+          <p>{{ servicio.texto }}</p>
+        </article>
+      }
     </div>
   </section>
 
-  <div class="home-confianza">
-    <ul class="home-confianza__lista">
-      @for (beneficio of confianza; track beneficio.titulo) {
-        <li class="home-confianza__item">
-          <fs-icono [nombre]="beneficio.icono" [tam]="40" />
-          <div>
-            <div class="home-confianza__titulo">{{ beneficio.titulo }}</div>
-            <div class="home-confianza__texto">{{ beneficio.texto }}</div>
-          </div>
-        </li>
-      }
-    </ul>
-  </div>
-</div>
-
-<section id="servicios" class="home-seccion">
-  <div class="home-seccion__cabecera">
-    <span class="fs-eyebrow">Servicios</span>
-    <h2 class="home-h2">Todo lo que una tienda de ropa necesita</h2>
-  </div>
-  <div class="home-servicios">
-    @for (servicio of servicios; track servicio.titulo) {
-      <article class="home-servicio">
-        <span class="home-servicio__icono"><fs-icono [nombre]="servicio.icono" [tam]="32" /></span>
-        <h3>{{ servicio.titulo }}</h3>
-        <p>{{ servicio.texto }}</p>
-      </article>
-    }
-  </div>
-  <p class="fs-caption home-nota">Próximamente: analítica con aprendizaje automático y trabajo sin conexión.</p>
-</section>
-
-<section class="home-banda">
-  <div class="home-banda__interior">
-    <div class="home-banda__titulo">
-      <span class="fs-eyebrow home-eyebrow--acento">Cómo funciona</span>
-      <h2 class="home-h2">De cero a vender en tres pasos</h2>
+  <section class="home-banda">
+    <div class="home-banda__interior">
+      <div class="home-banda__titulo">
+        <span class="fs-eyebrow home-eyebrow--acento">Cómo funciona</span>
+        <h2 class="home-h2">De cero a vender en tres pasos</h2>
+      </div>
+      <ol class="home-pasos">
+        @for (paso of pasos; track paso.numero) {
+          <li class="home-paso">
+            <span class="home-paso__numero">{{ paso.numero }}</span>
+            <span class="home-paso__titulo">{{ paso.titulo }}</span>
+            <span class="home-paso__texto">{{ paso.texto }}</span>
+          </li>
+        }
+      </ol>
     </div>
-    <ol class="home-pasos">
-      @for (paso of pasos; track paso.numero) {
-        <li class="home-paso">
-          <span class="home-paso__numero">{{ paso.numero }}</span>
-          <span class="home-paso__titulo">{{ paso.titulo }}</span>
-          <span class="home-paso__texto">{{ paso.texto }}</span>
-        </li>
-      }
-    </ol>
-  </div>
-</section>
+  </section>
 
-<section id="planes" class="home-seccion">
-  <div class="home-seccion__cabecera">
-    <span class="fs-eyebrow">Planes</span>
-    <h2 class="home-h2">Crece a tu ritmo</h2>
-  </div>
-  <div class="home-planes">
-    @for (plan of planes; track plan.nombre) {
-      <article class="home-plan" [class.home-plan--oscuro]="plan.oscuro">
-        <h3 class="home-plan__nombre">{{ plan.nombre }}</h3>
-        <ul class="home-plan__items">
-          @for (item of plan.items; track item) {
-            <li>
-              <fs-icono nombre="check" [tam]="26" />
-              {{ item }}
-            </li>
-          }
-        </ul>
-      </article>
+  <section id="planes" class="home-seccion">
+    <div class="home-seccion__cabecera">
+      <span class="fs-eyebrow">Planes</span>
+      <h2 class="home-h2">Crece a tu ritmo</h2>
+    </div>
+    @if (planesPublicos.cargando()) {
+      <div class="home-planes-carga" aria-busy="true" aria-label="Cargando planes">
+        @for (n of esqueletosPlanes; track n) {
+          <div class="home-plan-esqueleto">
+            <span class="tarjeta__linea"></span>
+            <span class="tarjeta__linea"></span>
+            <span class="tarjeta__linea"></span>
+            <span class="tarjeta__linea"></span>
+          </div>
+        }
+      </div>
+    } @else if (planesPublicos.error()) {
+      <div class="home-estado" role="alert">
+        <p class="home-estado__titulo">No pudimos cargar los planes</p>
+        <p class="fs-caption">Revisa tu conexión e inténtalo de nuevo.</p>
+        <button type="button" class="fs-btn fs-btn--secundario home-boton" (click)="planesPublicos.cargar()">
+          Reintentar
+        </button>
+      </div>
+    } @else {
+      <app-planes-comparativo [planes]="planesPublicos.planes()" />
     }
-  </div>
-</section>
+  </section>
+}
 
-<section id="tiendas" class="home-tiendas">
+<section id="tiendas" class="home-tiendas" [class.fs-zona-oscura]="modo3d()">
   <div class="home-tiendas__interior">
     <div class="home-seccion__cabecera">
       <span class="fs-eyebrow">Tiendas activas</span>
