@@ -1,13 +1,21 @@
-import { HttpClient } from '@angular/common/http';
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Injectable, Injector, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable, finalize, shareReplay, tap } from 'rxjs';
+import { Observable, Subscription, catchError, finalize, from, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { TiendaActualService } from '../features/tienda/state/tienda-actual.service';
+import { ConectividadService } from './conectividad.service';
 import { RecuperarRespuesta, RegistroRequest, TokenRespuesta, Usuario, UsuarioYo } from './models/seguridad.models';
+import { SesionOfflineService } from './offline/sesion-offline.service';
 
 const CLAVE_ACCESS_TOKEN = 'fs_access_token';
 const CLAVE_REFRESH_TOKEN = 'fs_refresh_token';
+/**
+ * Copia mínima del alcance de la última sesión ({empresaId, usuarioId}: dos enteros, ningún secreto). Al arrancar sin
+ * red todavía no hay usuario, y el perfil guardado en IndexedDB se busca por esa pareja. Se escribe al cargar el
+ * usuario y se borra al limpiar la sesión.
+ */
+const CLAVE_ALCANCE_SESION = 'fs_offline_sesion';
 
 /** Rol global del superadministrador de la plataforma (`core/permisos.py`). */
 export const ROL_SUPERADMINISTRADOR = 'superadministrador';
@@ -19,7 +27,14 @@ export const RUTA_LOGIN_PERSONAL = '/admin/login';
 export class AuthService {
   private readonly usuarioActual = signal<UsuarioYo | null>(null);
   private refrescoEnCurso$: Observable<TokenRespuesta> | null = null;
+  private suscripcionVerificacion: Subscription | null = null;
+  private readonly sinVerificar = signal(false);
 
+  /**
+   * La sesión se restauró sin red desde el perfil guardado y el servidor aún no la confirmó (E14). Vuelve a false al
+   * confirmarla (al volver la conexión) o al cerrar la sesión.
+   */
+  readonly sesionSinVerificar = this.sinVerificar.asReadonly();
   readonly usuario = this.usuarioActual.asReadonly();
   readonly estaAutenticado = computed(() => this.usuarioActual() !== null);
   readonly permisos = computed(() => this.usuarioActual()?.permisos ?? []);
@@ -40,6 +55,8 @@ export class AuthService {
   });
 
   private readonly tienda = inject(TiendaActualService);
+  /** Para obtener SesionOfflineService (y ConectividadService) de forma perezosa: SesionOfflineService inyecta a AuthService. */
+  private readonly injector = inject(Injector);
 
   constructor(
     private readonly http: HttpClient,
@@ -57,6 +74,8 @@ export class AuthService {
       .post<TokenRespuesta>(`${environment.apiUrl}/auth/login`, cuerpo)
       .pipe(
         tap((tokens) => {
+          // Tokens nuevos: el alcance de una sesión anterior ya no corresponde hasta que se cargue este usuario.
+          this.borrarAlcanceGuardado();
           this.guardarTokens(tokens);
         }),
       );
@@ -64,17 +83,112 @@ export class AuthService {
 
   /** Recarga el usuario (roles y permisos reales) desde /auth/yo. */
   cargarUsuarioActual(): Observable<UsuarioYo> {
-    return this.http
-      .get<UsuarioYo>(`${environment.apiUrl}/auth/yo`)
-      .pipe(tap((usuario) => this.usuarioActual.set(usuario)));
+    return this.http.get<UsuarioYo>(`${environment.apiUrl}/auth/yo`).pipe(
+      tap((usuario) => {
+        this.usuarioActual.set(usuario);
+        this.sinVerificar.set(false);
+        this.recordarAlcance(usuario);
+        this.guardarPerfilSinBloquear(usuario);
+      }),
+    );
   }
 
-  /** Se llama al iniciar la app: si hay tokens guardados, restaura la sesión. */
+  /**
+   * Se llama al iniciar la app: si hay tokens guardados, restaura la sesión. Si no hay red (status 0) y hay un perfil
+   * guardado de esa empresa y ese usuario, restaura desde él y marca `sesionSinVerificar` hasta que vuelva la conexión.
+   * Con 401/403 o sin perfil guardado, el error se propaga como siempre.
+   */
   restaurarSesion(): Observable<UsuarioYo> | null {
     if (!this.getAccessToken()) {
       return null;
     }
-    return this.cargarUsuarioActual();
+    return this.cargarUsuarioActual().pipe(
+      catchError((error: unknown) => {
+        if (!(error instanceof HttpErrorResponse) || error.status !== 0) {
+          return throwError(() => error);
+        }
+        return from(this.perfilParaReabrirSinRed()).pipe(
+          switchMap((perfil) => {
+            if (!perfil) {
+              return throwError(() => error);
+            }
+            this.usuarioActual.set(perfil);
+            this.sinVerificar.set(true);
+            this.verificarAlVolverLaConexion();
+            return of(perfil);
+          }),
+        );
+      }),
+    );
+  }
+
+  /** El perfil guardado del último usuario de este equipo, solo si coincide con el alcance recordado. Nunca lanza. */
+  private async perfilParaReabrirSinRed(): Promise<UsuarioYo | null> {
+    try {
+      if (!this.getRefreshToken()) return null;
+      const texto = localStorage.getItem(CLAVE_ALCANCE_SESION);
+      if (!texto) return null;
+      const alcance = JSON.parse(texto) as { empresaId?: unknown; usuarioId?: unknown };
+      if (!Number.isInteger(alcance.empresaId) || !Number.isInteger(alcance.usuarioId)) return null;
+      const empresaId = alcance.empresaId as number;
+      const usuarioId = alcance.usuarioId as number;
+      const perfil = await this.injector.get(SesionOfflineService).perfilGuardado(empresaId, usuarioId);
+      // El perfil guardado debe ser exactamente de esa empresa y ese usuario.
+      if (!perfil || perfil.id !== usuarioId || perfil.empresa_id !== empresaId) return null;
+      return perfil;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Al volver la conexión confirma la sesión restaurada sin red: 401/403 la cierra; otro fallo la deja sin verificar. */
+  private verificarAlVolverLaConexion(): void {
+    if (this.suscripcionVerificacion) return;
+    this.suscripcionVerificacion = this.injector.get(ConectividadService).volvioConexion$.subscribe(() => {
+      if (!this.sinVerificar()) return;
+      this.cargarUsuarioActual().subscribe({
+        error: (error: unknown) => {
+          const rechazada = error instanceof HttpErrorResponse && (error.status === 401 || error.status === 403);
+          // Si el interceptor ya cerró la sesión (refresh rechazado), `sinVerificar` ya es false y no se repite.
+          if (rechazada && this.sinVerificar()) {
+            this.logout();
+          }
+        },
+      });
+    });
+  }
+
+  private recordarAlcance(usuario: UsuarioYo): void {
+    const empresaId = usuario.empresa_id;
+    if (typeof empresaId !== 'number' || usuario.roles.includes(ROL_SUPERADMINISTRADOR)) {
+      this.borrarAlcanceGuardado();
+      return;
+    }
+    try {
+      localStorage.setItem(CLAVE_ALCANCE_SESION, JSON.stringify({ empresaId, usuarioId: usuario.id }));
+    } catch {
+      // Sin localStorage no se podrá reabrir sin red, pero el inicio de sesión sigue.
+    }
+  }
+
+  private borrarAlcanceGuardado(): void {
+    try {
+      localStorage.removeItem(CLAVE_ALCANCE_SESION);
+    } catch {
+      // Nada que borrar.
+    }
+  }
+
+  /** Guarda el perfil local sin bloquear ni romper el inicio de sesión: un fallo solo queda en la consola. */
+  private guardarPerfilSinBloquear(usuario: UsuarioYo): void {
+    try {
+      this.injector
+        .get(SesionOfflineService)
+        .alIniciarSesion(usuario)
+        .catch((error: unknown) => console.warn('No se pudo guardar el perfil para el modo sin conexión.', error));
+    } catch (error) {
+      console.warn('No se pudo guardar el perfil para el modo sin conexión.', error);
+    }
   }
 
   /** Los clientes se registran por tienda: POST /public/{codigo}/registro. */
@@ -101,16 +215,31 @@ export class AuthService {
   limpiarSesion(): void {
     localStorage.removeItem(CLAVE_ACCESS_TOKEN);
     localStorage.removeItem(CLAVE_REFRESH_TOKEN);
+    this.borrarAlcanceGuardado();
     this.usuarioActual.set(null);
+    this.sinVerificar.set(false);
   }
 
   logout(): void {
+    // Antes de limpiar el usuario: el alcance (empresa y usuario) sale de la sesión. Sin esperar: salir no depende de IndexedDB.
+    this.limpiarLocalSinBloquear();
     this.limpiarSesion();
     // Dentro de una tienda se vuelve a su login; fuera, al login del personal.
     if (this.tienda.codigo()) {
       this.router.navigate(this.tienda.ruta('login'));
     } else {
       this.router.navigate([RUTA_LOGIN_PERSONAL]);
+    }
+  }
+
+  private limpiarLocalSinBloquear(): void {
+    try {
+      this.injector
+        .get(SesionOfflineService)
+        .alCerrarSesion()
+        .catch((error: unknown) => console.warn('No se pudo limpiar el almacenamiento local al salir.', error));
+    } catch (error) {
+      console.warn('No se pudo limpiar el almacenamiento local al salir.', error);
     }
   }
 

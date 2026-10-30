@@ -7,6 +7,8 @@ import { MessageService } from 'primeng/api';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../core/auth.service';
 import { MiSuscripcion } from '../core/models/plan.models';
+import { AlmacenOfflineService } from '../core/offline/almacen-offline.service';
+import type { OperacionOffline } from '../core/offline/offline.models';
 import { PlanService } from '../core/plan.service';
 import { ITEMS_FIN, ITEMS_INICIO, ItemMenu, LayoutComponent } from './layout.component';
 
@@ -51,7 +53,7 @@ const INICIO_ESPERADO = ['Dashboard', 'Reportes'];
 const GRUPOS_ESPERADOS: Record<string, string[]> = {
   Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales'],
   Catálogo: ['Productos', 'Categorías', 'Tallas', 'Colores', 'Temporadas', 'Colecciones'],
-  Ventas: ['Caja', 'Promociones', 'Reservas'],
+  Ventas: ['Caja', 'Promociones', 'Reservas', 'Catálogo local', 'Pendientes de envío'],
 };
 const FIN_ESPERADO_PREVIO = ['Inventario', 'Proveedores', 'Envíos', 'Zonas de envío', 'Assets del probador'];
 
@@ -298,7 +300,7 @@ describe('LayoutComponent', () => {
           'Proveedores',
           'Assets del probador',
         ],
-        Comercial: ['Reservas', 'Envíos', 'Zonas de envío', 'Promociones'],
+        Comercial: ['Reservas', 'Envíos', 'Zonas de envío', 'Promociones', 'Catálogo local', 'Pendientes de envío'],
         Análisis: ['Reportes'],
         Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa'],
       });
@@ -312,8 +314,66 @@ describe('LayoutComponent', () => {
       expect(seccionesVista(comp)).toEqual({
         General: ['Dashboard', 'Caja'],
         Catálogo: ['Inventario'],
+        Comercial: ['Catálogo local', 'Pendientes de envío'],
       });
       fixture.destroy();
+    });
+
+    describe('"Catálogo local" (necesita alguno de dos permisos)', () => {
+      const comercial = (comp: any): string[] => seccionesVista(comp)['Comercial'] ?? [];
+
+      it('lo ve quien solo tiene ventas.presencial', () => {
+        iniciarSesion(['cajero'], ['ventas.presencial'], 7);
+        const { fixture, comp } = crear();
+
+        expect(comercial(comp)).toEqual(['Catálogo local', 'Pendientes de envío']);
+        fixture.destroy();
+      });
+
+      it('lo ve quien solo tiene reservas.gestionar_sucursal (y también ve Reservas)', () => {
+        iniciarSesion(['encargado'], ['reservas.gestionar_sucursal'], 7);
+        const { fixture, comp } = crear();
+
+        expect(comercial(comp)).toEqual(['Reservas', 'Catálogo local', 'Pendientes de envío']);
+        fixture.destroy();
+      });
+
+      it('no lo ve quien tiene otros permisos pero ninguno de los dos', () => {
+        iniciarSesion(['encargado'], ['inventario.ver', 'reportes.ver', 'ventas.gestionar'], 7);
+        const { fixture, comp } = crear();
+
+        expect(comercial(comp)).not.toContain('Catálogo local');
+        expect(comercial(comp)).not.toContain('Pendientes de envío');
+        fixture.destroy();
+      });
+
+      it('con un plan sin operación sin conexión sigue en su lugar, deshabilitado y con candado', () => {
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        plan.suscripcion.set(suscripcion([]));
+        const { fixture, el } = crear();
+        fixture.detectChanges();
+
+        const enlace = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+          (a.textContent ?? '').includes('Catálogo local'),
+        ) as HTMLElement;
+        expect(enlace.classList).toContain('layout__enlace--deshabilitado');
+        expect(enlace.querySelector('.layout__candado')).not.toBeNull();
+        fixture.destroy();
+      });
+
+      it('con un plan que lo incluye es un enlace normal a /catalogo-local', () => {
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        plan.suscripcion.set(suscripcion(['operacion_offline'], 'Profesional'));
+        const { fixture, el } = crear();
+        fixture.detectChanges();
+
+        const enlace = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+          (a.textContent ?? '').includes('Catálogo local'),
+        ) as HTMLElement;
+        expect(enlace.classList).not.toContain('layout__enlace--deshabilitado');
+        expect(enlace.getAttribute('href')).toBe('/catalogo-local');
+        fixture.destroy();
+      });
     });
 
     it('las secciones plegables arrancan cerradas y se abren con su rótulo; las fijas siempre están abiertas', () => {
@@ -612,6 +672,35 @@ describe('LayoutComponent', () => {
       const hijos = Array.from(contenido.children).map((h) => h.tagName.toLowerCase() + '.' + h.className);
       expect(hijos.indexOf('app-aviso-suscripcion.')).toBeGreaterThan(hijos.indexOf('header.layout__barra'));
       expect(hijos.indexOf('app-aviso-suscripcion.')).toBeLessThan(hijos.indexOf('main.layout__panel'));
+      fixture.destroy();
+    });
+  });
+
+  describe('cola de envío en la barra', () => {
+    afterEach(() => delete (navigator as { onLine?: boolean }).onLine);
+
+    it('el indicador muestra cuántas operaciones esperan en el equipo y enlaza a "Pendientes de envío"', async () => {
+      // Sin red la cola no intenta enviar: así solo se prueba el conteo que llega a la barra.
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      iniciarSesion(['cajero'], ['ventas.presencial'], 7);
+      const operacion = {
+        empresa_id: 7,
+        usuario_id: 1,
+        operacion_id: '00000000-0000-4000-8000-0000000000aa',
+        tipo: 'venta_contado',
+        estado: 'registrada',
+        fecha_operacion: '2026-10-30T10:00:00.000Z',
+      } as unknown as OperacionOffline;
+      await TestBed.inject(AlmacenOfflineService).repositorio({ empresaId: 7, usuarioId: 1 }).registrarOperacion(operacion);
+
+      const { fixture, el } = crear();
+
+      await vi.waitFor(() => {
+        fixture.detectChanges();
+        const chip = el.querySelector('app-indicador-conexion a.fs-chip') as HTMLAnchorElement | null;
+        expect(chip?.textContent).toContain('1 por enviar');
+        expect(chip?.getAttribute('href')).toBe('/operaciones-pendientes');
+      });
       fixture.destroy();
     });
   });

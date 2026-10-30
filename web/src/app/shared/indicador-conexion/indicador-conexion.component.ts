@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ConectividadService } from '../../core/conectividad.service';
 import { IconoComponent } from '../icono/icono.component';
 
@@ -16,7 +17,7 @@ export type VarianteIndicadorConexion = 'pastilla' | 'franja';
   selector: 'app-indicador-conexion',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconoComponent],
+  imports: [IconoComponent, RouterLink],
   templateUrl: './indicador-conexion.component.html',
   styleUrl: './indicador-conexion.component.scss',
   host: { '[class.es-franja]': "variante() === 'franja'" },
@@ -26,6 +27,8 @@ export class IndicadorConexionComponent {
 
   /** Operaciones guardadas en el equipo que aún no se enviaron al servidor. */
   readonly pendientes = input(0);
+  /** Ruta a la que lleva el chip cuando hay pendientes (sin ella, el chip es solo texto). */
+  readonly enlace = input<string | null>(null);
   readonly variante = input<VarianteIndicadorConexion>('pastilla');
 
   protected readonly estado = this.conectividad.estado;

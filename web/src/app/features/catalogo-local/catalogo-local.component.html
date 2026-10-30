@@ -1,0 +1,192 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Sin conexión</span>
+    <h1>Catálogo local</h1>
+    <p>Los productos, precios y existencias que se descargaron en este equipo. Sirven para consultar sin Internet.</p>
+  </div>
+</div>
+
+@if (cargando()) {
+  <section class="panel">
+    <div class="vacio" role="status" data-estado="cargando">
+      <fs-icono nombre="reloj-arena" [tam]="36" />
+      <p>Cargando los datos de este equipo…</p>
+    </div>
+  </section>
+} @else {
+  @if (mensajeError(); as mensaje) {
+    <div class="fs-aviso fs-aviso--error aviso" role="alert" data-estado="error-descarga">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span>{{ mensaje }}</span>
+    </div>
+  }
+
+  @if (errorLectura()) {
+    <section class="panel">
+      <div class="vacio" role="alert" data-estado="error-lectura">
+        <fs-icono nombre="alerta" [tam]="36" />
+        <p>No pudimos leer los datos guardados en este equipo.</p>
+        <button type="button" class="fs-btn fs-btn--secundario" (click)="reintentarLectura()">Reintentar</button>
+      </div>
+    </section>
+  } @else if (sinDatos()) {
+    <section class="panel">
+      <div class="vacio" data-estado="sin-datos">
+        <fs-icono nombre="descargar" [tam]="36" />
+        <p class="vacio__titulo">Todavía no hay datos descargados en este equipo.</p>
+        <p>Descárgalos una vez con conexión para consultar el catálogo y vender sin Internet.</p>
+        @if (descargaBloqueada()) {
+          <p>No podemos descargarlos por ahora: mira el aviso de arriba.</p>
+        } @else if (hayConexion()) {
+          <button type="button" class="fs-btn fs-btn--primario" [disabled]="paquete.descargando()" (click)="actualizar()">
+            <fs-icono nombre="descargar" [tam]="24" />
+            {{ paquete.descargando() ? 'Descargando…' : 'Descargar datos' }}
+          </button>
+        } @else {
+          <p class="tenue">Conéctate a Internet para descargarlos.</p>
+        }
+      </div>
+    </section>
+  } @else {
+    <div
+      class="franja fs-aviso"
+      [class.franja--vigente]="!desactualizados()"
+      role="status"
+      [attr.data-estado]="desactualizados() ? 'desactualizados' : 'vigentes'"
+    >
+      <fs-icono [nombre]="desactualizados() ? 'advertencia' : 'reloj'" [tam]="24" />
+      <div class="franja__texto">
+        @if (desactualizados()) {
+          <strong class="franja__titulo">Información desactualizada: conéctate para actualizar</strong>
+        }
+        <span class="franja__fecha"
+          >Datos descargados el <span class="fs-num">{{ paquete.ultimaDescarga() | date: 'dd/MM/yyyy HH:mm' }}</span> ({{
+            haceCuanto()
+          }})</span
+        >
+      </div>
+      <button
+        type="button"
+        class="fs-btn fs-btn--sm"
+        [class.fs-btn--primario]="desactualizados()"
+        [class.fs-btn--secundario]="!desactualizados()"
+        [disabled]="!hayConexion() || paquete.descargando() || descargaBloqueada()"
+        [attr.title]="hayConexion() ? null : 'Conéctate a Internet para actualizar'"
+        (click)="actualizar()"
+      >
+        <fs-icono nombre="refrescar" [tam]="24" />
+        {{ paquete.descargando() ? 'Actualizando…' : 'Actualizar datos' }}
+      </button>
+    </div>
+
+    <div class="filtros">
+      <label class="buscador">
+        <fs-icono nombre="busqueda" [tam]="24" />
+        <input
+          type="text"
+          placeholder="Buscar por nombre, código, SKU o código de barras"
+          aria-label="Buscar producto"
+          autocomplete="off"
+          [ngModel]="texto()"
+          (ngModelChange)="cambiarTexto($event)"
+        />
+      </label>
+      <p-select
+        [options]="categoriasOrdenadas()"
+        optionLabel="nombre"
+        optionValue="id"
+        placeholder="Todas las categorías"
+        [showClear]="true"
+        ariaLabel="Categoría"
+        [ngModel]="categoriaId()"
+        (ngModelChange)="cambiarCategoria($event)"
+      />
+      <span class="filtros__fin conteo fs-num">{{ filas().length }} {{ filas().length === 1 ? 'producto' : 'productos' }}</span>
+    </div>
+
+    <section class="panel">
+      <div class="panel__scroll">
+        <p-table [value]="filas()" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '900px' }">
+          <ng-template #header>
+            <tr>
+              <th>Producto</th>
+              <th>Categoría</th>
+              <th class="num">Precio</th>
+              <th>Tallas con stock</th>
+              <th>Colores con stock</th>
+              <th>
+                Stock por sucursal
+                <span class="nota-stock"
+                  >Conocido a las <span class="fs-num">{{ paquete.ultimaDescarga() | date: 'HH:mm' }}</span>, no garantizado</span
+                >
+              </th>
+            </tr>
+          </ng-template>
+          <ng-template #body let-fila>
+            <tr>
+              <td>
+                <span class="fuerte">{{ fila.producto.nombre }}</span>
+                <span class="codigo tenue fs-num">{{ fila.producto.codigo }}</span>
+              </td>
+              <td>{{ fila.producto.categoria ?? '—' }}</td>
+              <td class="num">
+                @if (fila.precioMin === null) {
+                  <span class="tenue">—</span>
+                } @else {
+                  @if (fila.variosPrecios) {
+                    <span class="tenue desde">Desde&nbsp;</span>
+                  }
+                  <span class="fs-num">{{ bs(fila.precioMin) }}</span>
+                }
+              </td>
+              <td>
+                <div class="etiquetas">
+                  @for (talla of fila.tallas; track talla) {
+                    <p-tag [value]="talla" severity="secondary" />
+                  } @empty {
+                    <span class="tenue">Sin stock</span>
+                  }
+                </div>
+              </td>
+              <td>
+                <div class="etiquetas">
+                  @for (color of fila.colores; track color.nombre) {
+                    <p-tag severity="secondary">
+                      @if (color.hex) {
+                        <span class="muestra" [style.background]="color.hex" aria-hidden="true"></span>
+                      }
+                      {{ color.nombre }}
+                    </p-tag>
+                  } @empty {
+                    <span class="tenue">Sin stock</span>
+                  }
+                </div>
+              </td>
+              <td>
+                @for (sucursal of sucursalesConStock(); track sucursal.id) {
+                  <div class="stock-linea">
+                    <span class="tenue">{{ sucursal.nombre }}&nbsp;</span>
+                    <strong class="fs-num" [class.sin-existencias]="fila.stockPorSucursal[sucursal.id] === 0">{{
+                      fila.stockPorSucursal[sucursal.id] ?? '—'
+                    }}</strong>
+                  </div>
+                } @empty {
+                  <span class="tenue">Sin dato de stock</span>
+                }
+              </td>
+            </tr>
+          </ng-template>
+          <ng-template #emptymessage>
+            <tr>
+              <td colspan="6">
+                <div class="vacio" data-estado="sin-resultados">
+                  No encontramos productos con esos datos. Prueba con otro nombre, código o categoría.
+                </div>
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
+    </section>
+  }
+}

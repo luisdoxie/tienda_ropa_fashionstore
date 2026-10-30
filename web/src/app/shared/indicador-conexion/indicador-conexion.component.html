@@ -10,12 +10,22 @@
 } @else {
   <span class="pastilla" role="status" aria-live="polite">
     @if (etiqueta(); as texto) {
-      <span
-        class="fs-chip"
-        [class.fs-chip--advertencia]="estado() === 'sin_conexion'"
-        [class.fs-chip--error]="estado() === 'servidor_no_responde'"
-        >{{ texto }}</span
-      >
+      @if (enlace() && pendientes() > 0) {
+        <a
+          class="fs-chip pastilla__enlace"
+          [routerLink]="enlace()"
+          [class.fs-chip--advertencia]="estado() === 'sin_conexion'"
+          [class.fs-chip--error]="estado() === 'servidor_no_responde'"
+          >{{ texto }}</a
+        >
+      } @else {
+        <span
+          class="fs-chip"
+          [class.fs-chip--advertencia]="estado() === 'sin_conexion'"
+          [class.fs-chip--error]="estado() === 'servidor_no_responde'"
+          >{{ texto }}</span
+        >
+      }
     } @else {
       <span class="pastilla__punto" role="img" aria-label="En línea"></span>
     }

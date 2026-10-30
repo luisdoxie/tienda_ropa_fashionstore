@@ -1,5 +1,12 @@
 import { Routes } from '@angular/router';
-import { authGuard, permisoGuard, staffGuard, superadminGuard, tiendaSesionGuard } from './core/guards';
+import {
+  authGuard,
+  cualquierPermisoGuard,
+  permisoGuard,
+  staffGuard,
+  superadminGuard,
+  tiendaSesionGuard,
+} from './core/guards';
 import { tiendaResolver } from './features/tienda/tienda.resolver';
 import { RUTAS_LEGACY } from './features/tienda/rutas-legacy';
 
@@ -283,6 +290,22 @@ export const routes: Routes = [
         path: 'caja',
         canActivate: [permisoGuard('ventas.presencial')],
         loadComponent: () => import('./features/caja/caja.component').then((m) => m.CajaComponent),
+      },
+      {
+        // Modo sin conexión (E14): el catálogo descargado en este equipo. Lo usa quien vende o gestiona reservas.
+        path: 'catalogo-local',
+        canActivate: [cualquierPermisoGuard('ventas.presencial', 'reservas.gestionar_sucursal')],
+        loadComponent: () =>
+          import('./features/catalogo-local/catalogo-local.component').then((m) => m.CatalogoLocalComponent),
+      },
+      {
+        // Modo sin conexión (E14b): lo que se registró en este equipo y en qué va cada operación.
+        path: 'operaciones-pendientes',
+        canActivate: [cualquierPermisoGuard('ventas.presencial', 'reservas.gestionar_sucursal')],
+        loadComponent: () =>
+          import('./features/operaciones-pendientes/operaciones-pendientes.component').then(
+            (m) => m.OperacionesPendientesComponent,
+          ),
       },
       {
         path: 'promociones',

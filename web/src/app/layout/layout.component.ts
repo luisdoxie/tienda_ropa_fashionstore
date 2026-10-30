@@ -14,12 +14,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { ConfirmationService } from 'primeng/api';
+import { ConfirmDialog, ConfirmDialogModule } from 'primeng/confirmdialog';
 import { PopoverModule } from 'primeng/popover';
 import { filter } from 'rxjs';
 import { AuthService, ROL_SUPERADMINISTRADOR } from '../core/auth.service';
 import { ConectividadService } from '../core/conectividad.service';
 import { FuncionPlan } from '../core/models/plan.models';
 import { NotificacionesService } from '../core/notificaciones.service';
+import { ColaSincronizacionService } from '../core/offline/cola-sincronizacion.service';
+import { PaqueteOfflineService } from '../core/offline/paquete-offline.service';
+import { SesionOfflineService } from '../core/offline/sesion-offline.service';
 import { PlanService } from '../core/plan.service';
 import { MiEmpresaService } from '../features/mi-empresa/data/mi-empresa.service';
 import { AvisoSuscripcionComponent } from '../shared/aviso-suscripcion/aviso-suscripcion.component';
@@ -37,12 +42,17 @@ const CONSULTA_CAJON = '(max-width: 899px)';
 export const RUTA_EXPLICACION_PLAN = '/mi-empresa';
 export const PARAMS_EXPLICACION_PLAN = { ver: 'funcionalidades' };
 
+/** Ruta de "Pendientes de envío" (E14b): su ítem del menú lleva el contador de la cola. */
+export const RUTA_PENDIENTES = '/operaciones-pendientes';
+
 export interface ItemMenu {
   etiqueta: string;
   /** Nombre de un `fs-icono` (24 px en el menú). */
   icono: NombreIcono;
   ruta: string;
   permiso?: string;
+  /** Alternativa a `permiso`: lo ve quien tenga CUALQUIERA de estos permisos. */
+  permisos?: string[];
   /** Solo lo ve ese rol; sin `rol` lo ve el personal de una empresa, nunca el superadministrador. */
   rol?: typeof ROL_SUPERADMINISTRADOR;
   /** Si el plan no la incluye, el ítem sigue en su lugar pero deshabilitado y con candado. */
@@ -120,6 +130,22 @@ export const GRUPOS_MENU: GrupoMenu[] = [
         ruta: '/reservas',
         permiso: 'reservas.gestionar_sucursal',
       },
+      {
+        // Modo sin conexión (E14): lo descargado en este equipo. Lo ve quien vende o gestiona reservas.
+        etiqueta: 'Catálogo local',
+        icono: 'descargar',
+        ruta: '/catalogo-local',
+        permisos: ['ventas.presencial', 'reservas.gestionar_sucursal'],
+        funcion: 'operacion_offline',
+      },
+      {
+        // Lo que se registró en este equipo y en qué va cada operación (E14b). Lleva un contador de pendientes.
+        etiqueta: 'Pendientes de envío',
+        icono: 'bandeja',
+        ruta: RUTA_PENDIENTES,
+        permisos: ['ventas.presencial', 'reservas.gestionar_sucursal'],
+        funcion: 'operacion_offline',
+      },
     ],
   },
   {
@@ -172,7 +198,12 @@ const SECCIONES_MENU: SeccionDef[] = [
       '/probador',
     ],
   },
-  { id: 'comercial', etiqueta: 'Comercial', plegable: true, rutas: ['/reservas', '/envios', '/zonas-envio', '/promociones'] },
+  {
+    id: 'comercial',
+    etiqueta: 'Comercial',
+    plegable: true,
+    rutas: ['/reservas', '/envios', '/zonas-envio', '/promociones', '/catalogo-local', RUTA_PENDIENTES],
+  },
   { id: 'analisis', etiqueta: 'Análisis', plegable: false, rutas: ['/reportes'] },
   {
     id: 'organizacion',
@@ -197,11 +228,13 @@ const SECCION_POR_DEFECTO = 'organizacion';
     RouterLink,
     RouterLinkActive,
     PopoverModule,
+    ConfirmDialogModule,
     AvisoSuscripcionComponent,
     IconoComponent,
     IndicadorConexionComponent,
     MarcaComponent,
   ],
+  providers: [ConfirmationService],
   templateUrl: './layout.component.html',
   styleUrl: './layout.component.scss',
 })
@@ -214,6 +247,19 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private readonly injector = inject(Injector);
   protected readonly notificacionesService = inject(NotificacionesService);
   private readonly conectividad = inject(ConectividadService);
+  private readonly paqueteOffline = inject(PaqueteOfflineService);
+  /** Cola de envío de lo hecho sin conexión: su conteo va en el indicador de la barra. */
+  protected readonly cola = inject(ColaSincronizacionService);
+  private readonly confirmationService = inject(ConfirmationService);
+  private readonly sesionOffline = inject(SesionOfflineService);
+
+  protected readonly rutaPendientes = RUTA_PENDIENTES;
+  /** Cuántas operaciones sin enviar dejaron OTRAS personas en este equipo (se envían cuando ellas vuelvan a entrar). */
+  protected readonly pendientesDeOtros = signal(0);
+  protected readonly avisoOtrosCerrado = signal(false);
+  protected readonly hayRed = computed(() => this.conectividad.estado() === 'en_linea');
+  /** Verdadero mientras [Enviar ahora y salir] espera la respuesta de la cola. */
+  protected readonly saliendo = signal(false);
 
   protected readonly usuario = this.authService.usuario;
   /** El superadministrador no tiene empresa: sin notificaciones, plan ni aviso de suscripción. */
@@ -224,6 +270,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private readonly puedeVer = (item: ItemMenu) => {
     if (this.authService.esSuperadmin()) return item.rol === ROL_SUPERADMINISTRADOR;
     if (item.rol) return false;
+    if (item.permisos && !item.permisos.some((permiso) => this.authService.tienePermiso(permiso))) return false;
     return !item.permiso || this.authService.tienePermiso(item.permiso);
   };
 
@@ -304,6 +351,13 @@ export class LayoutComponent implements OnInit, OnDestroy {
       this.planService.cargar();
       this.cargarLogo();
       this.notificacionesService.cargar().subscribe();
+      // Datos para operar sin conexión: se leen de IndexedDB y se bajan si faltan o están viejos (con red y plan).
+      void this.paqueteOffline.cargarEstado().then(() => this.paqueteOffline.descargarSiHaceFalta());
+      void this.cola.refrescarConteos();
+      void this.contarPendientesDeOtros();
+      this.conectividad.volvioConexion$
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => void this.paqueteOffline.descargarSiHaceFalta());
       // ~20s: "casi en tiempo real" sin WebSockets, mismo mecanismo de
       // polling que ya usa checkout-estado.component.ts para el pago.
       // Sin conexión no se consulta: cada intento fallido sería un aviso de error cada 20 s.
@@ -403,7 +457,55 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.notificacionesService.marcarLeida(notificacionId).subscribe();
   }
 
+  /**
+   * [Salir]. Sin operaciones pendientes sale directo; con pendientes pregunta, porque quedan guardadas en este equipo
+   * pero no se enviarán hasta que esta persona vuelva a entrar (E14b, plan 4.10).
+   */
   cerrarSesion(): void {
+    const pendientes = this.cola.pendientes();
+    if (pendientes <= 0) {
+      this.authService.logout();
+      return;
+    }
+    const operaciones = pendientes === 1 ? '1 operación' : `${pendientes} operaciones`;
+    this.confirmationService.confirm({
+      key: 'salida',
+      header: 'Operaciones sin enviar',
+      icon: 'pi pi-exclamation-triangle',
+      message:
+        `Tienes ${operaciones} sin enviar. Si sales ahora quedan guardadas en este equipo y se enviarán ` +
+        'cuando vuelvas a entrar con tu usuario.',
+    });
+  }
+
+  /** [Enviar ahora y salir]: espera a la cola y sale; lo que no alcance a enviarse queda guardado igual. */
+  protected async enviarYSalir(dialogo: ConfirmDialog): Promise<void> {
+    if (this.saliendo()) return;
+    this.saliendo.set(true);
+    try {
+      await this.cola.enviarAhora();
+    } catch {
+      // La cola no lanza; si lo hiciera, lo pendiente sigue guardado y se sale igual.
+    } finally {
+      this.saliendo.set(false);
+    }
+    dialogo.close();
     this.authService.logout();
+  }
+
+  /** [Salir igual]. */
+  protected salirIgual(dialogo: ConfirmDialog): void {
+    dialogo.close();
+    this.authService.logout();
+  }
+
+  private async contarPendientesDeOtros(): Promise<void> {
+    const repositorio = this.sesionOffline.repositorio();
+    if (repositorio === null) return;
+    try {
+      this.pendientesDeOtros.set(await repositorio.pendientesDeOtrosUsuarios());
+    } catch {
+      this.pendientesDeOtros.set(0);
+    }
   }
 }

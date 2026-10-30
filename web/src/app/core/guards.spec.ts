@@ -6,7 +6,15 @@ import { MessageService } from 'primeng/api';
 import { CLAVE_ULTIMA_TIENDA, TiendaActualService } from '../features/tienda/state/tienda-actual.service';
 import { AuthService } from './auth.service';
 import { UsuarioYo } from './models/seguridad.models';
-import { authGuard, permisoGuard, rolGuard, staffGuard, superadminGuard, tiendaSesionGuard } from './guards';
+import {
+  authGuard,
+  cualquierPermisoGuard,
+  permisoGuard,
+  rolGuard,
+  staffGuard,
+  superadminGuard,
+  tiendaSesionGuard,
+} from './guards';
 
 function usuario(roles: string[], empresaCodigo: string | null): UsuarioYo {
   return {
@@ -239,6 +247,48 @@ describe('guards', () => {
 
     it('sin sesión va a /admin/login', () => {
       const resultado = ejecutar(permisoGuard('empresa.gestionar'), '/mi-empresa');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login');
+    });
+  });
+
+  describe('cualquierPermisoGuard', () => {
+    const guardia = () => cualquierPermisoGuard('ventas.presencial', 'reservas.gestionar_sucursal');
+
+    it('deja pasar con el primero de los permisos', () => {
+      iniciarSesion({ ...usuario(['cajero'], 'acme'), permisos: ['ventas.presencial'] });
+
+      expect(ejecutar(guardia(), '/catalogo-local')).toBe(true);
+    });
+
+    it('deja pasar con solo el segundo de los permisos', () => {
+      iniciarSesion({ ...usuario(['encargado'], 'acme'), permisos: ['reservas.gestionar_sucursal'] });
+
+      expect(ejecutar(guardia(), '/catalogo-local')).toBe(true);
+    });
+
+    it('sin ninguno de los permisos (aunque tenga otros) manda al dashboard', () => {
+      iniciarSesion({ ...usuario(['encargado'], 'acme'), permisos: ['inventario.ver', 'reportes.ver'] });
+
+      const resultado = ejecutar(guardia(), '/catalogo-local');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('tener un permiso que no está en la lista no basta', () => {
+      iniciarSesion({ ...usuario(['cajero'], 'acme'), permisos: ['ventas.presencial'] });
+
+      const resultado = ejecutar(cualquierPermisoGuard('empresa.gestionar', 'roles.gestionar'), '/x');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/dashboard');
+    });
+
+    it('el superadministrador sin esos permisos va a su panel', () => {
+      iniciarSesion({ ...usuario(['superadministrador'], null), permisos: ['plataforma.gestionar'] });
+
+      const resultado = ejecutar(guardia(), '/catalogo-local');
+      expect(router.serializeUrl(resultado as UrlTree)).toBe('/plataforma/empresas');
+    });
+
+    it('sin sesión va a /admin/login', () => {
+      const resultado = ejecutar(guardia(), '/catalogo-local');
       expect(router.serializeUrl(resultado as UrlTree)).toBe('/admin/login');
     });
   });

@@ -14,6 +14,13 @@
   }
 </div>
 
+@if (sinConexion() && !cargandoSucursal() && !noEsEmpleado() && sucursalId() !== null && !vistaResumenGlobal()) {
+  <p class="fs-aviso franja-offline" role="status" data-estado="sin-conexion">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    Estás sin conexión. Las ventas se guardan en este equipo y se envían solas al volver Internet.
+  </p>
+}
+
 @if (cargandoSucursal()) {
   <p class="aviso-estado">Cargando...</p>
 } @else if (noEsEmpleado()) {
@@ -106,6 +113,12 @@
                 </li>
               }
             </ul>
+            @if (busquedaLocal()) {
+              <p class="fs-aviso" role="status">
+                <fs-icono nombre="advertencia" [tam]="24" />
+                Sin conexión: buscaste en los datos descargados en este equipo. Precios y stock pueden haber cambiado.
+              </p>
+            }
           }
 
           <div class="fila-reserva">
@@ -118,6 +131,8 @@
                 [ngModel]="codigoReserva()"
                 (ngModelChange)="codigoReserva.set($event)"
                 (keydown.enter)="cargarReserva()"
+                [disabled]="sinConexion()"
+                [attr.title]="sinConexion() ? 'Requiere conexión' : null"
                 placeholder="Código de reserva atendida (F2)"
                 aria-label="Código de reserva atendida"
                 autocomplete="off"
@@ -126,7 +141,8 @@
             <button
               type="button"
               class="fs-btn fs-btn--secundario btn-reserva"
-              [disabled]="codigoReserva().trim().length === 0 || buscandoReserva()"
+              [disabled]="codigoReserva().trim().length === 0 || buscandoReserva() || sinConexion()"
+              [attr.title]="sinConexion() ? 'Requiere conexión' : null"
               (click)="cargarReserva()"
             >
               <fs-icono [nombre]="buscandoReserva() ? 'refrescar' : 'calendario'" [tam]="24" [class.giro]="buscandoReserva()" />
@@ -244,10 +260,29 @@
     <!-- ================= Columna derecha: totales y cobro ================= -->
     <aside class="columna-cobro">
       <div class="total-panel fs-zona-oscura">
-        @if (fase() === 'armando') {
+        @if (fase() === 'armando' && sinConexion()) {
+          <span class="total-panel__etiqueta">Total sin conexión</span>
+          <span class="total-panel__valor fs-num">Bs {{ totalLocal().total / 100 | number: '1.2-2' }}</span>
+          <span class="total-panel__nota">
+            @if (totalLocalExacto()) {
+              Precios y descuentos de los datos descargados en este equipo.
+            } @else {
+              Estimado con los datos descargados; el total final se confirma al cobrar.
+            }
+          </span>
+        } @else if (fase() === 'armando') {
           <span class="total-panel__etiqueta">Total estimado</span>
           <span class="total-panel__valor fs-num">Bs {{ subtotalEstimado() | number: '1.2-2' }}</span>
           <span class="total-panel__nota">El total final (con promociones vigentes) se calcula al cobrar.</span>
+        } @else if (cobroOffline()) {
+          <span class="total-panel__etiqueta">Total a cobrar · Venta sin conexión</span>
+          <span class="total-panel__valor fs-num">Bs {{ totalLocal().total / 100 | number: '1.2-2' }}</span>
+          <dl class="resumen-venta">
+            <dt>Subtotal</dt>
+            <dd class="fs-num">Bs {{ totalLocal().subtotal / 100 | number: '1.2-2' }}</dd>
+            <dt>Descuento aplicado</dt>
+            <dd class="fs-num">Bs {{ totalLocal().descuento / 100 | number: '1.2-2' }}</dd>
+          </dl>
         } @else if (ventaPendiente(); as venta) {
           <span class="total-panel__etiqueta">Total a cobrar · Venta {{ venta.codigo }}</span>
           <span class="total-panel__valor fs-num">Bs {{ venta.total | number: '1.2-2' }}</span>
@@ -272,6 +307,8 @@
                 [attr.aria-checked]="metodoPago() === opcion.value"
                 [attr.tabindex]="metodoPago() === opcion.value ? 0 : -1"
                 [class.metodo--activo]="metodoPago() === opcion.value"
+                [disabled]="cobroOffline() !== null && opcion.value !== 'efectivo'"
+                [attr.title]="cobroOffline() !== null && opcion.value !== 'efectivo' ? 'Requiere conexión' : null"
                 (click)="seleccionarMetodoPago(opcion.value)"
                 (keydown)="onMetodoKeydown($event, i)"
               >
@@ -280,6 +317,9 @@
               </button>
             }
           </div>
+          @if (cobroOffline()) {
+            <p class="nota-metodos" data-estado="solo-efectivo">Sin conexión solo se cobra en efectivo</p>
+          }
 
           @if (metodoPago() === 'efectivo') {
             <label class="campo-monto" for="monto-recibido">
@@ -303,6 +343,13 @@
         </div>
       }
 
+      @if (avisoOffline(); as aviso) {
+        <p class="fs-aviso fs-aviso--error" role="alert" data-estado="error-offline">
+          <fs-icono nombre="alerta" [tam]="24" />
+          {{ aviso }}
+        </p>
+      }
+
       @if (fase() === 'armando') {
         <button
           type="button"
@@ -317,15 +364,31 @@
         <button
           type="button"
           class="fs-btn fs-btn--acento btn-cobrar"
-          [disabled]="registrandoPago()"
+          [disabled]="registrandoPago() || guardandoOffline()"
           (click)="confirmarPago()"
         >
-          <fs-icono [nombre]="registrandoPago() ? 'refrescar' : 'check'" [tam]="30" [class.giro]="registrandoPago()" />
+          <fs-icono
+            [nombre]="registrandoPago() || guardandoOffline() ? 'refrescar' : 'check'"
+            [tam]="30"
+            [class.giro]="registrandoPago() || guardandoOffline()"
+          />
           Confirmar pago (F9)
         </button>
+        @if (cobroOffline()) {
+          <button type="button" class="btn-texto btn-volver" [disabled]="guardandoOffline()" (click)="cancelarCobroOffline()">
+            <fs-icono nombre="flecha-izquierda" [tam]="24" />
+            Volver al carrito
+          </button>
+        }
       }
 
-      <button type="button" class="btn-texto btn-historial" (click)="abrirHistorial()">
+      <button
+        type="button"
+        class="btn-texto btn-historial"
+        [disabled]="sinConexion()"
+        [attr.title]="sinConexion() ? 'Requiere conexión' : null"
+        (click)="abrirHistorial()"
+      >
         <fs-icono nombre="historial" [tam]="24" />
         Historial de hoy
       </button>
@@ -377,7 +440,70 @@
         Imprimir
       </button>
     </div>
+  } @else if (comprobanteOffline(); as operacion) {
+    <div id="area-imprimible" class="comprobante" data-estado="venta-sin-conexion">
+      <h2>{{ nombreEmpresa() }}</h2>
+      <p class="comprobante-pendiente">
+        <fs-icono nombre="reloj" [tam]="24" />
+        Venta registrada sin conexión — pendiente de enviar
+      </p>
+      <p>Venta {{ operacion.codigo_local }}</p>
+      <p>{{ operacion.fecha_operacion | date: 'dd/MM/yyyy HH:mm' }}</p>
+      <hr />
+      <table class="comprobante-tabla">
+        <tbody>
+          @for (linea of operacion.lineas; track linea.variante_id) {
+            <tr>
+              <td>{{ linea.producto_nombre }} · {{ linea.talla }} · {{ linea.color }} x{{ linea.cantidad }}</td>
+              <td class="fs-num">{{ linea.subtotal | number: '1.2-2' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <hr />
+      <p>Subtotal: {{ subtotalGuardado(operacion) | number: '1.2-2' }}</p>
+      <p>Descuento: {{ descuentoGuardado(operacion) | number: '1.2-2' }}</p>
+      <p class="comprobante-total fs-num">Total: {{ operacion.total | number: '1.2-2' }}</p>
+      <p>Método de pago: efectivo</p>
+      @if (operacion.pago; as pago) {
+        <p class="fs-num">Recibido: {{ pago.monto_recibido | number: '1.2-2' }}</p>
+        <p class="fs-num">Cambio: {{ pago.cambio | number: '1.2-2' }}</p>
+      }
+    </div>
+
+    <div class="comprobante-acciones">
+      <p-button label="Nueva venta" icon="pi pi-plus" (onClick)="nuevaVenta()" />
+      <button type="button" class="btn-texto" (click)="imprimirComprobante()">
+        <fs-icono nombre="imprimir" [tam]="24" />
+        Imprimir
+      </button>
+    </div>
   }
+</p-dialog>
+
+<!-- ================= Sin stock según lo descargado (venta sin conexión) ================= -->
+<p-dialog
+  header="No hay stock suficiente"
+  [(visible)]="sinStockVisible"
+  [modal]="true"
+  [closable]="false"
+  [style]="{ width: '480px', maxWidth: '96vw' }"
+>
+  <p class="aviso-sin-stock" role="alert">
+    Según tu información local no hay stock suficiente. La operación se registrará y puede quedar en conflicto.
+  </p>
+  <ul class="faltantes">
+    @for (faltante of faltantesLocales(); track faltante.variante_id) {
+      <li>
+        <span class="fuerte">{{ descripcionFaltante(faltante) }}</span>
+        <span class="fs-num">Pides {{ faltante.solicitado }} · hay {{ faltante.disponible }} (local)</span>
+      </li>
+    }
+  </ul>
+  <div class="dialogo-acciones">
+    <p-button label="Cancelar" [outlined]="true" (onClick)="cancelarSinStock()" />
+    <p-button label="Registrar de todos modos" (onClick)="aceptarSinStock()" />
+  </div>
 </p-dialog>
 
 <!-- ================= Historial de hoy ================= -->
@@ -413,7 +539,13 @@
           <td class="num">{{ venta.total | number: '1.2-2' }}</td>
           <td class="num">
             @if (venta.estado === 'pagada' || venta.estado === 'entregada') {
-              <button type="button" class="btn-texto" (click)="abrirDevolucion(venta)">
+              <button
+                type="button"
+                class="btn-texto"
+                [disabled]="sinConexion()"
+                [attr.title]="sinConexion() ? 'Requiere conexión' : null"
+                (click)="abrirDevolucion(venta)"
+              >
                 <fs-icono nombre="deshacer" [tam]="24" />
                 Devolución
               </button>
@@ -475,6 +607,8 @@
         label="Confirmar devolución"
         icon="pi pi-undo"
         [loading]="registrandoDevolucion()"
+        [disabled]="sinConexion()"
+        [attr.title]="sinConexion() ? 'Requiere conexión' : null"
         (onClick)="confirmarDevolucion()"
       />
     </div>

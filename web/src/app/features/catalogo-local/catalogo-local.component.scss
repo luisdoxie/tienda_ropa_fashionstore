@@ -1,0 +1,107 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+@include bo-filtros;
+@include bo-buscador;
+@include bo-panel;
+
+.aviso {
+  margin: 0 0 var(--fs-espacio-4);
+}
+
+// Franja de "datos descargados": advertencia (por defecto, de .fs-aviso) o neutra cuando los datos están al día.
+.franja {
+  flex-wrap: wrap;
+  margin: 0 0 var(--fs-espacio-4);
+}
+
+.franja--vigente {
+  background: var(--fs-neutro-suave);
+  color: var(--fs-neutro-texto);
+}
+
+.franja__texto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-1);
+  flex: 1 1 280px;
+  min-width: 0;
+}
+
+.franja__titulo {
+  font-weight: 600;
+}
+
+.franja__fecha {
+  font-weight: 400;
+}
+
+.conteo {
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+
+  p {
+    margin: 0;
+    max-width: 520px;
+  }
+}
+
+.vacio__titulo {
+  color: var(--fs-texto);
+  font-weight: 600;
+}
+
+.codigo {
+  display: block;
+  font-size: 12px;
+}
+
+.desde {
+  font-size: 12px;
+}
+
+.etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-1);
+  align-items: center;
+}
+
+.muestra {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: var(--fs-espacio-1);
+  border: 1px solid var(--fs-borde-fuerte);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.stock-linea {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--fs-espacio-4);
+  font-size: 14px;
+  max-width: 240px;
+}
+
+.sin-existencias {
+  color: var(--fs-advertencia);
+}
+
+.nota-stock {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fs-texto-tenue);
+}

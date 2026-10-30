@@ -6,6 +6,8 @@
 @include bo-panel;
 @include bo-tabla;
 @include bo-btn-icono;
+@include bo-formulario;
+@include bo-dialogo-acciones;
 
 .conteo {
   font-size: 13px;
@@ -85,4 +87,139 @@ h3 {
 .historial-comentario {
   color: var(--fs-texto-tenue);
   font-size: 13px;
+}
+
+// ---- Nueva reserva ----------------------------------------------------------------
+.nueva-reserva {
+  flex: 0 0 auto;
+}
+
+.nueva {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-4);
+
+  input[type='time'],
+  input[type='number'] {
+    min-height: var(--fs-toque);
+  }
+}
+
+.enlace-descarga {
+  display: inline-block;
+  margin-left: var(--fs-espacio-2);
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.cliente-elegido {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  min-height: var(--fs-toque);
+  padding: 0 var(--fs-espacio-2) 0 var(--fs-espacio-3);
+  border: 1px solid var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  background: var(--fs-neutro-suave);
+
+  .btn-icono {
+    margin-left: auto;
+  }
+}
+
+.resultados,
+.lineas,
+.faltantes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.resultados {
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.resultado {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  width: 100%;
+  min-height: var(--fs-toque);
+  padding: var(--fs-espacio-2) var(--fs-espacio-3);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--fs-borde);
+  font: inherit;
+  font-size: 14px;
+  color: var(--fs-texto);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--fs-neutro-suave);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: -2px;
+  }
+
+  fs-icono {
+    margin-left: auto;
+  }
+}
+
+.lineas {
+  margin-top: var(--fs-espacio-2);
+  gap: var(--fs-espacio-2);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-3);
+    min-height: var(--fs-toque);
+    padding: var(--fs-espacio-2) var(--fs-espacio-3);
+    border: 1px solid var(--fs-borde);
+    border-radius: var(--fs-radio-md);
+    font-size: 14px;
+  }
+}
+
+.linea__texto {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.linea__cantidad {
+  width: 84px;
+  text-align: right;
+}
+
+.contador {
+  align-self: flex-end;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.faltantes {
+  margin: var(--fs-espacio-4) 0 0;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--fs-espacio-3);
+    flex-wrap: wrap;
+    padding: var(--fs-espacio-2) 0;
+    border-bottom: 1px solid var(--fs-borde);
+    font-size: 14px;
+  }
 }

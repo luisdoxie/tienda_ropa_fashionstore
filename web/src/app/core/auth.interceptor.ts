@@ -68,8 +68,14 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       return authService
         .refrescarTokensCompartido()
         .pipe(
-          catchError((errorRefresh) => {
-            authService.logout();
+          catchError((errorRefresh: unknown) => {
+            // Sin red (status 0) la sesión sigue vigente: no se cierra, para no dejar al personal fuera al trabajar
+            // sin conexión. Solo cierra cuando el servidor rechaza el refresh (401/403).
+            const rechazado =
+              errorRefresh instanceof HttpErrorResponse && (errorRefresh.status === 401 || errorRefresh.status === 403);
+            if (rechazado) {
+              authService.logout();
+            }
             return throwError(() => errorRefresh);
           }),
         )

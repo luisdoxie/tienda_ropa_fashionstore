@@ -1,8 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { ConectividadService } from '../../core/conectividad.service';
 import { IndicadorConexionComponent } from './indicador-conexion.component';
 
 describe('IndicadorConexionComponent', () => {
+  beforeEach(() => TestBed.configureTestingModule({ providers: [provideRouter([])] }));
+
   afterEach(() => {
     delete (navigator as { onLine?: boolean }).onLine;
     vi.unstubAllGlobals();
@@ -67,6 +70,33 @@ describe('IndicadorConexionComponent', () => {
 
     expect(el.querySelector('.fs-chip')?.textContent).toContain('2 por enviar');
     expect(el.querySelector('[aria-label="En línea"]')).toBeNull();
+  });
+
+  it('con `enlace` y pendientes el chip es un enlace a esa ruta', () => {
+    const { fixture, el } = crear({ pendientes: 2 });
+    fixture.componentRef.setInput('enlace', '/operaciones-pendientes');
+    fixture.detectChanges();
+
+    const enlace = el.querySelector('a.fs-chip') as HTMLAnchorElement;
+    expect(enlace).not.toBeNull();
+    expect(enlace.getAttribute('href')).toBe('/operaciones-pendientes');
+    expect(enlace.textContent).toContain('2 por enviar');
+  });
+
+  it('con `enlace` pero sin pendientes no hay enlace (y sin `enlace` el chip sigue siendo texto)', () => {
+    const { fixture, el } = crear();
+    fixture.componentRef.setInput('enlace', '/operaciones-pendientes');
+    window.dispatchEvent(new Event('offline'));
+    fixture.detectChanges();
+
+    expect(el.querySelector('.fs-chip')?.textContent).toContain('Sin conexión');
+    expect(el.querySelector('a')).toBeNull();
+
+    fixture.componentRef.setInput('pendientes', 1);
+    fixture.componentRef.setInput('enlace', null);
+    fixture.detectChanges();
+    expect(el.querySelector('a')).toBeNull();
+    expect(el.querySelector('span.fs-chip')?.textContent).toContain('1 por enviar');
   });
 
   it('variante franja: no muestra nada en línea y la franja completa sin conexión', () => {

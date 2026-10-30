@@ -54,6 +54,11 @@
                 <a [routerLink]="item.ruta" routerLinkActive="activo" ariaCurrentWhenActive="page" class="layout__enlace">
                   <fs-icono [nombre]="item.icono" [tam]="24" />
                   <span>{{ item.etiqueta }}</span>
+                  @if (item.ruta === rutaPendientes && cola.pendientes() > 0) {
+                    <span class="layout__contador" data-contador-pendientes>
+                      <span aria-hidden="true">{{ cola.pendientes() }}</span>&ngsp;<span class="sr-solo">{{ cola.pendientes() === 1 ? 'operación sin enviar' : 'operaciones sin enviar' }}</span>
+                    </span>
+                  }
                 </a>
               }
             }
@@ -85,7 +90,7 @@
       </button>
 
       <div class="layout__barra-acciones">
-        <app-indicador-conexion variante="pastilla" [pendientes]="0" />
+        <app-indicador-conexion variante="pastilla" [pendientes]="cola.pendientes()" enlace="/operaciones-pendientes" />
 
         @if (!esSuperadmin()) {
           <button
@@ -134,8 +139,45 @@
       <app-aviso-suscripcion />
     }
 
+    @if (pendientesDeOtros() > 0 && !avisoOtrosCerrado()) {
+      <div class="fs-aviso layout__aviso-otros" role="status" data-aviso="pendientes-de-otros">
+        <fs-icono nombre="alerta" [tam]="24" />
+        <span class="layout__aviso-otros-texto">
+          Hay {{ pendientesDeOtros() }} {{ pendientesDeOtros() === 1 ? 'operación' : 'operaciones' }} de otro usuario en este
+          equipo; se enviarán cuando esa persona vuelva a entrar.
+        </span>
+        <button type="button" class="layout__boton-icono" aria-label="Cerrar este aviso" (click)="avisoOtrosCerrado.set(true)">
+          <fs-icono nombre="cerrar" [tam]="24" />
+        </button>
+      </div>
+    }
+
     <main class="layout__panel">
       <router-outlet />
     </main>
   </div>
 </div>
+
+<!-- [Salir] con operaciones sin enviar (E14b): tres salidas, ninguna pierde lo guardado -->
+<p-confirmdialog #salida key="salida" [style]="{ width: '480px', maxWidth: '96vw' }">
+  <ng-template #footer>
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario fs-btn--sm"
+      data-salida="enviar-y-salir"
+      [disabled]="!hayRed() || saliendo()"
+      [attr.title]="hayRed() ? null : 'Conéctate a Internet para enviar'"
+      (click)="enviarYSalir(salida)"
+    >
+      <fs-icono nombre="enviar" [tam]="24" />
+      {{ saliendo() ? 'Enviando…' : 'Enviar ahora y salir' }}
+    </button>
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-salida="salir-igual" [disabled]="saliendo()" (click)="salirIgual(salida)">
+      <fs-icono nombre="salir" [tam]="24" />
+      Salir igual
+    </button>
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-salida="cancelar" [disabled]="saliendo()" (click)="salida.close()">
+      Cancelar
+    </button>
+  </ng-template>
+</p-confirmdialog>

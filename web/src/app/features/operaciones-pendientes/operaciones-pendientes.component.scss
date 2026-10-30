@@ -1,0 +1,254 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+@include bo-filtros;
+@include bo-buscador;
+@include bo-panel;
+@include bo-tabla;
+@include bo-btn-icono;
+
+.conteo {
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+// ---- Resumen y estado de la cola ---------------------------------------------------------
+.resumen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  margin: 0 0 var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.resumen__conteos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-2) var(--fs-espacio-4);
+}
+
+.conteo-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fs-neutro-texto);
+}
+
+.conteo-estado--en_conflicto {
+  color: var(--fs-advertencia);
+}
+
+.conteo-estado--rechazadas {
+  color: var(--fs-error);
+}
+
+.conteo-estado--confirmadas {
+  color: var(--fs-exito);
+}
+
+.resumen__cola {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+}
+
+.estado-cola {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  font-size: 14px;
+}
+
+.estado-cola__texto {
+  display: flex;
+  flex-direction: column;
+}
+
+// ---- Tabla ----------------------------------------------------------------------------------
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+
+  p {
+    margin: 0;
+    max-width: 520px;
+  }
+}
+
+.vacio__titulo {
+  color: var(--fs-texto);
+  font-weight: 600;
+}
+
+.celda-fecha {
+  white-space: nowrap;
+}
+
+.celda-motivo {
+  min-width: 220px;
+  max-width: 340px;
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.tipo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  white-space: nowrap;
+}
+
+// Las etiquetas de estado largas ("En conflicto: espera la revisión…") se parten en líneas en vez de ensanchar la tabla.
+:host ::ng-deep p-tag .p-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  max-width: 260px;
+  white-space: normal;
+  text-align: left;
+}
+
+// ---- Detalle -------------------------------------------------------------------------------
+h3 {
+  margin: var(--fs-espacio-4) 0 var(--fs-espacio-2);
+  font-size: 15px;
+}
+
+.detalle-cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-3);
+  font-size: 14px;
+  color: var(--fs-texto-tenue);
+}
+
+.detalle-motivo {
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--fs-espacio-3) var(--fs-espacio-4);
+  margin: var(--fs-espacio-3) 0 0;
+
+  dt {
+    font-size: 12px;
+    color: var(--fs-texto-tenue);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 14px;
+  }
+}
+
+.bloque {
+  display: block;
+  font-size: 12px;
+}
+
+.tabla-lineas {
+  width: 100%;
+  border-collapse: collapse;
+
+  th {
+    padding: var(--fs-espacio-2) var(--fs-espacio-2);
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fs-texto-tenue);
+    border-bottom: 1px solid var(--fs-texto);
+  }
+
+  td {
+    padding: var(--fs-espacio-2);
+    border-bottom: 1px solid var(--fs-borde);
+    font-size: 14px;
+    vertical-align: top;
+  }
+
+  th.num {
+    text-align: right;
+  }
+}
+
+.total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--fs-espacio-3);
+  margin: var(--fs-espacio-3) 0 0;
+  font-size: 14px;
+
+  strong {
+    font-size: 18px;
+  }
+}
+
+.comprobante {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  margin-top: var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  border: 1px dashed var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+
+  h3 {
+    margin-top: 0;
+  }
+
+  p {
+    margin: 0;
+    font-size: 13px;
+  }
+}
+
+.lista-simple {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--fs-espacio-3);
+    flex-wrap: wrap;
+    padding: var(--fs-espacio-2) 0;
+    border-bottom: 1px solid var(--fs-borde);
+    font-size: 14px;
+  }
+}
+
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

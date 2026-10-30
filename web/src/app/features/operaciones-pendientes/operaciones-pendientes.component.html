@@ -1,0 +1,344 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Sin conexión</span>
+    <h1>Pendientes de envío</h1>
+    <p>Las ventas y reservas que registraste en este equipo con tu usuario, y en qué va cada una.</p>
+  </div>
+</div>
+
+<!-- Resumen y estado de la cola -->
+<section class="resumen" aria-label="Resumen de operaciones">
+  <ul class="resumen__conteos">
+    @for (parte of resumen(); track parte.clave) {
+      <li [attr.data-resumen]="parte.clave" [class]="'conteo-estado conteo-estado--' + parte.clave">
+        <fs-icono [nombre]="parte.icono" [tam]="20" />
+        <span class="fs-num">{{ parte.texto }}</span>
+      </li>
+    }
+  </ul>
+  <div class="resumen__cola">
+    <div class="estado-cola" role="status" aria-live="polite" data-estado-cola>
+      <fs-icono [nombre]="iconoCola()" [tam]="24" />
+      <div class="estado-cola__texto">
+        <span class="fuerte">{{ textoCola() }}</span>
+        @if (cola.motivoPausa(); as motivo) {
+          <span class="tenue">{{ motivo }}</span>
+        }
+      </div>
+    </div>
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario fs-btn--sm"
+      data-accion="enviar-ahora"
+      [disabled]="!puedeEnviar()"
+      [attr.title]="ayudaEnviar()"
+      (click)="enviarAhora()"
+    >
+      <fs-icono nombre="enviar" [tam]="24" />
+      {{ enviando() || cola.estadoCola() === 'sincronizando' ? 'Enviando…' : 'Enviar ahora' }}
+    </button>
+  </div>
+</section>
+
+<!-- Filtros -->
+<div class="filtros">
+  <label class="buscador">
+    <fs-icono nombre="busqueda" [tam]="24" />
+    <input
+      type="text"
+      placeholder="Buscar por código o cliente"
+      aria-label="Buscar por código local o cliente"
+      autocomplete="off"
+      [ngModel]="filtroTexto()"
+      (ngModelChange)="filtroTexto.set($event)"
+    />
+  </label>
+  <p-select
+    [options]="opcionesEstado"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Estado"
+    [ngModel]="filtroEstado()"
+    (ngModelChange)="filtroEstado.set($event)"
+  />
+  <p-select
+    [options]="opcionesTipo"
+    optionLabel="label"
+    optionValue="value"
+    ariaLabel="Tipo de operación"
+    [ngModel]="filtroTipo()"
+    (ngModelChange)="filtroTipo.set($event)"
+  />
+  <p-select
+    [options]="sucursales()"
+    optionLabel="nombre"
+    optionValue="id"
+    placeholder="Todas las sucursales"
+    ariaLabel="Sucursal"
+    [showClear]="true"
+    [ngModel]="filtroSucursal()"
+    (ngModelChange)="filtroSucursal.set($event)"
+  />
+  <p-datepicker
+    selectionMode="range"
+    placeholder="Rango de fechas"
+    ariaLabel="Rango de fechas"
+    dateFormat="dd/mm/yy"
+    [showIcon]="true"
+    [showClear]="true"
+    [readonlyInput]="true"
+    [ngModel]="filtroRango()"
+    (ngModelChange)="filtroRango.set($event)"
+  />
+  <span class="filtros__fin conteo fs-num" data-conteo>
+    {{ operaciones().length }} {{ operaciones().length === 1 ? 'operación' : 'operaciones' }}
+  </span>
+</div>
+
+<section class="panel">
+  @if (cargando()) {
+    <div class="vacio" role="status" data-estado="cargando">
+      <fs-icono nombre="reloj-arena" [tam]="36" />
+      <p>Cargando las operaciones de este equipo…</p>
+    </div>
+  } @else if (errorLectura()) {
+    <div class="vacio" role="alert" data-estado="error-lectura">
+      <fs-icono nombre="alerta" [tam]="36" />
+      <p>No pudimos leer las operaciones guardadas en este equipo.</p>
+      <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="reintentarLectura()">Reintentar</button>
+    </div>
+  } @else if (operaciones().length === 0) {
+    @if (hayFiltros()) {
+      <div class="vacio" data-estado="sin-resultados">
+        <fs-icono nombre="sin-resultados" [tam]="36" />
+        <p>No encontramos operaciones con esos filtros.</p>
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="limpiarFiltros()">Quitar los filtros</button>
+      </div>
+    } @else {
+      <div class="vacio" data-estado="vacio">
+        <fs-icono nombre="bandeja" [tam]="36" />
+        <p class="vacio__titulo">Todavía no registraste ventas ni reservas en este equipo.</p>
+        <p>Las que hagas aparecerán aquí, con su estado.</p>
+      </div>
+    }
+  } @else {
+    <div class="panel__scroll">
+      <p-table
+        [value]="operaciones()"
+        styleClass="p-datatable-sm"
+        [tableStyle]="{ 'min-width': '980px' }"
+        [paginator]="operaciones().length > filasPorPagina"
+        [rows]="filasPorPagina"
+      >
+        <ng-template #header>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Código</th>
+            <th>Cliente</th>
+            <th class="num">Total</th>
+            <th>Estado</th>
+            <th class="num">Intentos</th>
+            <th>Último resultado</th>
+            <th class="num"><span class="sr-solo">Detalle</span></th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-operacion>
+          @let vista = vistaEstado(operacion.estado);
+          <tr [attr.data-operacion]="operacion.codigo_local">
+            <td class="fs-num celda-fecha">{{ operacion.fecha_operacion | date: 'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <span class="tipo">
+                <fs-icono [nombre]="operacion.tipo === 'reserva' ? 'calendario' : 'dinero'" [tam]="20" />
+                {{ etiquetaTipo(operacion.tipo) }}
+              </span>
+            </td>
+            <td class="fs-num fuerte">{{ operacion.codigo_local }}</td>
+            <td>{{ operacion.cliente_nombre ?? '—' }}</td>
+            <td class="num fs-num">{{ bs(operacion.total) }}</td>
+            <td>
+              <p-tag [severity]="vista.severidad" class="etiqueta-estado" [attr.data-estado-operacion]="operacion.estado">
+                <fs-icono [nombre]="vista.icono" [tam]="20" />
+                <span>{{ vista.texto }}</span>
+              </p-tag>
+            </td>
+            <td class="num fs-num">{{ operacion.intentos }}</td>
+            <td class="celda-motivo">{{ ultimoResultado(operacion) }}</td>
+            <td class="num">
+              <button
+                type="button"
+                class="btn-icono"
+                [attr.aria-label]="'Ver detalle de ' + operacion.codigo_local"
+                (click)="abrirDetalle(operacion)"
+              >
+                <fs-icono nombre="ojo" [tam]="24" />
+              </button>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  }
+</section>
+
+<!-- Detalle -->
+<p-dialog
+  [header]="detalle() ? (detalle()!.tipo === 'reserva' ? 'Reserva ' : 'Venta ') + detalle()!.codigo_local : 'Detalle'"
+  [visible]="detalleVisible()"
+  (visibleChange)="detalleVisible.set($event)"
+  [modal]="true"
+  [style]="{ width: '720px', maxWidth: '96vw' }"
+>
+  @if (detalle(); as operacion) {
+    @let vista = vistaEstado(operacion.estado);
+    <div class="detalle-cabecera">
+      <p-tag [severity]="vista.severidad">
+        <fs-icono [nombre]="vista.icono" [tam]="20" />
+        <span>{{ vista.texto }}</span>
+      </p-tag>
+      <span class="fs-num">Registrada el {{ operacion.fecha_operacion | date: 'dd/MM/yyyy HH:mm' }}</span>
+    </div>
+
+    @if (motivoClaro(operacion); as motivo) {
+      <div
+        class="fs-aviso detalle-motivo"
+        [class.fs-aviso--error]="operacion.estado === 'rechazada'"
+        role="status"
+        data-detalle="motivo"
+      >
+        <fs-icono [nombre]="operacion.estado === 'rechazada' ? 'cerrar' : 'advertencia'" [tam]="24" />
+        <span>{{ motivo }}</span>
+      </div>
+    }
+
+    @if (operacion.resultado?.faltantes?.length) {
+      <h3>Prendas sin stock suficiente</h3>
+      <ul class="lista-simple" data-detalle="faltantes">
+        @for (faltante of operacion.resultado!.faltantes!; track faltante.variante_id) {
+          <li>
+            <span class="fuerte">{{ nombreFaltante(faltante.variante_id, operacion) }}</span>
+            <span class="tenue fs-num">Pedías {{ faltante.solicitado }}, había {{ faltante.disponible }}</span>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (operacion.resultado?.avisos?.length) {
+      <h3>Avisos del servidor</h3>
+      <ul class="lista-simple" data-detalle="avisos">
+        @for (aviso of operacion.resultado!.avisos!; track $index) {
+          <li>
+            <span class="fuerte">{{ nombreFaltante(aviso.variante_id, operacion) }}</span>
+            <span class="tenue fs-num">
+              Precio distinto: se registró a {{ bs(aviso.precio_operacion) }} y ahora cuesta {{ bs(aviso.precio_actual) }}
+            </span>
+          </li>
+        }
+      </ul>
+    }
+
+    <dl class="datos">
+      <div>
+        <dt>Cliente</dt>
+        <dd>{{ operacion.cliente_nombre ?? '—' }}</dd>
+      </div>
+      <div>
+        <dt>Sucursal</dt>
+        <dd>{{ nombreSucursal(operacion.sucursal_id) }}</dd>
+      </div>
+      @if (operacion.reserva; as reserva) {
+        <div>
+          <dt>Visita</dt>
+          <dd class="fs-num">{{ reserva.fecha_visita }} · {{ reserva.hora_visita_desde }} - {{ reserva.hora_visita_hasta }}</dd>
+        </div>
+        @if (reserva.observacion) {
+          <div>
+            <dt>Observación</dt>
+            <dd>{{ reserva.observacion }}</dd>
+          </div>
+        }
+      }
+      <div>
+        <dt>Intentos de envío</dt>
+        <dd class="fs-num">{{ operacion.intentos }}</dd>
+      </div>
+    </dl>
+
+    <h3>Prendas</h3>
+    <div class="panel__scroll">
+      <table class="tabla-lineas" data-detalle="lineas">
+        <thead>
+          <tr>
+            <th>Prenda</th>
+            <th class="num">Cant.</th>
+            <th class="num">Precio</th>
+            <th class="num">Desc.</th>
+            <th class="num">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (linea of operacion.lineas; track linea.variante_id) {
+            <tr>
+              <td>
+                <span class="fuerte">{{ linea.producto_nombre }}</span>
+                <span class="tenue bloque">{{ linea.talla }} · {{ linea.color }} · {{ linea.sku }}</span>
+              </td>
+              <td class="num fs-num">{{ linea.cantidad }}</td>
+              <td class="num fs-num">{{ bs(linea.precio_unitario) }}</td>
+              <td class="num fs-num">{{ bs(linea.descuento_unitario) }}</td>
+              <td class="num fs-num">{{ bs(linea.subtotal) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="total">
+      {{ operacion.tipo === 'reserva' ? 'Valor referencial' : 'Total' }}
+      <strong class="fs-num" data-detalle="total">{{ bs(operacion.total) }}</strong>
+    </p>
+
+    @if (operacion.tipo === 'venta_contado') {
+      <section class="comprobante" aria-label="Comprobante de la venta" data-detalle="comprobante">
+        <div class="comprobante__texto">
+          <h3>Comprobante</h3>
+          <p class="tenue">
+            {{
+              operacion.estado === 'confirmada'
+                ? 'Venta sincronizada con el servidor.'
+                : 'Venta registrada sin conexión: pendiente de enviar.'
+            }}
+          </p>
+          @if (operacion.pago; as pago) {
+            <p class="fs-num">Efectivo recibido {{ bs(pago.monto_recibido) }} · Cambio {{ bs(pago.cambio) }}</p>
+          }
+        </div>
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="imprimirComprobante()">
+          <fs-icono nombre="imprimir" [tam]="24" />
+          Imprimir comprobante
+        </button>
+      </section>
+      @if (avisoImpresion(); as aviso) {
+        <div class="fs-aviso" role="alert">
+          <fs-icono nombre="advertencia" [tam]="24" />
+          <span>{{ aviso }}</span>
+        </div>
+      }
+    }
+
+    <h3>Historial de envíos</h3>
+    @if (errorIntentos()) {
+      <p class="ayuda" role="alert">No pudimos leer el historial de envíos de este equipo.</p>
+    } @else if (intentos().length === 0) {
+      <p class="ayuda" data-detalle="sin-intentos">Todavía no hay intentos de envío.</p>
+    } @else {
+      <ul class="lista-simple" data-detalle="intentos">
+        @for (intento of intentos(); track intento.id ?? $index) {
+          <li>
+            <span class="fs-num tenue">{{ intento.fecha | date: 'dd/MM/yyyy HH:mm' }}</span>
+            <span>{{ textoIntento(intento) }}</span>
+          </li>
+        }
+      </ul>
+    }
+  }
+</p-dialog>

@@ -42,6 +42,16 @@
     <fs-icono nombre="refrescar" [tam]="24" />
   </button>
   <span class="filtros__fin conteo fs-num">{{ filasFiltradas().length }} reservas</span>
+  <button
+    type="button"
+    class="fs-btn fs-btn--primario fs-btn--sm nueva-reserva"
+    [disabled]="!planPermiteReservar()"
+    [attr.title]="planPermiteReservar() ? null : 'Tu plan no incluye registrar reservas sin conexión.'"
+    (click)="abrirNueva()"
+  >
+    <fs-icono nombre="mas" [tam]="24" />
+    Nueva reserva
+  </button>
 </div>
 
 <section class="panel">
@@ -209,4 +219,256 @@
       }
     </ul>
   }
+</p-dialog>
+
+<!-- Diálogo de nueva reserva (E14b): se guarda en este equipo y se envía sola -->
+<p-dialog
+  header="Nueva reserva"
+  [visible]="nuevaVisible()"
+  (visibleChange)="nuevaVisible.set($event)"
+  [modal]="true"
+  [closable]="!guardandoNueva()"
+  [style]="{ width: '680px', maxWidth: '96vw' }"
+>
+  @if (cargandoNueva()) {
+    <div class="vacio" role="status" data-estado="cargando">Leyendo los datos de este equipo…</div>
+  } @else if (errorLecturaNueva()) {
+    <div class="fs-aviso fs-aviso--error" role="alert" data-estado="error-lectura">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span>No pudimos leer los datos guardados en este equipo. Cierra e inténtalo de nuevo.</span>
+    </div>
+  } @else if (sinDatos()) {
+    <div class="fs-aviso" role="status" data-estado="sin-datos">
+      <fs-icono nombre="descargar" [tam]="24" />
+      <span>
+        <strong>Descarga los datos primero.</strong>
+        Para registrar una reserva necesitamos los clientes, las sucursales y las prendas de este equipo.
+        <a routerLink="/catalogo-local" class="enlace-descarga" (click)="cerrarNueva()">Ir a Catálogo local</a>
+      </span>
+    </div>
+  } @else {
+    <form class="nueva" (submit)="$event.preventDefault(); guardarNueva()" novalidate>
+      @if (errorNueva(); as mensaje) {
+        <div class="fs-aviso fs-aviso--error" role="alert" data-estado="error-guardar">
+          <fs-icono nombre="alerta" [tam]="24" />
+          <span>{{ mensaje }}</span>
+        </div>
+      }
+
+      <!-- Cliente -->
+      <div class="campo">
+        <label for="nr-cliente">Cliente</label>
+        @if (clienteElegido(); as cliente) {
+          <div class="cliente-elegido">
+            <fs-icono nombre="usuario" [tam]="24" />
+            <span class="fuerte">{{ cliente.nombre }}</span>
+            <button type="button" class="btn-icono" aria-label="Cambiar de cliente" (click)="quitarCliente()">
+              <fs-icono nombre="cerrar" [tam]="24" />
+            </button>
+          </div>
+        } @else {
+          <input
+            id="nr-cliente"
+            pInputText
+            type="text"
+            autocomplete="off"
+            placeholder="Busca por nombre, apellido o CI/NIT"
+            [ngModel]="textoCliente()"
+            (ngModelChange)="buscarCliente($event)"
+            name="cliente"
+          />
+          @if (resultadosCliente().length > 0) {
+            <ul class="resultados" aria-label="Clientes encontrados">
+              @for (cliente of resultadosCliente(); track cliente.id) {
+                <li>
+                  <button type="button" class="resultado" (click)="elegirCliente(cliente)">
+                    <span class="fuerte">{{ cliente.nombre }} {{ cliente.apellido }}</span>
+                    @if (cliente.ci_nit) {
+                      <span class="tenue fs-num">{{ cliente.ci_nit }}</span>
+                    }
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else if (textoCliente().trim()) {
+            <p class="ayuda" data-estado="sin-clientes">No encontramos clientes con ese dato en lo descargado.</p>
+          }
+        }
+        @if (intentoGuardar() && erroresNueva().cliente; as error) {
+          <p class="fs-error-texto" role="alert"><fs-icono nombre="alerta" [tam]="20" />{{ error }}</p>
+        }
+      </div>
+
+      <!-- Sucursal, fecha y franja -->
+      <div class="campo-fila">
+        <div class="campo">
+          <label for="nr-sucursal">Sucursal</label>
+          <p-select
+            inputId="nr-sucursal"
+            [options]="sucursalesLocales()"
+            optionLabel="nombre"
+            optionValue="id"
+            placeholder="Elige una sucursal"
+            ariaLabel="Sucursal de la reserva"
+            appendTo="body"
+            [ngModel]="sucursalNueva()"
+            (ngModelChange)="sucursalNueva.set($event)"
+            name="sucursal"
+          />
+          @if (intentoGuardar() && erroresNueva().sucursal; as error) {
+            <p class="fs-error-texto" role="alert"><fs-icono nombre="alerta" [tam]="20" />{{ error }}</p>
+          }
+        </div>
+        <div class="campo">
+          <label for="nr-fecha">Fecha de la visita</label>
+          <p-datepicker
+            inputId="nr-fecha"
+            dateFormat="dd/mm/yy"
+            placeholder="dd/mm/aaaa"
+            ariaLabel="Fecha de la visita"
+            appendTo="body"
+            [showIcon]="true"
+            [minDate]="hoy"
+            [ngModel]="fechaNueva()"
+            (ngModelChange)="fechaNueva.set($event)"
+            name="fecha"
+          />
+          @if (intentoGuardar() && erroresNueva().fecha; as error) {
+            <p class="fs-error-texto" role="alert"><fs-icono nombre="alerta" [tam]="20" />{{ error }}</p>
+          }
+        </div>
+      </div>
+
+      <div class="campo-fila">
+        <div class="campo">
+          <label for="nr-desde">Desde</label>
+          <input id="nr-desde" pInputText type="time" [ngModel]="horaDesde()" (ngModelChange)="horaDesde.set($event)" name="desde" />
+        </div>
+        <div class="campo">
+          <label for="nr-hasta">Hasta</label>
+          <input id="nr-hasta" pInputText type="time" [ngModel]="horaHasta()" (ngModelChange)="horaHasta.set($event)" name="hasta" />
+        </div>
+      </div>
+      @if (intentoGuardar() && erroresNueva().horario; as error) {
+        <p class="fs-error-texto" role="alert"><fs-icono nombre="alerta" [tam]="20" />{{ error }}</p>
+      }
+
+      <div class="campo">
+        <label for="nr-observacion">Observación (opcional)</label>
+        <textarea
+          id="nr-observacion"
+          pInputText
+          rows="2"
+          [attr.maxlength]="maxObservacion"
+          [ngModel]="observacion()"
+          (ngModelChange)="observacion.set($event)"
+          name="observacion"
+        ></textarea>
+        <span class="tenue contador fs-num">{{ observacion().length }} / {{ maxObservacion }}</span>
+      </div>
+
+      <!-- Prendas -->
+      <div class="campo">
+        <label for="nr-prenda">Prendas</label>
+        <input
+          id="nr-prenda"
+          pInputText
+          type="text"
+          autocomplete="off"
+          placeholder="Busca por nombre, código o SKU"
+          [ngModel]="textoPrenda()"
+          (ngModelChange)="buscarPrenda($event)"
+          name="prenda"
+        />
+        @if (resultadosPrenda().length > 0) {
+          <ul class="resultados" aria-label="Prendas encontradas">
+            @for (variante of resultadosPrenda(); track variante.variante_id) {
+              <li>
+                <button type="button" class="resultado" (click)="agregarPrenda(variante)">
+                  <span class="fuerte">{{ variante.producto_nombre }}</span>
+                  <span class="tenue">{{ variante.talla_codigo }} · {{ variante.color_nombre }} · {{ variante.sku }}</span>
+                  <fs-icono nombre="mas" [tam]="24" />
+                </button>
+              </li>
+            }
+          </ul>
+        } @else if (textoPrenda().trim()) {
+          <p class="ayuda" data-estado="sin-prendas">No encontramos prendas con ese dato en lo descargado.</p>
+        }
+
+        @if (lineasNuevas().length > 0) {
+          <ul class="lineas" aria-label="Prendas de la reserva">
+            @for (linea of lineasNuevas(); track linea.varianteId) {
+              <li>
+                <div class="linea__texto">
+                  <span class="fuerte">{{ linea.producto }}</span>
+                  <span class="tenue">{{ linea.detalle }}</span>
+                </div>
+                <input
+                  pInputText
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="linea__cantidad fs-num"
+                  [attr.aria-label]="'Cantidad de ' + linea.producto"
+                  [ngModel]="linea.cantidad"
+                  (ngModelChange)="cambiarCantidad(linea.varianteId, $event)"
+                  [name]="'cantidad-' + linea.varianteId"
+                />
+                <button
+                  type="button"
+                  class="btn-icono btn-icono--peligro"
+                  [attr.aria-label]="'Quitar ' + linea.producto"
+                  (click)="quitarPrenda(linea.varianteId)"
+                >
+                  <fs-icono nombre="basura" [tam]="24" />
+                </button>
+              </li>
+            }
+          </ul>
+        }
+        @if (intentoGuardar() && erroresNueva().prendas; as error) {
+          <p class="fs-error-texto" role="alert"><fs-icono nombre="alerta" [tam]="20" />{{ error }}</p>
+        }
+      </div>
+
+      <div class="dialogo-acciones">
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" [disabled]="guardandoNueva()" (click)="cerrarNueva()">
+          Cancelar
+        </button>
+        <button type="submit" class="fs-btn fs-btn--primario fs-btn--sm" [disabled]="guardandoNueva()">
+          <fs-icono [nombre]="guardandoNueva() ? 'reloj-arena' : 'check'" [tam]="24" />
+          {{ guardandoNueva() ? 'Guardando…' : 'Guardar reserva' }}
+        </button>
+      </div>
+    </form>
+  }
+</p-dialog>
+
+<!-- Confirmación: según lo descargado no alcanza el stock -->
+<p-dialog
+  header="Stock insuficiente"
+  [visible]="faltantes() !== null"
+  (visibleChange)="$event ? null : faltantes.set(null)"
+  [modal]="true"
+  [style]="{ width: '520px', maxWidth: '96vw' }"
+>
+  <div class="fs-aviso" role="alert" data-estado="stock-insuficiente">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    <span>Según tu información local no hay stock suficiente. La operación se registrará y puede quedar en conflicto.</span>
+  </div>
+  <ul class="faltantes" aria-label="Prendas sin stock suficiente">
+    @for (faltante of faltantes() ?? []; track faltante.variante_id) {
+      <li>
+        <span class="fuerte">{{ nombreFaltante(faltante) }}</span>
+        <span class="tenue fs-num">Pides {{ faltante.solicitado }}, hay {{ faltante.disponible }}</span>
+      </li>
+    }
+  </ul>
+  <div class="dialogo-acciones">
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="faltantes.set(null)">Cancelar</button>
+    <button type="button" class="fs-btn fs-btn--primario fs-btn--sm" [disabled]="guardandoNueva()" (click)="guardarNueva(true)">
+      Registrar de todos modos
+    </button>
+  </div>
 </p-dialog>

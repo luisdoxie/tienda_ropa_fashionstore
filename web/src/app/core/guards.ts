@@ -78,6 +78,22 @@ export function permisoGuard(permiso: string): CanActivateFn {
   };
 }
 
+/** Guarda de ruta por permiso: basta con tener CUALQUIERA de los permisos indicados. */
+export function cualquierPermisoGuard(...permisos: string[]): CanActivateFn {
+  return () => {
+    const authService = inject(AuthService);
+    const router = inject(Router);
+
+    if (!authService.estaAutenticado()) {
+      return router.parseUrl(RUTA_LOGIN_PERSONAL);
+    }
+    if (!permisos.some((permiso) => authService.tienePermiso(permiso))) {
+      return router.parseUrl(authService.esSuperadmin() ? RUTA_INICIO_SUPERADMIN : RUTA_INICIO_PERSONAL);
+    }
+    return true;
+  };
+}
+
 /** Guarda de ruta por rol (basta con tener uno de los roles indicados). */
 export function rolGuard(...roles: string[]): CanActivateFn {
   return () => {
