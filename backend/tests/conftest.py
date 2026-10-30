@@ -14,6 +14,15 @@ os.environ.setdefault("BCRYPT_ROUNDS", "4")
 # webhooks con estos.
 os.environ.setdefault("LIBELULA_WEBHOOK_SECRET", "secreto-libelula-de-pruebas")
 os.environ.setdefault("PAYPAL_WEBHOOK_SECRET", "secreto-paypal-de-pruebas")
+# Hermético: las pruebas NUNCA usan claves reales de servicios externos (Groq, Cloudinary, Vertex, PayPal),
+# aunque exista un backend/.env con ellas. Una variable de entorno vacía gana sobre el .env. Sin esto, las
+# pruebas llamarían de verdad a Groq (respuestas distintas en cada corrida y gasto de la clave). Los tests
+# que necesitan estos servicios los simulan.
+for _clave in (
+    "GROQ_API_KEY", "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET",
+    "GOOGLE_CREDENTIALS_JSON", "VERTEX_PROJECT_ID", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET",
+):  # fmt: skip
+    os.environ[_clave] = ""
 
 import pytest
 from fastapi.testclient import TestClient

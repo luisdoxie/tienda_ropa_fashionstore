@@ -22,6 +22,8 @@ Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
   Respaldo en la etiqueta `respaldo-pre-quitar-espejo` y la rama
   `respaldo-espejo-wip`.
 - Exportación de reportes (E10): `openpyxl` (Excel) y `reportlab` (PDF), solo en memoria
+- Machine Learning (E11): `numpy`, `scipy` y `scikit-learn` (sin pandas), con versión fija; sus
+  imports van dentro de las funciones (scikit-learn tarda ~1,3 s en importarse)
 - Pagos: Libélula y PayPal, ambos en sandbox
 - Despliegue: Railway sin Docker, y Vercel para el Angular
 
@@ -34,8 +36,10 @@ Monolito modular en capas. 4 paquetes de negocio más `core` bajo `backend/app/`
 - `catalogo`: catálogo, inventario, abastecimiento y probador virtual
   (solo modo generativo).
 - `comercial`: reservas, ventas, pagos y entregas.
-- `inteligencia`: recomendador, búsqueda por voz, reportes e indicadores
-  (luego reportes con IA y analítica ML).
+- `inteligencia`: recomendador, búsqueda por voz, reportes e indicadores,
+  reportes con IA y analítica ML. El cálculo de ML vive en el subpaquete
+  `inteligencia/ml/` (cálculo PURO: no importa paquetes de negocio, no recibe
+  `Session` y no toca SQL; ver "Machine Learning (E11)").
 - `core`: infraestructura técnica transversal. NO es un paquete de negocio: no
   tiene casos de uso, tablas ni router. En la documentación ICONIX solo aparece
   como paquete `«infraestructura»` en el diagrama de paquetes (y en los de
@@ -105,7 +109,8 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
   CU-22 Consultar reportes e indicadores · CU-23 Generar reportes con IA
   (reportes generativos de registro cerrado con intérprete Groq o de reglas,
   más el reporte por voz de siempre; E09) · CU-24 Analizar con Machine
-  Learning (NUEVO, sin implementar).
+  Learning (`cu24_...`, clase de control `EntrenarModelosAnaliticos` de la
+  E11; la consulta, la predicción y las rutas `/analitica` son de la E12).
 - sincronizacion: CU-25 Sincronizar operaciones offline (`cu25_...`, clases de
   control `ProcesarLote`, `ConsultarOperaciones`, `DescargarPaquete` y
   `ResolverConflicto`; las dos últimas son de la E08).
@@ -193,11 +198,11 @@ También pueden hacer falta, dentro del diseño: diagrama de navegación
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(60 tablas en el SQL, que es el del primer parcial). La base real tiene 64:
+(60 tablas en el SQL, que es el del primer parcial). La base real tiene 65:
 las 59 de antes (`sesion_probador` se eliminó con el modo espejo) más
-`empresa`, `plan`, `suscripcion` y `operacion_sync` (E07) del segundo parcial,
-que no están en el SQL, y `bitacora` (E06; el SQL ya trae su bloque
-actualizado). No inventar tablas ni columnas nuevas sin pedirlo
+`empresa`, `plan`, `suscripcion`, `operacion_sync` (E07) y `modelo_ml` (E11) del
+segundo parcial, que no están en el SQL, y `bitacora` (E06; el SQL ya trae su
+bloque actualizado). No inventar tablas ni columnas nuevas sin pedirlo
 explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
@@ -212,14 +217,15 @@ sincronización (E07) y su descarga de datos, conflictos y plazo de cambio (E08)
 hechos. El backend NO
 se despliega solo: tras la E03 el login de la web y del móvil actuales no
 funciona hasta que se adapten (E15, E16, E18).
-- Clasificación de las 64 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
+- Clasificación de las 65 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
   `estado_reserva`, `estado_venta`, `metodo_pago`, `estado_pago`), `plan`
   (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario),
   `suscripcion` (de la empresa, con historial), `operacion_sync` (de la
-  empresa, `EmpresaMixin`; E07) y `bitacora` (`empresa_id` NULL permitido y SIN
-  el mixin: ver "Bitácora de auditoría").
+  empresa, `EmpresaMixin`; E07), `modelo_ml` (de la empresa, `EmpresaMixin`; E11) y
+  `bitacora` (`empresa_id` NULL permitido y SIN el mixin: ver "Bitácora de
+  auditoría").
 - Toda tabla nueva de negocio hereda `EmpresaMixin` (`core/tenant.py`) y se
   clasifica en `tests/plataforma/test_modelo_multitenant.py`: una tabla sin
   clasificar hace fallar esa prueba.
@@ -570,6 +576,40 @@ reporte: recibe un `DocumentoReporte` (`schemas.py`, bloque "Exportación") y de
   se prueba en `tests/inteligencia/test_exportar_*.py` y `tests/postgres/test_exportacion_pg.py`.
 - Pruebas: `tests/inteligencia/test_exportacion_{xlsx,pdf,adaptador}.py`, `test_exportar_endpoint.py`,
   `test_exportar_convencionales.py` y `tests/postgres/test_exportacion_pg.py`.
+
+### Machine Learning (E11, CU-24, `backend/app/inteligencia/ml/`)
+Dos modelos POR EMPRESA (D22, solo plan Profesional, D23): demanda semanal por categoría (supervisado) y
+segmentación de clientes por RFM con K-Means (no supervisado). Cada modelo se entrena SOLO con los datos de la
+empresa de la sesión y se guarda en `modelo_ml` con su versión, métricas, huella y artefacto.
+- **Capas.** `ml/` es cálculo puro (sin `Session`, sin SQL, sin imports de negocio; una prueba lo vigila):
+  `sintetico.py` (generador), `preprocesamiento.py` + `demanda.py` (`entrenar_demanda`, `predecir_demanda`),
+  `segmentos.py` (`segmentar_clientes`, `asignar_segmento`), `persistencia.py` (serializar con huella SHA-256,
+  `CacheModelos`) y `limites.py`. El acceso a datos: `ModeloMLRepository` (`inteligencia/repository.py`),
+  `comercial.politicas.reporte_ventas_serie_diaria` (con `ventas_brutas`) y `reporte_rfm_clientes`. El caso de uso
+  es `EntrenarModelosAnaliticos` (`cu24_...`): exige suscripción activa y `analitica_ml` por su cuenta, toma un
+  candado consultivo por (empresa, tipo) en PostgreSQL (409 `entrenamiento_en_curso`), guarda cada tipo en su
+  propia transacción y deja una fila de bitácora `modelo_ml/entrenar` (solo ids y números).
+- **`modelo_ml`.** UNIQUE (empresa, tipo, versión) e índice parcial único (empresa, tipo) WHERE activo: una sola
+  versión vigente. `activo` aquí marca la VIGENTE (no es borrado lógico). El artefacto es BYTEA (el disco de Railway
+  es efímero), tope 8 MB, `deferred` (los listados no lo traen); solo conserva el artefacto de las 3 últimas
+  versiones (las viejas quedan con sus métricas). Admite 'anomalias_ventas' desde ya (D37: no se implementa aún).
+- **El modelo de demanda.** Predice la DIFERENCIA contra la media móvil de 4 semanas (no la demanda cruda), con un
+  ciclo anual propio por categoría; candidatos Ridge, Random Forest y su promedio ("mezcla"), elegido por validación
+  cruzada temporal; las últimas 12 semanas son TEST y la línea base es la media móvil. Predicción recursiva a 1..12
+  semanas con un "rango estimado" (± RMSE; NO es un intervalo de confianza). Con menos de 26 semanas o 2 categorías
+  devuelve `datos_insuficientes`, nunca un 500.
+- **Datos sintéticos.** `scripts/seed_ml_sintetico.py` carga el historial como datos reales de la empresa (ORM, sin
+  tocar stock ni kardex), por defecto 650 clientes y 78 semanas (~9.400 ventas); se reconoce por los prefijos `SIN-`,
+  `DSN-`, `[SIN] ` y el dominio `@sintetico.<empresa>.fashionstore.bo`; dry-run por defecto e idempotente.
+  `scripts/evaluar_ml.py` imprime la tabla de métricas para la documentación sin escribir en la base.
+- **Honestidad.** Sobre datos sintéticos el modelo aprende los patrones que puso el generador: no es evidencia con
+  datos reales. Con 650 clientes las tres organizaciones Profesional cumplen los umbrales (MAE <= base, R2 >= 0,50,
+  mejora >= 5 %; silhouette >= 0,25; pureza >= 75 %) con la semilla por defecto, y en 6 a 7 de 8 semillas.
+- **Importación diferida.** `import app.main` no carga scikit-learn ni scipy (sí numpy, que importa openpyxl).
+- Pruebas: `tests/inteligencia/ml/` (generador, preprocesamiento, demanda, segmentos, persistencia, CU-24 y la
+  importación diferida), `tests/comercial/test_reportes_ml.py`, `tests/scripts/test_seed_ml_sintetico.py` y
+  `tests/postgres/test_ml_postgres.py` (más `test_cu24_postgres.py`). `tests/conftest.py` fuerza vacías las claves
+  de Groq, Cloudinary, Vertex y PayPal: las pruebas nunca usan servicios reales aunque exista un `backend/.env`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

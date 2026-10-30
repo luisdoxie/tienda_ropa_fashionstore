@@ -1,9 +1,15 @@
+import datetime as dt
+import hashlib
 from decimal import Decimal
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, undefer
 
-from app.inteligencia.models import ConsultaVoz, HistorialNavegacion, Recomendacion
+from app.core.exceptions import ConflictoError, DomainError
+from app.core.repository import confirmar
+from app.inteligencia.ml.limites import ML_MAX_ARTEFACTO_BYTES, ML_VERSIONES_CON_ARTEFACTO
+from app.inteligencia.models import TIPOS_MODELO_ML, ConsultaVoz, HistorialNavegacion, ModeloML, Recomendacion
 
 # ---- Inteligencia ----
 
@@ -85,6 +91,104 @@ class RecomendacionRepository:
         for fila in filas:
             db.refresh(fila)
         return filas
+
+
+# ---- Analítica ML ----
+
+
+class ModeloMLRepository:
+    """Versiones de los modelos entrenados de la empresa. Nunca recibe `empresa_id`: el alcance de
+    empresa lo pone `core/tenant` (filtra toda consulta y rellena el alta), así que el modelo de una
+    empresa no aparece en otra y entrenar sin empresa en la sesión falla cerrado. El artefacto es
+    `deferred`: solo se trae pidiéndolo (`con_artefacto=True`)."""
+
+    def _consulta(self, tipo: str, con_artefacto: bool):
+        consulta = select(ModeloML).where(ModeloML.tipo == tipo)
+        return consulta.options(undefer(ModeloML.artefacto)) if con_artefacto else consulta
+
+    def obtener_activo(self, db: Session, tipo: str, *, con_artefacto: bool = False) -> ModeloML | None:
+        return db.scalars(self._consulta(tipo, con_artefacto).where(ModeloML.activo.is_(True))).first()
+
+    def obtener_version(
+        self, db: Session, tipo: str, version: int, *, con_artefacto: bool = False
+    ) -> ModeloML | None:
+        return db.scalars(self._consulta(tipo, con_artefacto).where(ModeloML.version == version)).first()
+
+    def listar_versiones(self, db: Session, tipo: str) -> list[ModeloML]:
+        """De la más nueva a la más vieja, SIN el artefacto."""
+        return list(db.scalars(self._consulta(tipo, False).order_by(ModeloML.version.desc())))
+
+    def ultima_version(self, db: Session, tipo: str) -> int:
+        return db.scalar(select(func.max(ModeloML.version)).where(ModeloML.tipo == tipo)) or 0
+
+    def guardar_nueva_version(
+        self,
+        db: Session,
+        tipo: str,
+        *,
+        metricas: dict,
+        parametros: dict,
+        artefacto: bytes | None,
+        filas_entrenamiento: int,
+        datos_desde: dt.date | None = None,
+        datos_hasta: dt.date | None = None,
+        entrenado_por: int | None = None,
+        commit: bool = True,
+    ) -> ModeloML:
+        """Crea la versión siguiente, la deja vigente y desactiva la anterior; después poda las viejas.
+        Todo en un SAVEPOINT: si la base rechaza algo (por ejemplo, dos entrenamientos que escogieron
+        la misma versión), solo se revierte esto y se lanza ConflictoError. El hash y el tamaño los
+        calcula el repositorio a partir de los bytes, así nunca quedan desalineados. `commit=False`
+        deja la transacción al llamador (el caso de uso la cierra junto con la bitácora)."""
+        if tipo not in TIPOS_MODELO_ML:
+            raise DomainError(f"Tipo de modelo no soportado: {tipo}")
+        if artefacto is not None and len(artefacto) > ML_MAX_ARTEFACTO_BYTES:
+            raise DomainError(
+                f"El modelo serializado pesa {len(artefacto)} bytes y el máximo es {ML_MAX_ARTEFACTO_BYTES}"
+            )
+        sha256 = hashlib.sha256(artefacto).hexdigest() if artefacto is not None else None
+        try:
+            with db.begin_nested():
+                vigente = self.obtener_activo(db, tipo)
+                if vigente is not None:
+                    vigente.activo = False
+                    db.flush()  # antes del alta, para no chocar con el índice parcial único
+                modelo = ModeloML(
+                    tipo=tipo,
+                    version=self.ultima_version(db, tipo) + 1,
+                    activo=True,
+                    metricas=metricas,
+                    parametros=parametros,
+                    artefacto=artefacto,
+                    artefacto_sha256=sha256,
+                    artefacto_bytes=len(artefacto) if artefacto is not None else None,
+                    filas_entrenamiento=filas_entrenamiento,
+                    datos_desde=datos_desde,
+                    datos_hasta=datos_hasta,
+                    entrenado_por=entrenado_por,
+                )
+                db.add(modelo)
+                db.flush()
+        except IntegrityError as exc:
+            raise ConflictoError("Otro entrenamiento guardó una versión de este modelo al mismo tiempo") from exc
+        self.podar(db, tipo)
+        confirmar(db, commit)
+        return modelo
+
+    def podar(self, db: Session, tipo: str, conservar: int = ML_VERSIONES_CON_ARTEFACTO) -> int:
+        """Deja el artefacto solo en las `conservar` versiones más nuevas. Las demás quedan con
+        `artefacto` NULL pero conservan sus métricas y su hash (no hay DELETE físico). Devuelve
+        cuántas podó."""
+        con_artefacto = db.scalars(
+            select(ModeloML)
+            .where(ModeloML.tipo == tipo, ModeloML.artefacto.is_not(None))
+            .order_by(ModeloML.version.desc())
+            .offset(conservar)
+        ).all()
+        for modelo in con_artefacto:
+            modelo.artefacto = None
+        db.flush()
+        return len(con_artefacto)
 
 
 # ---- Reportes ----

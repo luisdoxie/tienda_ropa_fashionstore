@@ -632,6 +632,10 @@ def serie_diaria(
         "COUNT(DISTINCT venta_id) AS transacciones",
         "SUM(cantidad) AS unidades",
         "SUM(subtotal) AS total_ventas",
+        # E11: lo vendido a precio de lista (antes del descuento). La vista ya trae el precio
+        # unitario, así que no hace falta otra consulta ni otra migración; el descuento del día
+        # es `ventas_brutas - total_ventas`.
+        "SUM(precio_unitario * cantidad) AS ventas_brutas",
     ]
     consulta = (
         "SELECT "
@@ -678,6 +682,34 @@ def contar_ventas_con_reserva(db: Session, desde: dt.date, hasta: dt.date, sucur
         select(func.count(Venta.id)).join(EstadoVenta, EstadoVenta.id == Venta.estado_id).where(*condiciones)
     )
     return int(total or 0)
+
+
+def rfm_clientes(db: Session, desde: dt.date, hasta: dt.date, tope: int) -> list[dict]:
+    """Recencia, frecuencia y monto por cliente (E11): una fila por cliente con ventas efectivas
+    (pagada o entregada) entre `desde` y `hasta`, ambos días incluidos. Las ventas anónimas
+    (`cliente_id` nulo) no entran. Consulta del ORM: el alcance de empresa lo agrega solo
+    `core/tenant`, aquí nadie filtra a mano. Orden por `cliente_id` y corte en `tope` filas,
+    para que dos corridas sobre los mismos datos entreguen exactamente lo mismo."""
+    consulta = (
+        select(
+            Venta.cliente_id,
+            func.max(Venta.fecha).label("ultima_compra"),
+            func.count(Venta.id).label("frecuencia"),
+            func.coalesce(func.sum(Venta.total), 0).label("monto_total"),
+        )
+        .join(EstadoVenta, EstadoVenta.id == Venta.estado_id)
+        .where(
+            Venta.cliente_id.is_not(None),
+            EstadoVenta.codigo.in_(ESTADOS_VENTA_EFECTIVA),
+            # `fecha` es timestamp: el día `hasta` entero entra, por eso el límite es exclusivo.
+            Venta.fecha >= desde,
+            Venta.fecha < hasta + dt.timedelta(days=1),
+        )
+        .group_by(Venta.cliente_id)
+        .order_by(Venta.cliente_id)
+        .limit(tope)
+    )
+    return [dict(fila) for fila in db.execute(consulta).mappings().all()]
 
 
 # ---- Pagos ----

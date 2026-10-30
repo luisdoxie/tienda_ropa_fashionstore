@@ -1016,6 +1016,42 @@ def reporte_ventas_serie_diaria(
             "transacciones": int(fila["transacciones"]),
             "unidades": int(fila["unidades"]),
             "total_ventas": _dinero(fila["total_ventas"]),
+            "ventas_brutas": _dinero(fila["ventas_brutas"]),
+        }
+        for fila in filas
+    ]
+
+
+# Tope por defecto de clientes del RFM. Es el mismo número que `ML_MAX_CLIENTES` de
+# `inteligencia.ml.limites`, pero `comercial` no puede importar `inteligencia` (el orden de
+# dependencias es core <- plataforma <- catalogo <- comercial <- inteligencia): quien llama
+# desde `inteligencia` pasa su propio límite.
+_TOPE_CLIENTES_RFM = 50_000
+
+
+def reporte_rfm_clientes(
+    db: Session, hasta: dt.date, dias: int = 365, tope: int = _TOPE_CLIENTES_RFM
+) -> list[dict]:
+    """Para `inteligencia` (segmentación de clientes, E11): una fila por cliente con compras
+    efectivas (pagada o entregada) en la ventana `(hasta - dias, hasta]`, es decir, los `dias`
+    días que terminan en `hasta` inclusive. Cada fila: `cliente_id`, `ultima_compra` (date),
+    `frecuencia` (ventas efectivas, int) y `monto_total` (Decimal de 2 decimales, suma del
+    total de esas ventas). Las ventas anónimas no entran. Orden por `cliente_id` y como máximo
+    `tope` filas. No trae nombres ni correos: el modelo no debe verlos."""
+    if dias < 1:
+        raise DomainError("La ventana del RFM debe tener al menos 1 día.")
+    if tope < 1:
+        raise DomainError("El tope de clientes del RFM debe ser al menos 1.")
+    desde = hasta - dt.timedelta(days=dias - 1)  # (hasta - dias, hasta] == [hasta - dias + 1, hasta]
+    filas = comercial_repo.rfm_clientes(db, desde, hasta, tope)
+    return [
+        {
+            "cliente_id": int(fila["cliente_id"]),
+            "ultima_compra": fila["ultima_compra"].date()
+            if isinstance(fila["ultima_compra"], dt.datetime)
+            else dt.date.fromisoformat(str(fila["ultima_compra"])[:10]),
+            "frecuencia": int(fila["frecuencia"]),
+            "monto_total": _dinero(fila["monto_total"]),
         }
         for fila in filas
     ]

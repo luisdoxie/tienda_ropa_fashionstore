@@ -44,6 +44,7 @@ ENTIDAD_LOTE_SYNC = "lote_sync"  # E07
 ENTIDAD_OPERACION_SYNC = "operacion_sync"  # E08
 ENTIDAD_COPIA_SEGURIDAD = "copia_seguridad"  # E22
 ENTIDAD_CIERRE_CAJA = "cierre_caja"  # E21
+ENTIDAD_MODELO_ML = "modelo_ml"  # E11
 
 # ---- Acciones (máximo 40 caracteres: columna `accion`) ----
 ACCION_CREAR = "crear"
@@ -73,6 +74,7 @@ ACCION_DESCARGAR = "descargar"  # E22
 ACCION_ELIMINAR = "eliminar"  # E22
 ACCION_ABRIR = "abrir"  # E21
 ACCION_CERRAR = "cerrar"  # E21
+ACCION_ENTRENAR = "entrenar"  # E11
 
 # ---- Contexto: quién y desde dónde ----
 

@@ -56,9 +56,10 @@ def test_cantidad_disponible_es_una_columna_generada(engine_pg, fabrica_pg, clie
     assert tuple(fila) == (10, 4, 6)
 
 
-def test_la_base_tiene_64_tablas_con_las_de_multitenant_la_bitacora_y_la_sincronizacion(engine_pg):
-    # 59 anteriores + empresa, plan y suscripcion + bitacora + operacion_sync (sin contar alembic_version).
+def test_la_base_tiene_65_tablas_con_las_de_multitenant_la_bitacora_la_sincronizacion_y_el_ml(engine_pg):
+    # 59 anteriores + empresa, plan y suscripcion + bitacora + operacion_sync + modelo_ml
+    # (sin contar alembic_version).
     tablas = set(inspect(engine_pg).get_table_names()) - {"alembic_version"}
 
-    assert len(tablas) == 64
-    assert {"empresa", "plan", "suscripcion", "bitacora", "operacion_sync"} <= tablas
+    assert len(tablas) == 65
+    assert {"empresa", "plan", "suscripcion", "bitacora", "operacion_sync", "modelo_ml"} <= tablas
