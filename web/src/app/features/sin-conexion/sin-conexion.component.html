@@ -1,0 +1,14 @@
+<app-panel-estado-tienda
+  icono="enlace-roto"
+  titulo="Sin conexión"
+  texto="Esta pantalla necesita conexión a Internet. Lo que ya guardaste en este equipo sigue disponible."
+>
+  <div class="acciones">
+    <button type="button" class="fs-btn fs-btn--acento" [disabled]="comprobando()" (click)="reintentar()">
+      <fs-icono nombre="refrescar" [tam]="24" />
+      {{ comprobando() ? 'Comprobando…' : 'Reintentar' }}
+    </button>
+    <a class="fs-btn fs-btn--contorno" routerLink="/">Ir al inicio</a>
+  </div>
+  <p class="acciones__aviso" role="status" aria-live="polite">{{ aviso() }}</p>
+</app-panel-estado-tienda>

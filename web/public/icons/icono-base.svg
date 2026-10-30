@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FashionStore">
+  <!-- Fuente editable del ícono de la PWA (E13): monograma "FS" sobre carbón con una línea lima. Colores = tokens del rediseño. -->
+  <rect width="512" height="512" fill="#1B1916"/>
+  <text x="256" y="300" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="400" font-size="230" fill="#F2F2F0">FS</text>
+  <rect x="176" y="334" width="160" height="10" rx="2" fill="#8FAE5B"/>
+</svg>

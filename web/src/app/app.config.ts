@@ -2,11 +2,13 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import {
   ApplicationConfig,
   inject,
+  isDevMode,
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withNavigationErrorHandler } from '@angular/router';
+import { provideServiceWorker } from '@angular/service-worker';
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
 import { MessageService } from 'primeng/api';
@@ -17,6 +19,7 @@ import { routes } from './app.routes';
 import { AuthService } from './core/auth.service';
 import { authInterceptor } from './core/auth.interceptor';
 import { errorInterceptor } from './core/error.interceptor';
+import { alFallarLaNavegacion } from './core/navegacion-sin-conexion';
 import { environment } from '../environments/environment';
 
 // Preset de PrimeNG alineado con styles.scss (CLAUDE.md, tokens de diseño).
@@ -102,7 +105,7 @@ const FashionStorePreset = definePreset(Aura, {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes),
+    provideRouter(routes, withNavigationErrorHandler(alFallarLaNavegacion)),
     provideHttpClient(withInterceptors([errorInterceptor, authInterceptor])),
     provideAnimationsAsync(),
     providePrimeNG({
@@ -110,6 +113,12 @@ export const appConfig: ApplicationConfig = {
       license: environment.primeuiLicense,
     }),
     MessageService,
+    // PWA (E13): el Service Worker solo existe en las compilaciones optimizadas (`ng serve` no lo registra).
+    // Precachea la aplicación y NUNCA respuestas autenticadas: ver ngsw-config.json.
+    provideServiceWorker('ngsw-worker.js', {
+      enabled: !isDevMode(),
+      registrationStrategy: 'registerWhenStable:30000',
+    }),
     // Restaura la sesión (si hay tokens guardados) antes de renderizar,
     // para que las guardas de ruta ya tengan roles/permisos disponibles.
     provideAppInitializer(() => {

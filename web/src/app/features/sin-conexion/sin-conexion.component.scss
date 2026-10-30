@@ -1,0 +1,23 @@
+:host {
+  display: block;
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fs-espacio-3);
+}
+
+// Siempre en el DOM (aria-live); sin texto no ocupa espacio.
+.acciones__aviso {
+  margin: var(--fs-espacio-3) 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fs-texto-tenue);
+
+  &:empty {
+    display: none;
+  }
+}

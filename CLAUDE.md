@@ -10,6 +10,13 @@ Proyecto académico, Sistemas II, UAGRM. Primer parcial: PUDS. Segundo parcial
 - Web: Angular + PrimeNG (back office: admin, encargado, cajero; más una
   tienda pública para clientes: catálogo, registro/login, carrito y
   checkout — sin probador virtual)
+- PWA (E13): Service Worker de Angular (`@angular/service-worker`, versión igual a `@angular/core`) y manifest. La web es
+  instalable y precachea la aplicación completa (también los fragmentos de rutas perezosas); NUNCA cachea una respuesta
+  autenticada: solo el catálogo público (`/api/v1/public/**`, red primero, máx. 1 día) y los recursos estáticos. Una
+  prueba (`src/ngsw-config.spec.ts`) lo vigila. El SW solo corre en compilaciones optimizadas (`ng serve` no lo registra);
+  `ng build --configuration pwa-local` lo prueba contra el backend local. `ConectividadService` (estado en línea, sin
+  conexión o servidor no responde) y el aviso de instalar/actualizar son reutilizables. Los datos para trabajar sin
+  conexión irán en IndexedDB, no en el SW (E14).
 - Móvil: Flutter + Dart, Material 3 (cliente: catálogo, favoritos,
   carrito/checkout y el probador virtual, exclusivo de esta app)
 - Imágenes: Cloudinary

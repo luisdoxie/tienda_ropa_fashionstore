@@ -2,6 +2,7 @@ import { HttpClient, HttpContext, provideHttpClient, withInterceptors } from '@a
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MessageService } from 'primeng/api';
+import { ConectividadService } from './conectividad.service';
 import { errorInterceptor, reiniciarAvisosFuncionales } from './error.interceptor';
 import { SIN_TOAST_ERROR } from './http-contexts';
 import { PlanService } from './plan.service';
@@ -47,6 +48,67 @@ describe('errorInterceptor', () => {
     http.get('/api/x').subscribe({ error: () => undefined });
     controller.expectOne('/api/x').flush({}, { status: 401, statusText: 'Unauthorized' });
     expect(add).not.toHaveBeenCalled();
+  });
+
+  describe('fallos de red (status 0)', () => {
+    afterEach(() => {
+      delete (navigator as { onLine?: boolean }).onLine;
+      vi.unstubAllGlobals();
+    });
+
+    function fallarSinRespuesta(): unknown {
+      let fallo: unknown = null;
+      http.get('/api/x').subscribe({ error: (e) => (fallo = e) });
+      controller.expectOne('/api/x').error(new ProgressEvent('error'));
+      return fallo;
+    }
+
+    it('en línea mantiene el toast "No se pudo conectar con el servidor."', () => {
+      const add = vi.spyOn(mensajes, 'add');
+      expect(TestBed.inject(ConectividadService).estado()).toBe('en_linea');
+
+      const fallo = fallarSinRespuesta() as { status: number };
+
+      expect(fallo.status).toBe(0);
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(add.mock.calls[0][0]).toMatchObject({ severity: 'error', detail: 'No se pudo conectar con el servidor.' });
+    });
+
+    it('sin conexión no muestra toast (lo dice el indicador), pero propaga el error', () => {
+      const add = vi.spyOn(mensajes, 'add');
+      const conectividad = TestBed.inject(ConectividadService);
+      window.dispatchEvent(new Event('offline'));
+      expect(conectividad.estado()).toBe('sin_conexion');
+
+      const fallo = fallarSinRespuesta() as { status: number };
+
+      expect(fallo.status).toBe(0);
+      expect(add).not.toHaveBeenCalled();
+    });
+
+    it('con el servidor caído (hay red pero /health no responde) tampoco muestra toast', async () => {
+      vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))));
+      const add = vi.spyOn(mensajes, 'add');
+      const conectividad = TestBed.inject(ConectividadService);
+      await conectividad.verificarServidor();
+      expect(conectividad.estado()).toBe('servidor_no_responde');
+
+      fallarSinRespuesta();
+
+      expect(add).not.toHaveBeenCalled();
+    });
+
+    it('sin conexión, un error con respuesta (500) sigue mostrando su toast', () => {
+      const add = vi.spyOn(mensajes, 'add');
+      TestBed.inject(ConectividadService);
+      window.dispatchEvent(new Event('offline'));
+
+      http.get('/api/x').subscribe({ error: () => undefined });
+      controller.expectOne('/api/x').flush({ detail: 'Falló' }, { status: 500, statusText: 'Server Error' });
+
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(add.mock.calls[0][0]).toMatchObject({ summary: 'Error 500', detail: 'Falló' });
+    });
   });
 
   describe('errores del plan y la suscripción', () => {

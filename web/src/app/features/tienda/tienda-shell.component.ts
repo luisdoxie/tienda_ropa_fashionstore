@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, NavigationStart, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from '../../core/auth.service';
 import { IconoComponent } from '../../shared/icono/icono.component';
+import { IndicadorConexionComponent } from '../../shared/indicador-conexion/indicador-conexion.component';
 import { MarcaComponent } from '../../shared/marca/marca.component';
 import { CarritoService } from './data/carrito.service';
 import { irAColeccion } from './ir-a-coleccion';
@@ -15,7 +16,7 @@ const ANCHO_MOVIL = '(max-width: 960px)';
 @Component({
   selector: 'app-tienda-shell',
   standalone: true,
-  imports: [RouterLink, RouterOutlet, MarcaComponent, IconoComponent],
+  imports: [RouterLink, RouterOutlet, MarcaComponent, IconoComponent, IndicadorConexionComponent],
   templateUrl: './tienda-shell.component.html',
   styleUrl: './tienda-shell.component.scss',
 })

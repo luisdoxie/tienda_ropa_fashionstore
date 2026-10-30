@@ -2,6 +2,7 @@ import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { MessageService } from 'primeng/api';
 import { catchError, throwError } from 'rxjs';
+import { ConectividadService } from './conectividad.service';
 import { codigoFuncional } from './errores-funcionales';
 import { SIN_TOAST_ERROR } from './http-contexts';
 import { mensajeFuncional } from './mensajes-error-funcional';
@@ -63,11 +64,18 @@ function mensajeDe(error: HttpErrorResponse): string {
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const messageService = inject(MessageService);
   const planService = inject(PlanService);
+  // Se inyecta aquí (no al fallar) para que escuche al navegador desde la primera petición.
+  const conectividad = inject(ConectividadService);
 
   return next(req).pipe(
     catchError((error: unknown) => {
+      // Sin red (status 0) el indicador de conexión ya lo dice: un toast por petición sería ruido.
+      const esFalloPorFaltaDeRed =
+        error instanceof HttpErrorResponse && error.status === 0 && conectividad.estado() !== 'en_linea';
       const esRutaSinToast =
-        req.context.get(SIN_TOAST_ERROR) || RUTAS_SIN_TOAST_ERROR.some((ruta) => req.url.includes(ruta));
+        esFalloPorFaltaDeRed ||
+        req.context.get(SIN_TOAST_ERROR) ||
+        RUTAS_SIN_TOAST_ERROR.some((ruta) => req.url.includes(ruta));
       if (error instanceof HttpErrorResponse && error.status !== 401) {
         const codigo = codigoFuncional(error);
         const funcional = mensajeFuncional(codigo, error.error, planService.nombrePlan());

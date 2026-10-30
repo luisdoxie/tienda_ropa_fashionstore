@@ -17,6 +17,7 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { PopoverModule } from 'primeng/popover';
 import { filter } from 'rxjs';
 import { AuthService, ROL_SUPERADMINISTRADOR } from '../core/auth.service';
+import { ConectividadService } from '../core/conectividad.service';
 import { FuncionPlan } from '../core/models/plan.models';
 import { NotificacionesService } from '../core/notificaciones.service';
 import { PlanService } from '../core/plan.service';
@@ -24,6 +25,7 @@ import { MiEmpresaService } from '../features/mi-empresa/data/mi-empresa.service
 import { AvisoSuscripcionComponent } from '../shared/aviso-suscripcion/aviso-suscripcion.component';
 import { IconoComponent } from '../shared/icono/icono.component';
 import { NombreIcono } from '../shared/icono/iconos';
+import { IndicadorConexionComponent } from '../shared/indicador-conexion/indicador-conexion.component';
 import { MarcaComponent } from '../shared/marca/marca.component';
 
 const INTERVALO_NOTIFICACIONES_MS = 20_000;
@@ -197,6 +199,7 @@ const SECCION_POR_DEFECTO = 'organizacion';
     PopoverModule,
     AvisoSuscripcionComponent,
     IconoComponent,
+    IndicadorConexionComponent,
     MarcaComponent,
   ],
   templateUrl: './layout.component.html',
@@ -210,6 +213,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private readonly miEmpresaService = inject(MiEmpresaService);
   private readonly injector = inject(Injector);
   protected readonly notificacionesService = inject(NotificacionesService);
+  private readonly conectividad = inject(ConectividadService);
 
   protected readonly usuario = this.authService.usuario;
   /** El superadministrador no tiene empresa: sin notificaciones, plan ni aviso de suscripción. */
@@ -302,7 +306,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
       this.notificacionesService.cargar().subscribe();
       // ~20s: "casi en tiempo real" sin WebSockets, mismo mecanismo de
       // polling que ya usa checkout-estado.component.ts para el pago.
-      this.intervalo = setInterval(() => this.notificacionesService.cargar().subscribe(), INTERVALO_NOTIFICACIONES_MS);
+      // Sin conexión no se consulta: cada intento fallido sería un aviso de error cada 20 s.
+      this.intervalo = setInterval(() => {
+        if (this.conectividad.enLinea()) this.notificacionesService.cargar().subscribe();
+      }, INTERVALO_NOTIFICACIONES_MS);
     }
 
     this.abrirGrupoDeRuta(this.router.url);

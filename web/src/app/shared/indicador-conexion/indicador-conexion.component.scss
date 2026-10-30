@@ -1,0 +1,44 @@
+// Indicador de conexión. Pastilla: barra del back office. Franja: tienda (solo sin conexión).
+:host {
+  display: inline-flex;
+}
+
+:host(.es-franja) {
+  display: block;
+}
+
+.pastilla {
+  display: inline-flex;
+  align-items: center;
+  // Un punto no es tocable, pero el chip ocupa la altura de los botones vecinos y no los descuadra.
+  min-height: var(--fs-toque);
+}
+
+.pastilla__punto {
+  width: 10px;
+  height: 10px;
+  margin: 0 var(--fs-espacio-2);
+  border-radius: 50%;
+  background: var(--fs-exito);
+}
+
+.franja {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  min-height: var(--fs-toque);
+  padding: var(--fs-espacio-3) var(--fs-espacio-6);
+  background: var(--fs-advertencia-suave);
+  color: var(--fs-advertencia);
+  border-bottom: 1px solid color-mix(in srgb, var(--fs-advertencia) 30%, transparent);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .franja {
+    padding-inline: var(--fs-espacio-4);
+    font-size: 14px;
+  }
+}

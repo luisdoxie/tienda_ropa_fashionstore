@@ -8,6 +8,11 @@ const GUARDS_PRIVADOS_DE_TIENDA = [authGuard, tiendaSesionGuard];
 
 export const routes: Routes = [
   {
+    // PWA (E13): a donde lleva el enrutador una pantalla que no cargó sin conexión. Sin guardas.
+    path: 'sin-conexion',
+    loadComponent: () => import('./features/sin-conexion/sin-conexion.component').then((m) => m.SinConexionComponent),
+  },
+  {
     // Página de la plataforma: tarjetas de las tiendas activas y acceso del personal.
     path: '',
     pathMatch: 'full',

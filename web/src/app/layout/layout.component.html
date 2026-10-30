@@ -85,6 +85,8 @@
       </button>
 
       <div class="layout__barra-acciones">
+        <app-indicador-conexion variante="pastilla" [pendientes]="0" />
+
         @if (!esSuperadmin()) {
           <button
             type="button"

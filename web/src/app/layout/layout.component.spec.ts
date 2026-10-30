@@ -558,6 +558,48 @@ describe('LayoutComponent', () => {
       fixture.destroy();
     });
 
+    it('el indicador de conexión es lo primero de la barra de acciones, antes de la campana y de Salir', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      const { fixture, el } = crear();
+
+      const acciones = el.querySelector('.layout__barra-acciones') as HTMLElement;
+      const hijos = Array.from(acciones.children).map((h) => h.tagName.toLowerCase() + '.' + h.className);
+      expect(hijos[0]).toBe('app-indicador-conexion.');
+      expect(hijos.indexOf('button.layout__boton-icono layout__campana')).toBe(1);
+      expect(hijos.length).toBe(3);
+      fixture.destroy();
+    });
+
+    describe('consulta de notificaciones cada 20 s', () => {
+      const cargasDeNotificaciones = () => http.match((req) => req.url.includes('/notificaciones'));
+
+      afterEach(() => {
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+        delete (navigator as { onLine?: boolean }).onLine;
+      });
+
+      it('en línea consulta en cada intervalo; sin conexión se detiene y al volver la red se reanuda', () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true } as Response)));
+        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+        const { fixture } = crear();
+        expect(cargasDeNotificaciones().length).toBe(1); // la carga inicial
+
+        vi.advanceTimersByTime(20_000);
+        expect(cargasDeNotificaciones().length).toBe(1);
+
+        window.dispatchEvent(new Event('offline'));
+        vi.advanceTimersByTime(60_000);
+        expect(cargasDeNotificaciones().length).toBe(0);
+
+        window.dispatchEvent(new Event('online'));
+        vi.advanceTimersByTime(20_000);
+        expect(cargasDeNotificaciones().length).toBe(1);
+        fixture.destroy();
+      });
+    });
+
     it('con la suscripción vencida muestra la franja entre la barra y el contenido', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
       plan.suscripcion.set({ ...suscripcion([]), estado: 'vencida', fecha_vencimiento: '2026-10-12' });

@@ -1,0 +1,90 @@
+// Avisos de la PWA: fijos abajo a la derecha, por encima del contenido, sin desplazar nada.
+// En celular ocupan todo el ancho, pegados abajo.
+:host {
+  display: contents;
+}
+
+.aviso-pwa {
+  position: fixed;
+  right: var(--fs-espacio-4);
+  bottom: var(--fs-espacio-4);
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-3);
+  width: min(400px, calc(100vw - 2 * var(--fs-espacio-4)));
+  // El contenedor no captura toques: solo las tarjetas.
+  pointer-events: none;
+}
+
+.aviso-pwa__tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-3);
+  padding: var(--fs-espacio-4);
+  background: var(--fs-superficie);
+  color: var(--fs-texto);
+  border: 1px solid var(--fs-borde-fuerte);
+  border-radius: var(--fs-radio-lg);
+  box-shadow: var(--fs-sombra-md);
+  pointer-events: auto;
+}
+
+.aviso-pwa__tarjeta--error {
+  background: var(--fs-error-suave);
+  color: var(--fs-error);
+  border-color: var(--fs-error);
+}
+
+.aviso-pwa__cuerpo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-3);
+}
+
+.aviso-pwa__texto {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+
+  strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: var(--fs-espacio-1) 0 0;
+    color: var(--fs-texto-tenue);
+  }
+}
+
+.aviso-pwa__tarjeta--error .aviso-pwa__texto p {
+  color: inherit;
+}
+
+.aviso-pwa__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-2);
+}
+
+@media (max-width: 600px) {
+  .aviso-pwa {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    gap: 0;
+  }
+
+  .aviso-pwa__tarjeta {
+    border-radius: 0;
+    border-width: 1px 0 0;
+  }
+
+  .aviso-pwa__acciones .fs-btn {
+    flex: 1 1 0;
+  }
+}

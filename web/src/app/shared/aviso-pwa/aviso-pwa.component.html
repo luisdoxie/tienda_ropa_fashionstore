@@ -1,0 +1,72 @@
+@if (hayAviso()) {
+  <div class="aviso-pwa">
+    @if (requiereRecarga()) {
+      <section class="aviso-pwa__tarjeta aviso-pwa__tarjeta--error" role="alert" aria-labelledby="aviso-pwa-recarga">
+        <div class="aviso-pwa__cuerpo">
+          <fs-icono nombre="refrescar" [tam]="24" />
+          <div class="aviso-pwa__texto">
+            <strong id="aviso-pwa-recarga">Hay que recargar la página</strong>
+            <p>La aplicación quedó en un estado que no se puede recuperar sola. Recarga para seguir trabajando.</p>
+          </div>
+        </div>
+        <div class="aviso-pwa__acciones">
+          <button type="button" class="fs-btn fs-btn--primario fs-btn--sm" (click)="recargar()">Recargar</button>
+        </div>
+      </section>
+    }
+
+    @if (hayVersionNueva()) {
+      <section class="aviso-pwa__tarjeta" role="status" aria-labelledby="aviso-pwa-version">
+        <div class="aviso-pwa__cuerpo">
+          <fs-icono nombre="refrescar" [tam]="24" />
+          <div class="aviso-pwa__texto">
+            <strong id="aviso-pwa-version">Hay una versión nueva de FashionStore</strong>
+            <p>Actualiza cuando termines lo que estás haciendo: la página se recargará.</p>
+          </div>
+        </div>
+        <div class="aviso-pwa__acciones">
+          <button type="button" class="fs-btn fs-btn--primario fs-btn--sm" (click)="actualizar()">
+            Actualizar ahora
+          </button>
+          <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="despues()">Después</button>
+        </div>
+      </section>
+    }
+
+    @if (mostrarInstalar()) {
+      <section class="aviso-pwa__tarjeta" role="status" aria-labelledby="aviso-pwa-instalar">
+        <div class="aviso-pwa__cuerpo">
+          <fs-icono nombre="descargar" [tam]="24" />
+          <div class="aviso-pwa__texto">
+            <strong id="aviso-pwa-instalar">Instala FashionStore</strong>
+            <p>
+              Instala FashionStore en este equipo para abrirla como una app y seguir trabajando aunque se corte
+              Internet.
+            </p>
+          </div>
+        </div>
+        <div class="aviso-pwa__acciones">
+          <button type="button" class="fs-btn fs-btn--primario fs-btn--sm" (click)="instalar()">Instalar</button>
+          <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="ahoraNo()">Ahora no</button>
+        </div>
+      </section>
+    }
+
+    @if (mostrarGuiaIos()) {
+      <section class="aviso-pwa__tarjeta" role="status" aria-labelledby="aviso-pwa-ios">
+        <div class="aviso-pwa__cuerpo">
+          <fs-icono nombre="telefono" [tam]="24" />
+          <div class="aviso-pwa__texto">
+            <strong id="aviso-pwa-ios">Instala FashionStore en tu iPhone o iPad</strong>
+            <p>Toca Compartir y luego Agregar a pantalla de inicio.</p>
+          </div>
+        </div>
+        <div class="aviso-pwa__acciones">
+          <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" (click)="cerrarGuiaIos()">
+            Entendido
+          </button>
+        </div>
+      </section>
+    }
+  </div>
+}
