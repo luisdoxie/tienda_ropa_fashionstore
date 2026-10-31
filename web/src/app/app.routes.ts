@@ -386,6 +386,13 @@ export const routes: Routes = [
           import('./features/auditoria/bitacora.component').then((m) => m.BitacoraComponent),
       },
       {
+        // Copias de seguridad de la empresa (E22): solo su administrador y un plan que las incluya.
+        path: 'copias-seguridad',
+        canActivate: [permisoGuard('copias.gestionar')],
+        loadComponent: () =>
+          import('./features/copias-seguridad/copias-seguridad.component').then((m) => m.CopiasSeguridadComponent),
+      },
+      {
         // Plan, límites y funcionalidades de la empresa (solo su administrador).
         path: 'mi-empresa',
         canActivate: [permisoGuard('empresa.gestionar')],

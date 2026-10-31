@@ -592,6 +592,48 @@ class BitacoraPagina(BaseModel):
     items: list[BitacoraRespuesta]
 
 
+# ---- Copias de seguridad (E22) -------------------------------------------------------------------------------------
+
+
+class CopiaRespuesta(BaseModel):
+    """Los metadatos de una copia (el ZIP no se conserva). `checksum` es el SHA-256 del archivo: sirve para comprobar
+    uno ya descargado. `motivo_fallo` es un código estable, nunca el detalle técnico."""
+
+    id: int
+    estado: str
+    usuario_id: int
+    usuario_nombre: str | None = None
+    tamano_bytes: int | None = None
+    total_filas: int | None = None
+    tablas_incluidas: dict[str, int] | None = None
+    version_esquema: str | None = None
+    checksum: str | None = None
+    motivo_fallo: str | None = None
+    creado_en: dt.datetime
+    terminado_en: dt.datetime | None = None
+
+
+class CopiaPagina(BaseModel):
+    total: int
+    pagina: int
+    tamanio: int
+    items: list[CopiaRespuesta]
+
+
+class TablaExcluidaRespuesta(BaseModel):
+    tabla: str
+    motivo: str
+
+
+class CopiaTablasRespuesta(BaseModel):
+    """Qué incluye la copia y qué no (alimenta el panel "Qué incluye y qué no" de la pantalla)."""
+
+    incluidas: list[str]
+    referencias: list[str]
+    excluidas: list[TablaExcluidaRespuesta]
+    columnas_excluidas: dict[str, list[str]]
+
+
 class FiltrosBitacora(BaseModel):
     """Filtros de la consulta. `empresa_id` y `sin_empresa` solo los usa el
     superadministrador: en la consulta de una empresa se ignoran."""

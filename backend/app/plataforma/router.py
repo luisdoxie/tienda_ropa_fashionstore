@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auditoria import ContextoAuditoria, contexto_anonimo, obtener_contexto_auditoria
@@ -9,12 +9,14 @@ from app.core.database import get_db
 from app.core.deps import ParametrosPaginacion, ParametrosPeriodo, parametros_paginacion, periodo_reportes
 from app.core.permisos import (
     PERMISO_BITACORA_VER,
+    PERMISO_COPIAS,
     PERMISO_EMPRESA,
     PERMISO_ORGANIZACION,
     PERMISO_PLATAFORMA,
     PERMISO_ROLES,
     PERMISO_USUARIOS,
 )
+from app.core.planes import FUNC_COPIAS_SEGURIDAD, exigir_funcionalidad
 from app.core.rate_limit import limiter
 from app.core.security import get_current_user, permisos_de_usuario, require_permission, require_service_token
 from app.plataforma.casos_uso.cu01_autenticar_registrar_usuarios import (
@@ -33,6 +35,7 @@ from app.plataforma.casos_uso.cu03_gestionar_organizacion import (
 )
 from app.plataforma.casos_uso.cu04_gestionar_empresas_planes_suscripciones import (
     ConsultarMiEmpresa,
+    GestionarCopiasSeguridad,
     GestionarEmpresas,
     GestionarPlanes,
     GestionarSuscripciones,
@@ -50,6 +53,9 @@ from app.plataforma.schemas import (
     CiudadRespuesta,
     ClientePerfilActualizar,
     ClientePerfilRespuesta,
+    CopiaPagina,
+    CopiaRespuesta,
+    CopiaTablasRespuesta,
     EmpleadoActualizar,
     EmpleadoCrear,
     EmpleadoRespuesta,
@@ -789,6 +795,69 @@ def obtener_bitacora(bitacora_id: int, db: Session = Depends(get_db)) -> Bitacor
     return politicas.obtener_bitacora(db, bitacora_id)
 
 
+# ---- /api/v1/copias-seguridad (administrador de la empresa, plan con copias) ----------------
+# Orden de errores: 401, suscripción, plan (exigir_funcionalidad), permiso y recién entonces las reglas. La
+# empresa sale SIEMPRE del token. El ZIP no se guarda: se entrega en la misma respuesta que lo crea.
+
+cu_copias = GestionarCopiasSeguridad()
+
+copias_router = APIRouter(
+    prefix="/api/v1/copias-seguridad",
+    tags=["copias-seguridad"],
+    dependencies=[Depends(exigir_funcionalidad(FUNC_COPIAS_SEGURIDAD)), Depends(require_permission(PERMISO_COPIAS))],
+)
+
+
+@copias_router.post(
+    "",
+    response_class=Response,
+    responses={
+        200: {"description": "El ZIP de la copia", "content": {"application/zip": {}}},
+        409: {"description": "copia_en_curso: ya hay una copia de esta empresa en proceso"},
+        413: {"description": "copia_demasiado_grande"},
+        503: {"description": "servidor_ocupado"},
+        504: {"description": "copia_tiempo_agotado"},
+    },
+)
+@limiter.limit("10/hour")
+def crear_copia_seguridad(
+    request: Request,
+    usuario=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    contexto: ContextoAuditoria = Depends(obtener_contexto_auditoria),
+) -> Response:
+    generada = cu_copias.crear(db, usuario.id, contexto)
+    return Response(
+        content=generada.contenido,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{generada.nombre_archivo}"',
+            "X-Copia-Id": str(generada.copia.id),
+            "X-Checksum-SHA256": generada.copia.checksum or "",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+# `/tablas` se declara ANTES de `/{copia_id}` para que no la capture.
+@copias_router.get("/tablas", response_model=CopiaTablasRespuesta)
+def tablas_de_la_copia(db: Session = Depends(get_db)) -> CopiaTablasRespuesta:
+    return cu_copias.tablas(db)
+
+
+@copias_router.get("", response_model=CopiaPagina)
+def listar_copias_seguridad(
+    paginacion: ParametrosPaginacion = Depends(parametros_paginacion), db: Session = Depends(get_db)
+) -> CopiaPagina:
+    return cu_copias.listar(db, paginacion)
+
+
+@copias_router.get("/{copia_id}", response_model=CopiaRespuesta)
+def obtener_copia_seguridad(copia_id: int, db: Session = Depends(get_db)) -> CopiaRespuesta:
+    return cu_copias.obtener(db, copia_id)
+
+
 # ---- /api/v1/mi-empresa (administrador de la empresa) ------------------------------------
 # Exenta de la suscripción: el administrador ve su estado y pide la renovación
 # aunque la suscripción esté vencida o suspendida.
@@ -884,6 +953,7 @@ routers = [
     empleados_router,
     plataforma_router,
     bitacora_router,
+    copias_router,
     mi_empresa_router,
     publico_tiendas_router,
     tareas_plataforma_router,

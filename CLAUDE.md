@@ -104,7 +104,8 @@ El catálogo del segundo parcial es de 25 casos de uso (el primer parcial tenía
 43; la equivalencia está en `C:\Desarrollo\examen\documento\2doParcial\`):
 - plataforma: CU-01 Autenticar y registrar usuarios · CU-02 Gestionar
   usuarios, roles y permisos · CU-03 Gestionar organización · CU-04 Gestionar
-  empresas, planes y suscripciones (`cu04_...`, 4 clases de control).
+  empresas, planes y suscripciones (`cu04_...`, 5 clases de control; la quinta,
+  `GestionarCopiasSeguridad`, es de la E22).
 - catalogo: CU-05 Gestionar catálogo · CU-06 Consultar y buscar catálogo ·
   CU-07 Gestionar favoritos · CU-08 Gestionar abastecimiento · CU-09 Gestionar
   inventario · CU-10 Gestionar assets del probador · CU-11 Probar prenda con IA.
@@ -205,11 +206,11 @@ También pueden hacer falta, dentro del diseño: diagrama de navegación
 
 ## Esquema de base de datos
 El esquema completo y definitivo está en `docs/fashionstore_esquema.sql`
-(60 tablas en el SQL, que es el del primer parcial). La base real tiene 65:
+(60 tablas en el SQL, que es el del primer parcial). La base real tiene 66:
 las 59 de antes (`sesion_probador` se eliminó con el modo espejo) más
-`empresa`, `plan`, `suscripcion`, `operacion_sync` (E07) y `modelo_ml` (E11) del
-segundo parcial, que no están en el SQL, y `bitacora` (E06; el SQL ya trae su
-bloque actualizado). No inventar tablas ni columnas nuevas sin pedirlo
+`empresa`, `plan`, `suscripcion`, `operacion_sync` (E07), `modelo_ml` (E11) y
+`copia_seguridad` (E22) del segundo parcial, que no están en el SQL, y `bitacora`
+(E06; el SQL ya trae su bloque actualizado). No inventar tablas ni columnas nuevas sin pedirlo
 explícitamente.
 Ese archivo es documentación de referencia: NO se ejecuta contra la base.
 Las tablas las crea Alembic a partir de los modelos.
@@ -224,13 +225,14 @@ sincronización (E07) y su descarga de datos, conflictos y plazo de cambio (E08)
 hechos. El backend NO
 se despliega solo: tras la E03 el login de la web y del móvil actuales no
 funciona hasta que se adapten (E15, E16, E18).
-- Clasificación de las 65 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
+- Clasificación de las 66 tablas: 50 propias de empresa (`empresa_id` NOT NULL,
   salvo `usuario`, donde NULL = superadministrador de la plataforma), 8
   globales del sistema (`permiso`, `rol`, `rol_permiso`, `tipo_movimiento`,
   `estado_reserva`, `estado_venta`, `metodo_pago`, `estado_pago`), `plan`
   (global), `empresa` (la raíz), `usuario_rol` (hereda del usuario),
   `suscripcion` (de la empresa, con historial), `operacion_sync` (de la
-  empresa, `EmpresaMixin`; E07), `modelo_ml` (de la empresa, `EmpresaMixin`; E11) y
+  empresa, `EmpresaMixin`; E07), `modelo_ml` (de la empresa, `EmpresaMixin`; E11),
+  `copia_seguridad` (de la empresa, `EmpresaMixin`; E22) y
   `bitacora` (`empresa_id` NULL permitido y SIN el mixin: ver "Bitácora de
   auditoría").
 - Toda tabla nueva de negocio hereda `EmpresaMixin` (`core/tenant.py`) y se
@@ -395,10 +397,10 @@ clasificarla. Un recurso de otra empresa se ve IGUAL que uno inexistente (404, m
   PostgreSQL: `tests/postgres/test_aislamiento_pg.py` (matriz reducida, bloqueos
   `FOR UPDATE`, concurrencia, vistas V2 y la misma consulta de consistencia).
 - Correr: `python -m pytest -q -p no:cacheprovider tests/aislamiento` (≈90 s) y, con
-  `TEST_DATABASE_URL` apuntando a `fashionstore_test`, `tests/postgres`. Las funcionalidades
-  sin rutas aún (`analitica_ml`, `copias_seguridad`) se saltan con motivo: las etapas que
-  las implementen quitan el skip y agregan sus rutas a `RUTAS` (`operacion_offline` ya lo
-  hizo en la E07). Una ruta con un UUID en el path se arma con `inexistente_para(...)`.
+  `TEST_DATABASE_URL` apuntando a `fashionstore_test`, `tests/postgres`. Toda funcionalidad
+  del plan tiene ya sus rutas en `RUTAS` (`operacion_offline` en la E07, `analitica_ml` en la
+  E12 y `copias_seguridad` en la E22); una funcionalidad nueva sin rutas se salta con motivo
+  hasta que su etapa las agregue. Una ruta con un UUID en el path se arma con `inexistente_para(...)`.
 - Hallazgos de la etapa: ninguna fuga de aislamiento. Defecto previo ajeno (CU-08):
   `PUT /ordenes-compra/{id}` con una línea de una variante que la orden ya tiene da 500.
 
@@ -648,6 +650,48 @@ Expone los modelos de la E11, solo para el plan con `analitica_ml` (el Profesion
 - Pruebas: `tests/inteligencia/test_analitica_*.py`, `test_interpretacion_analitica.py`, `test_reportes_inteligentes_cu23.py`,
   `tests/inteligencia/ml/test_anomalias.py` y `test_reposicion.py`, `tests/postgres/test_analitica_pg.py`. Las 7 rutas están
   en `tests/aislamiento/rutas_esperadas.py` (LISTADO y CREA_O_ACCION, cobertura MATRIZ).
+
+### Copias de seguridad por empresa (E22, CU-04, `backend/app/core/copias.py`)
+El administrador de una empresa con el plan que incluye `copias_seguridad` descarga un ZIP con TODOS los datos de SU empresa.
+No es un CU nuevo: es la quinta clase de control de CU-04 (`GestionarCopiasSeguridad`, en `cu04_...py`).
+- **Nunca `pg_dump`** (copiaría a todas las empresas). El motor `core/copias.py` lee las tablas POR NOMBRE iterando
+  `Base.metadata` (DEC-2: infraestructura genérica del `core`, no importa ningún paquete de negocio), con el filtro por
+  `empresa_id` EXPLÍCITO en cada consulta y la empresa saliendo SOLO del token del administrador.
+- **Clasificación explícita** de las 66 tablas en `TABLAS_INCLUIDAS` (53: las de la empresa, más `empresa` por id y
+  `usuario_rol` por su usuario), `TABLAS_REFERENCIA` (7 catálogos globales que los datos referencian: `estado_*`,
+  `metodo_pago`, `tipo_movimiento`, y solo el `plan` y los `rol` que la empresa usa; van en `referencias/`) y
+  `TABLAS_EXCLUIDAS` (6, con su razón: `transaccion_pasarela`, `probador_generacion`, `modelo_ml`, `copia_seguridad`,
+  `permiso`, `rol_permiso`). La prueba G1 (`tests/core/test_copias_clasificacion.py`) falla si aparece una tabla sin
+  clasificar: quien agregue una tabla DEBE decidir si se respalda (la E21 tendrá que clasificar `caja_turno`).
+- **Sin secretos:** no salen `usuario.password_hash`, `bitacora.ip`, las columnas generadas (`stock.cantidad_disponible`)
+  ni cualquier columna cuyo nombre parezca un secreto (`PATRON_COLUMNA_SENSIBLE`). El manifiesto NOMBRA las columnas omitidas
+  (transparencia); los datos no las traen.
+- **El ZIP** (`datos/<tabla>.json`, `referencias/<tabla>.json`, `manifest.json` al final): JSON ordenado por clave primaria
+  (determinista), Decimal como texto exacto, fechas ISO 8601 UTC, manifiesto con `formato` `fashionstore-copia-1`,
+  `version_esquema` (revisión de Alembic), conteos y sha256 por archivo. Se arma en un `BytesIO`: NADA en disco (el disco de
+  Railway es efímero) y nada de datos en los logs. Topes revisados bloque a bloque: `COPIAS_MAX_BYTES` (25 MiB comprimido),
+  `COPIAS_MAX_SEGUNDOS` (60) y `COPIAS_MAX_SIMULTANEAS` (2 en el proceso, un solo worker). En PostgreSQL la lectura usa una
+  conexión dedicada REPEATABLE READ (una venta que entra durante la copia no deja venta sin detalle).
+- **Historial sin retención del archivo (DEC-3):** `POST /api/v1/copias-seguridad` crea y devuelve el ZIP en la misma
+  respuesta (`Content-Disposition`, `X-Copia-Id`, `X-Checksum-SHA256`, `Cache-Control: no-store`); no existe "descargar de
+  nuevo" (regenerar daría otro checksum). La tabla `copia_seguridad` (`EmpresaMixin`) guarda solo metadatos: quién, cuándo,
+  tamaño, filas por tabla y el SHA-256 para comprobar un archivo ya descargado. `activo` (DEC-4) marca las que siguen visibles:
+  al pasar `plan.max_copias_historial` (mínimo 1) las más antiguas pasan a `activo=false`, sin borrar nada.
+- **Una copia a la vez por empresa (DEC-5):** la fila `en_proceso` es el candado (índice único parcial `ux_copia_en_proceso`,
+  en SQLite y PostgreSQL). Una `en_proceso` de hace más de 2 x `COPIAS_MAX_SEGUNDOS` se marca `fallida` (`abandonada`).
+- **Rutas** `/api/v1/copias-seguridad` (plan con `copias_seguridad` y permiso `copias.gestionar`, solo el administrador; 10/hora):
+  `POST` (crear y descargar), `GET` (historial paginado), `GET /tablas` (qué incluye y qué no) y `GET /{id}`. Errores
+  funcionales: 409 `copia_en_curso`, 413 `copia_demasiado_grande`, 504 `copia_tiempo_agotado`, 503 `servidor_ocupado`,
+  500 `copia_fallida` (nunca la excepción cruda). El permiso lo crea la migración `a9d3f5c27e84` (la producción no corre
+  seeds). CORS expone `X-Copia-Id` y `X-Checksum-SHA256`.
+- **Bitácora:** `copia_seguridad/descargar` (copia creada y entregada), `fallar` y `eliminar` (salen del historial por el
+  límite del plan); solo números y códigos, sin correos ni nombres.
+- **Fuera de la etapa:** la RESTAURACIÓN como función del sistema (E22b, solo diseñada). Un restaurador de pruebas
+  (`tests/restaurador_copia.py`) la demuestra: carga la copia en una empresa vacía y compara conteos y checksums canónicos.
+  Los usuarios no llevan contraseña en la copia (al restaurar tendrían que usar "olvidé mi contraseña").
+- Pruebas: `tests/core/test_copias_clasificacion.py` (G1-G3), `tests/core/test_copias_motor.py`,
+  `tests/plataforma/test_copias_humo.py`, `test_copias_seguridad.py` (C1-C13), `test_copias_restauracion.py` (R1-R6) y
+  `tests/postgres/test_copias_postgres.py` (P1-P4). Las 4 rutas están en `tests/aislamiento/rutas_esperadas.py`.
 
 ## Plan de desarrollo
 `docs/plan_desarrollo_fashionstore.md`

@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # borra lo anterior.
     bitacora_retencion_dias: int = 365
 
+    # Copias de seguridad por empresa (E22). El ZIP se arma en memoria (el disco de Railway es efímero y el
+    # proceso es de un solo worker), por eso hay tres topes: tamaño comprimido, tiempo y copias a la vez.
+    copias_max_bytes: int = 25 * 1024 * 1024
+    copias_max_segundos: int = 60
+    copias_max_simultaneas: int = 2
+
     # Orígenes del front Angular autorizados a llamar esta API desde el
     # navegador (CORS es una restricción que solo aplica a peticiones desde
     # un browser). La app Flutter (mobile/lib/core/network/dio_client.dart)

@@ -25,6 +25,8 @@ PERMISO_PLATAFORMA = "plataforma.gestionar"
 PERMISO_EMPRESA = "empresa.gestionar"
 # Consultar la bitácora de auditoría de la propia empresa (administrador).
 PERMISO_BITACORA_VER = "bitacora.ver"
+# Crear y descargar la copia de seguridad de la propia empresa (solo el administrador; plan con `copias_seguridad`).
+PERMISO_COPIAS = "copias.gestionar"
 
 # ---- sincronizacion ----
 # Enviar operaciones hechas sin conexión y consultar las propias.

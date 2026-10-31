@@ -52,6 +52,7 @@ PERMISOS: list[tuple[str, str, str]] = [
     ("sincronizacion.operar", "sincronizacion", "Enviar operaciones hechas sin conexión y consultar las propias"),
     ("sincronizacion.supervisar", "sincronizacion", "Ver las operaciones sin conexión de la empresa o de la sucursal"),
     ("sincronizacion.resolver", "sincronizacion", "Forzar o rechazar una operación sin conexión en conflicto"),
+    ("copias.gestionar", "copias", "Crear y descargar la copia de seguridad de la empresa"),
 ]
 
 # Permisos que NO recibe el administrador de una empresa: son del

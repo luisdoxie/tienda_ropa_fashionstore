@@ -56,10 +56,13 @@ def test_cantidad_disponible_es_una_columna_generada(engine_pg, fabrica_pg, clie
     assert tuple(fila) == (10, 4, 6)
 
 
-def test_la_base_tiene_65_tablas_con_las_de_multitenant_la_bitacora_la_sincronizacion_y_el_ml(engine_pg):
-    # 59 anteriores + empresa, plan y suscripcion + bitacora + operacion_sync + modelo_ml
+def test_la_base_tiene_66_tablas_con_las_de_multitenant_la_bitacora_la_sincronizacion_el_ml_y_las_copias(engine_pg):
+    # 59 anteriores + empresa, plan y suscripcion + bitacora + operacion_sync + modelo_ml + copia_seguridad
     # (sin contar alembic_version).
     tablas = set(inspect(engine_pg).get_table_names()) - {"alembic_version"}
 
-    assert len(tablas) == 65
-    assert {"empresa", "plan", "suscripcion", "bitacora", "operacion_sync", "modelo_ml"} <= tablas
+    assert len(tablas) == 66
+    assert {"empresa", "plan", "suscripcion", "bitacora", "operacion_sync", "modelo_ml", "copia_seguridad"} <= tablas
+    indices = {i["name"]: i for i in inspect(engine_pg).get_indexes("copia_seguridad")}
+    assert indices["ux_copia_en_proceso"]["unique"]
+    assert "en_proceso" in indices["ux_copia_en_proceso"]["dialect_options"]["postgresql_where"]

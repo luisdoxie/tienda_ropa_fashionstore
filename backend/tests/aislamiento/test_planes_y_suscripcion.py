@@ -264,9 +264,9 @@ def _rutas(clase: str, con_funcionalidad: str | None = None) -> list[tuple[str, 
 RUTAS_POR_FUNCIONALIDAD = {
     f: sorted(clave for clave, ruta in RUTAS.items() if ruta.funcionalidad == f) for f in FUNCIONALIDADES
 }
-ETAPA_QUE_AGREGA_LA_RUTA = {
-    "copias_seguridad": "E22 (copias de seguridad)",
-}
+# Funcionalidad -> etapa que debe agregar sus rutas. Vacío desde la E22: las 8 funcionalidades ya tienen rutas
+# (la E22 agregó las 4 de `/copias-seguridad`) y la tabla de verdad se ejecuta completa, con la POST real.
+ETAPA_QUE_AGREGA_LA_RUTA: dict[str, str] = {}
 
 
 def test_las_ocho_funcionalidades_son_las_del_contrato():
@@ -288,7 +288,7 @@ def test_tabla_de_verdad_funcionalidad_por_plan(mundo, http, fabrica, funcionali
     rutas = RUTAS_POR_FUNCIONALIDAD[funcionalidad]
     if not rutas:
         pytest.skip(
-            f"'{funcionalidad}' aún no tiene ruta en RUTAS: {ETAPA_QUE_AGREGA_LA_RUTA[funcionalidad]} "
+            f"'{funcionalidad}' aún no tiene ruta en RUTAS: {ETAPA_QUE_AGREGA_LA_RUTA.get(funcionalidad, 'una etapa futura')} "
             "debe quitar este skip y agregar sus rutas a rutas_esperadas.py"
         )
     empresa = mundo.a if plan == "profesional" else mundo.b
@@ -784,10 +784,10 @@ def test_las_compuertas_declaradas_cubren_las_funcionalidades_con_rutas():
     cubiertas = {r.funcionalidad for r in RUTAS.values() if r.funcionalidad}
     assert cubiertas == {
         "gestion_productos", "gestion_ventas", "reservas", "reportes_convencionales", "reportes_ia", "operacion_offline",
-        "analitica_ml",
+        "analitica_ml", "copias_seguridad",
     }, (
-        "cambió el conjunto de funcionalidades con rutas: ¿E22 (copias de seguridad) agregó las suyas? "
-        "Entonces quita el skip de la tabla de verdad y actualiza esta prueba"
+        "cambió el conjunto de funcionalidades con rutas: las 8 funcionalidades de `core.planes` tienen rutas desde la "
+        "E22. Si agregas o quitas una compuerta, actualiza esta prueba y la tabla de verdad"
     )
     sin_compuerta = len(RUTAS_DE_NEGOCIO) - sum(1 for k in RUTAS_DE_NEGOCIO if RUTAS[k].funcionalidad)
     print(f"\nRutas de negocio: {len(RUTAS_DE_NEGOCIO)}; con compuerta: {len(RUTAS_DE_NEGOCIO) - sin_compuerta}; exentas justificadas: {sin_compuerta}")

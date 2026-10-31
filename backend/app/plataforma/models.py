@@ -310,3 +310,45 @@ def _bitacora_solo_anexar(mapper, connection, fila) -> None:
     """La bitácora no se edita ni se borra desde el código. La única salida es
     la purga por retención, que borra con DELETE de SQL y no pasa por aquí."""
     raise RuntimeError("La bitácora es de solo anexar")
+
+
+# ---- Copias de seguridad ----
+
+ESTADOS_COPIA = ("en_proceso", "completada", "fallida")
+
+
+class CopiaSeguridad(EmpresaMixin, Base):
+    """Historial de las copias de seguridad de una empresa (E22). Guarda SOLO metadatos: el ZIP no se conserva
+    (se entrega una vez, en la misma respuesta que lo crea), así que sirve para auditar quién la pidió y cuándo y
+    para comprobar el checksum de un archivo ya descargado.
+
+    La fila en estado `en_proceso` es el candado: un índice único parcial deja a lo sumo UNA por empresa, en
+    SQLite y en PostgreSQL. `activo` NO es el borrado lógico de un negocio: marca las copias que siguen en el
+    historial visible; al pasar el límite del plan (`plan.max_copias_historial`) las más antiguas quedan en falso."""
+
+    __tablename__ = "copia_seguridad"
+    __table_args__ = (
+        CheckConstraint("estado IN ('en_proceso','completada','fallida')", name="ck_copia_seguridad_estado"),
+        Index(
+            "ux_copia_en_proceso",
+            "empresa_id",
+            unique=True,
+            postgresql_where=text("estado = 'en_proceso'"),
+            sqlite_where=text("estado = 'en_proceso'"),
+        ),
+        Index("ix_copia_empresa_creado", "empresa_id", "creado_en"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuario.id"), nullable=False)
+    estado: Mapped[str] = mapped_column(String(15), nullable=False, default="en_proceso")
+    tamano_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    # Filas por tabla: {"producto": 120, "venta": 530, ...}
+    tablas_incluidas: Mapped[dict | None] = mapped_column(TipoJson)
+    version_esquema: Mapped[str | None] = mapped_column(String(40))
+    checksum: Mapped[str | None] = mapped_column(String(64))
+    # Un código estable (copia_demasiado_grande, copia_tiempo_agotado, error_interno...), nunca la excepción.
+    motivo_fallo: Mapped[str | None] = mapped_column(String(60))
+    creado_en: Mapped[dt.datetime] = mapped_column(server_default=func.now())
+    terminado_en: Mapped[dt.datetime | None]
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))

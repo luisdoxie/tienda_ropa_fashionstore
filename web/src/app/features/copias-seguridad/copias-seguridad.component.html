@@ -1,0 +1,317 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Organización</span>
+    <h1>Copias de seguridad</h1>
+    <p data-aviso="una-vez">
+      La copia se descarga una vez y no se guarda en el servidor. Guarda el archivo en un lugar seguro.
+    </p>
+  </div>
+</div>
+
+<aside class="nota" role="note" data-aviso="alcance">
+  <fs-icono nombre="escudo-check" [tam]="24" />
+  <p>
+    La copia trae los datos de <strong>tu empresa</strong>, sin contraseñas ni datos de pagos de la pasarela. Por ahora puedes
+    descargarla y verificarla; la restauración desde la pantalla todavía no está disponible.
+  </p>
+</aside>
+
+@if (sinConexion()) {
+  <div class="fs-aviso aviso-conexion" role="status" data-aviso="sin-conexion">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    <span>Las copias necesitan conexión a Internet. Cuando vuelva, esta pantalla se actualiza sola.</span>
+  </div>
+}
+
+@switch (bloqueo()) {
+  @case ('plan') {
+    <section class="bloqueo" role="status" data-bloqueo="plan">
+      <fs-icono nombre="candado" [tam]="36" />
+      <div class="bloqueo__texto">
+        <h2>Tu plan no incluye copias de seguridad</h2>
+        <p>Con un plan que las incluya podrás descargar una copia de los datos de tu empresa cuando quieras.</p>
+        <div class="bloqueo__acciones">
+          <a class="fs-btn fs-btn--primario fs-btn--sm" routerLink="/mi-empresa" data-accion="ver-plan">Ver mi plan</a>
+        </div>
+      </div>
+    </section>
+  }
+  @case ('suscripcion') {
+    <section class="bloqueo" role="status" data-bloqueo="suscripcion">
+      <fs-icono nombre="candado" [tam]="36" />
+      <div class="bloqueo__texto">
+        <h2>Tu suscripción no está activa</h2>
+        <p>Mientras la suscripción no esté activa no se pueden crear copias de seguridad. Revisa el estado de tu suscripción.</p>
+        <div class="bloqueo__acciones">
+          <a class="fs-btn fs-btn--primario fs-btn--sm" routerLink="/mi-empresa" data-accion="ver-plan">Ver mi plan</a>
+        </div>
+      </div>
+    </section>
+  }
+  @case ('rol') {
+    <section class="bloqueo" role="status" data-bloqueo="rol">
+      <fs-icono nombre="candado" [tam]="36" />
+      <div class="bloqueo__texto">
+        <h2>Solo el administrador de la empresa puede crear copias</h2>
+        <p>Pídele a un administrador de tu empresa que descargue la copia.</p>
+      </div>
+    </section>
+  }
+}
+
+<!-- 1. Crear y descargar -->
+<section class="crear" aria-labelledby="titulo-crear" data-seccion="crear">
+  <h2 id="titulo-crear">Nueva copia</h2>
+  <div class="crear__acciones">
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario"
+      data-accion="crear"
+      [disabled]="!puedeCrear()"
+      [attr.aria-busy]="creando()"
+      (click)="crear()"
+    >
+      <fs-icono [nombre]="creando() ? 'refrescar' : 'descargar'" [tam]="24" [class.giro]="creando()" />
+      {{ creando() ? 'Creando la copia…' : 'Crear y descargar copia' }}
+    </button>
+    @if (creando()) {
+      <span class="tenue" role="status" data-estado="creando">Puede tardar hasta un minuto</span>
+    } @else if (sinConexion() && bloqueo() === null) {
+      <span class="tenue" data-estado="necesita-conexion">{{ textoSinConexion }}</span>
+    }
+  </div>
+
+  @if (errorCrear(); as e) {
+    <div class="fs-aviso fs-aviso--error aviso-copia" role="alert" data-estado="error-crear" [attr.data-error-clase]="e.clase">
+      <fs-icono nombre="alerta" [tam]="24" />
+      <span class="aviso-copia__texto">{{ e.mensaje }}</span>
+      @if (e.reintentable) {
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar-crear" [disabled]="!puedeCrear()" (click)="crear()">
+          Reintentar
+        </button>
+      }
+    </div>
+  }
+
+  @if (descargada(); as d) {
+    <div class="fs-aviso fs-aviso--exito aviso-copia aviso-copia--exito" role="status" data-estado="copia-creada">
+      <fs-icono nombre="check" [tam]="24" />
+      <div class="aviso-copia__texto">
+        <strong>Copia creada y descargada.</strong>
+        <span class="fs-num" data-descarga-nombre>{{ d.nombre }} · {{ tamano(d.tamanoBytes) }}</span>
+        @if (d.checksum; as checksum) {
+          <span class="checksum-linea">
+            <span class="tenue">Checksum (SHA-256):</span>
+            <code class="checksum" data-checksum>{{ checksum }}</code>
+            <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="copiar-checksum" (click)="copiar(checksum, 'resultado')">
+              @if (copiado() === 'resultado') {
+                <fs-icono nombre="check" [tam]="20" />
+              }
+              {{ copiado() === 'resultado' ? 'Copiado' : 'Copiar' }}
+            </button>
+          </span>
+        } @else {
+          <span data-sin-checksum>El servidor no informó el checksum de esta copia.</span>
+        }
+        @if (errorCopiar()) {
+          <span class="fs-num" role="alert" data-estado="error-copiar">No se pudo copiar. Selecciona el texto y cópialo a mano.</span>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Cómo verificar un archivo -->
+  <div class="plegable">
+    <button
+      type="button"
+      class="plegable__cabecera"
+      data-accion="alternar-verificacion"
+      aria-controls="verificacion-cuerpo"
+      [attr.aria-expanded]="verificacionAbierta()"
+      (click)="alternarVerificacion()"
+    >
+      <fs-icono nombre="chevron-abajo" [tam]="24" [class.girado]="verificacionAbierta()" />
+      <span>Cómo verificar que el archivo no se dañó</span>
+    </button>
+    @if (verificacionAbierta()) {
+      <div id="verificacion-cuerpo" class="plegable__cuerpo" data-panel="verificacion">
+        <p>
+          Calcula el checksum del archivo descargado y compáralo con el que te mostramos: si coinciden, el archivo está completo y
+          no cambió.
+        </p>
+        <h3>En Windows (PowerShell)</h3>
+        <pre class="comando"><code data-comando="powershell">{{ comandoPowerShell() }}</code></pre>
+        <h3>En Linux o macOS</h3>
+        <pre class="comando"><code data-comando="linux">{{ comandoLinux() }}</code></pre>
+      </div>
+    }
+  </div>
+</section>
+
+<!-- 2. Historial -->
+@if (bloqueo() === null) {
+  <section class="historial" aria-labelledby="titulo-historial" data-seccion="historial">
+    <h2 id="titulo-historial">Historial</h2>
+    <p class="ayuda">Solo se muestran las copias más recientes: tu plan limita cuántas se conservan. Los archivos no se guardan aquí.</p>
+    <div class="panel">
+      @if (errorHistorial(); as mensaje) {
+        <div class="vacio" role="alert" data-estado="error-historial">
+          <fs-icono nombre="alerta" [tam]="36" />
+          <p>No pudimos cargar el historial. {{ mensaje }}</p>
+          <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar-historial" (click)="cargarHistorial()">
+            Reintentar
+          </button>
+        </div>
+      } @else if (!historialListo()) {
+        <div class="vacio" role="status" data-estado="cargando-historial">
+          <fs-icono nombre="reloj-arena" [tam]="36" />
+          <p>Cargando el historial…</p>
+        </div>
+      } @else if (total() === 0) {
+        <div class="vacio" data-estado="historial-vacio">
+          <fs-icono nombre="bandeja" [tam]="36" />
+          <p class="vacio__titulo">Aún no hay copias</p>
+          <p>Cuando crees la primera, aparecerá aquí con su checksum.</p>
+        </div>
+      } @else {
+        <div class="panel__scroll">
+          <p-table
+            [value]="copias()"
+            [lazy]="true"
+            [lazyLoadOnInit]="false"
+            (onLazyLoad)="alPaginar($event)"
+            [loading]="cargandoHistorial()"
+            [paginator]="total() > tamanioPagina"
+            [rows]="tamanioPagina"
+            [totalRecords]="total()"
+            [first]="primero()"
+            styleClass="p-datatable-sm"
+            [tableStyle]="{ 'min-width': '860px' }"
+          >
+            <ng-template #header>
+              <tr>
+                <th>Fecha</th>
+                <th>Solicitada por</th>
+                <th>Estado</th>
+                <th class="num">Tamaño</th>
+                <th class="num">Filas</th>
+                <th>Checksum</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-copia>
+              @let vista = vistaEstado(copia.estado);
+              <tr [attr.data-copia]="copia.id">
+                <td class="celda-fecha fs-num" data-celda="fecha">{{ fechaDe(copia.creado_en) | date: 'dd/MM/yyyy HH:mm' }}</td>
+                <td data-celda="usuario">{{ solicitante(copia) }}</td>
+                <td data-celda="estado">
+                  <span class="fs-chip estado-chip" [class]="vista.clase" [attr.data-estado-copia]="copia.estado">
+                    <fs-icono [nombre]="vista.icono" [tam]="20" />
+                    <span>{{ vista.texto }}</span>
+                  </span>
+                  @if (copia.estado === 'fallida') {
+                    <span class="motivo" data-motivo>{{ textoMotivo(copia.motivo_fallo) }}</span>
+                  }
+                </td>
+                <td class="num fs-num" data-celda="tamano">{{ tamano(copia.tamano_bytes) }}</td>
+                <td class="num fs-num" data-celda="filas">{{ copia.total_filas === null ? '—' : entero(copia.total_filas) }}</td>
+                <td data-celda="checksum">
+                  @if (copia.checksum) {
+                    <span class="checksum-celda">
+                      <code class="checksum" [attr.title]="copia.checksum" data-checksum-corto>{{ checksumCorto(copia.checksum) }}</code>
+                      <button
+                        type="button"
+                        class="fs-btn fs-btn--secundario fs-btn--sm"
+                        data-accion="copiar-fila"
+                        [attr.aria-label]="'Copiar el checksum de la copia del ' + (fechaDe(copia.creado_en) | date: 'dd/MM/yyyy HH:mm')"
+                        (click)="copiar(copia.checksum, 'fila-' + copia.id)"
+                      >
+                        {{ copiado() === 'fila-' + copia.id ? 'Copiado' : 'Copiar' }}
+                      </button>
+                    </span>
+                  } @else {
+                    <span class="tenue">—</span>
+                  }
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+      }
+    </div>
+  </section>
+
+  <!-- 3. Qué incluye y qué no -->
+  <section class="incluye" data-seccion="incluye">
+    <button
+      type="button"
+      class="plegable__cabecera plegable__cabecera--titulo"
+      data-accion="alternar-panel"
+      aria-controls="incluye-cuerpo"
+      [attr.aria-expanded]="panelAbierto()"
+      (click)="alternarPanel()"
+    >
+      <fs-icono nombre="chevron-abajo" [tam]="24" [class.girado]="panelAbierto()" />
+      <span>Qué incluye y qué no</span>
+    </button>
+    @if (panelAbierto()) {
+      <div id="incluye-cuerpo" class="plegable__cuerpo" data-panel="incluye">
+        @if (errorTablas(); as mensaje) {
+          <div class="bloque-error" role="alert" data-estado="error-tablas">
+            <fs-icono nombre="alerta" [tam]="24" />
+            <span>No pudimos leer qué incluye la copia. {{ mensaje }}</span>
+            <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar-tablas" (click)="cargarTablas()">
+              Reintentar
+            </button>
+          </div>
+        } @else if (tablas(); as t) {
+          <h3>Datos de tu empresa que sí se copian ({{ t.incluidas.length }})</h3>
+          <ul class="lista-chips" data-lista="incluidas">
+            @for (tabla of t.incluidas; track tabla) {
+              <li class="fs-chip fs-chip--exito">{{ nombreLegible(tabla) }}</li>
+            }
+          </ul>
+
+          @if (t.referencias.length > 0) {
+            <h3>Catálogos de referencia ({{ t.referencias.length }})</h3>
+            <p class="ayuda">Listas comunes a todas las empresas; la copia las guarda como referencia.</p>
+            <ul class="lista-chips" data-lista="referencias">
+              @for (tabla of t.referencias; track tabla) {
+                <li class="fs-chip">{{ nombreLegible(tabla) }}</li>
+              }
+            </ul>
+          }
+
+          @if (t.excluidas.length > 0) {
+            <h3>Lo que no se copia ({{ t.excluidas.length }})</h3>
+            <ul class="lista-excluidas" data-lista="excluidas">
+              @for (excluida of t.excluidas; track excluida.tabla) {
+                <li>
+                  <strong>{{ nombreLegible(excluida.tabla) }}</strong>
+                  <span class="tenue">{{ excluida.motivo }}</span>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (columnasExcluidas().length > 0) {
+            <h3>Columnas que se dejan fuera</h3>
+            <ul class="lista-excluidas" data-lista="columnas">
+              @for (fila of columnasExcluidas(); track fila.tabla) {
+                <li>
+                  <strong>{{ nombreLegible(fila.tabla) }}</strong>
+                  <span class="tenue">
+                    @for (columna of fila.columnas; track columna; let ultima = $last) {
+                      {{ nombreLegible(columna) }}{{ ultima ? '' : ', ' }}
+                    }
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        } @else {
+          <p class="tenue" role="status" data-estado="cargando-tablas">Leyendo qué incluye la copia…</p>
+        }
+      </div>
+    }
+  </section>
+}

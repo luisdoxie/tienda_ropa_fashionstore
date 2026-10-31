@@ -112,6 +112,8 @@ export const GRUPOS_MENU: GrupoMenu[] = [
       { etiqueta: 'Sucursales', icono: 'tienda', ruta: '/sucursales', permiso: 'organizacion.gestionar' },
       // Bitácora de auditoría de la empresa (solo lectura): solo quien tiene bitacora.ver (el administrador).
       { etiqueta: 'Auditoría', icono: 'historial', ruta: '/auditoria', permiso: 'bitacora.ver' },
+      // E22: copias de seguridad de la empresa. Con un plan sin la función queda en gris, con candado.
+      { etiqueta: 'Copias de seguridad', icono: 'descargar', ruta: '/copias-seguridad', permiso: 'copias.gestionar', funcion: 'copias_seguridad' },
     ],
   },
   {
@@ -226,7 +228,7 @@ const SECCIONES_MENU: SeccionDef[] = [
     id: 'organizacion',
     etiqueta: 'Organización',
     plegable: true,
-    rutas: ['/sucursales', '/ciudades', '/empleados', '/usuarios', '/roles', '/mi-empresa', '/auditoria'],
+    rutas: ['/sucursales', '/ciudades', '/empleados', '/usuarios', '/roles', '/mi-empresa', '/auditoria', '/copias-seguridad'],
   },
   {
     id: 'plataforma',

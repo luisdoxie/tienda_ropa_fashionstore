@@ -8,7 +8,7 @@ Postcondición: empresa registrada con su suscripción, administrador y catálog
 base; plan y estado de suscripción actualizados y reflejados en el backend
 (límites de sucursales, funcionalidades y bloqueo por suscripción).
 
-Caso de uso COMPUESTO: cuatro clases de control en este archivo.
+Caso de uso COMPUESTO: cinco clases de control en este archivo.
 
 - GestionarEmpresas: registrar (una sola transacción), actualizar, desactivar,
   resumen, alta de administrador y de sucursal sobre una empresa ajena y la
@@ -17,6 +17,11 @@ Caso de uso COMPUESTO: cuatro clases de control en este archivo.
 - GestionarSuscripciones: asignar o cambiar de plan, renovar, suspender,
   reactivar, cancelar y vencer.
 - ConsultarMiEmpresa: la empresa, el plan y la suscripción de quien administra.
+- GestionarCopiasSeguridad (E22): el administrador de una empresa con plan
+  Profesional y suscripción activa crea y descarga una copia de TODOS los datos de
+  SU empresa (ZIP con un JSON por tabla y un manifiesto con checksums), consulta
+  el historial de copias (solo metadatos: el ZIP no se conserva) y qué incluye la
+  copia. El motor vive en core/copias.py.
 
 El superadministrador no tiene empresa en su sesión: para tocar los datos de
 una empresa entra con `core.tenant.en_empresa`, que restaura el modo
@@ -28,12 +33,18 @@ en plataforma/politicas.py."""
 from __future__ import annotations
 
 import datetime as dt
+import logging
+import time
+from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from pydantic import BaseModel
+from sqlalchemy import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import copias
 from app.core.auditoria import (
     ACCION_ACTUALIZAR,
     ACCION_ASIGNAR_PLAN,
@@ -42,7 +53,11 @@ from app.core.auditoria import (
     ACCION_CAMBIAR_PLAZO_CAMBIO,
     ACCION_CREAR,
     ACCION_DESACTIVAR,
+    ACCION_DESCARGAR,
+    ACCION_ELIMINAR,
+    ACCION_FALLAR,
     ACCION_RENOVAR,
+    ENTIDAD_COPIA_SEGURIDAD,
     ENTIDAD_EMPRESA,
     ENTIDAD_PLAN,
     ENTIDAD_SUCURSAL,
@@ -53,13 +68,15 @@ from app.core.auditoria import (
 )
 from app.core.config import get_settings
 from app.core.deps import ParametrosPaginacion
-from app.core.exceptions import ConflictoError, DomainError, NoEncontradoError
+from app.core.exceptions import ConflictoError, DomainError, ErrorFuncional, NoEncontradoError
 from app.core.permisos import ROL_ADMINISTRADOR
+from app.core.planes import FUNC_COPIAS_SEGURIDAD, verificar_funcionalidad, verificar_suscripcion_activa
 from app.core.tenant import en_empresa, exigir_empresa, inicializar_empresa
-from app.core.tiempo import hoy_utc
+from app.core.tiempo import ahora_bolivia, hoy_utc
 from app.plataforma import politicas
-from app.plataforma.models import Empresa, Plan, Suscripcion, Usuario
+from app.plataforma.models import CopiaSeguridad, Empresa, Plan, Suscripcion, Usuario
 from app.plataforma.repository import (
+    CopiaSeguridadRepository,
     EmpresaRepository,
     PlanRepository,
     SucursalRepository,
@@ -68,6 +85,9 @@ from app.plataforma.repository import (
 )
 from app.plataforma.schemas import (
     AdministradorRegistrar,
+    CopiaPagina,
+    CopiaRespuesta,
+    CopiaTablasRespuesta,
     EmpresaActualizar,
     EmpresaRegistrar,
     EmpresaRespuesta,
@@ -673,4 +693,232 @@ class ConsultarMiEmpresa:
             max_sucursales=plan.max_sucursales if plan is not None else None,
             sucursales_activas=politicas.contar_sucursales_activas(db),
             funcionalidades=politicas.funcionalidades_habilitadas(db),
+        )
+
+
+# ---- Copias de seguridad (E22) ---------------------------------------------------------------------
+
+logger = logging.getLogger("app.copias")
+
+# Una copia `en_proceso` más vieja que esto (veces el tiempo máximo) es de un proceso que murió.
+FACTOR_ABANDONO = 2
+# Mínimo de copias que se conservan en el historial aunque el plan declare 0.
+HISTORIAL_MINIMO = 1
+
+
+@dataclass(frozen=True)
+class CopiaGenerada:
+    """Lo que `crear` entrega al router: el ZIP en memoria, el nombre sugerido y los metadatos que quedaron en el historial."""
+
+    contenido: bytes
+    nombre_archivo: str
+    copia: CopiaRespuesta
+
+
+@contextmanager
+def _conexion_de_lectura(db: Session) -> Iterator[Connection]:
+    """Una conexión de solo lectura coherente. En PostgreSQL, una conexión DEDICADA con aislamiento REPEATABLE READ:
+    todas las tablas reflejan el mismo instante (una venta que entra durante la copia no deja venta sin detalle). En
+    SQLite (las pruebas) se usa la conexión de la sesión."""
+    bind = db.get_bind()
+    if isinstance(bind, Engine) and bind.dialect.name == "postgresql":
+        with bind.connect().execution_options(isolation_level="REPEATABLE READ") as conexion:
+            yield conexion
+    else:
+        yield db.connection()
+
+
+class GestionarCopiasSeguridad:
+    """Copias de seguridad de la empresa de la sesión. Solo el administrador (`copias.gestionar`), con un plan que
+    incluya `copias_seguridad` y suscripción activa. La empresa sale SIEMPRE del token. El ZIP no se guarda en el
+    servidor (el disco de Railway es efímero): se entrega una vez, en la misma respuesta que lo crea; el historial
+    guarda solo los metadatos y el checksum para auditar y comprobar un archivo ya descargado."""
+
+    def __init__(self) -> None:
+        self._repo = CopiaSeguridadRepository()
+        self._empresas = EmpresaRepository()
+
+    # -- crear -------------------------------------------------------------------------------------
+
+    def crear(self, db: Session, usuario_id: int, contexto: ContextoAuditoria | None = None) -> CopiaGenerada:
+        empresa_id = exigir_empresa(db)  # sin empresa (o en modo plataforma) no hay copia
+        verificar_suscripcion_activa(db)
+        verificar_funcionalidad(db, FUNC_COPIAS_SEGURIDAD)
+        ajustes = get_settings()
+        plan = politicas.situacion_de_la_empresa(db).plan
+        empresa = self._empresas.buscar(db, empresa_id)
+        if empresa is None:
+            raise NoEncontradoError("Empresa no encontrada")
+        datos_empresa = {"codigo": empresa.codigo, "nombre": empresa.nombre}
+        plan_codigo, historial_maximo = plan.codigo, plan.max_copias_historial
+
+        # El candado: una sola copia en proceso por empresa. Primero se libera la de un proceso que murió.
+        abandono = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(
+            seconds=FACTOR_ABANDONO * ajustes.copias_max_segundos
+        )
+        if self._repo.marcar_abandonadas(db, abandono):
+            db.commit()
+        try:
+            copia_id = self._repo.crear_en_proceso(db, usuario_id).id
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise ErrorFuncional(
+                "copia_en_curso",
+                "Ya hay una copia en curso para tu empresa. Espera a que termine.",
+                409,
+            ) from None
+
+        inicio = time.monotonic()
+        try:
+            with copias.plaza_de_copia(ajustes.copias_max_simultaneas):
+                with _conexion_de_lectura(db) as conexion:
+                    resultado = copias.generar_copia(
+                        conexion,
+                        empresa_id,
+                        empresa=datos_empresa,
+                        plan_codigo=plan_codigo,
+                        version_esquema=copias.leer_version_esquema(conexion),
+                        max_bytes=ajustes.copias_max_bytes,
+                        max_segundos=ajustes.copias_max_segundos,
+                    )
+        except copias.CopiaError as error:
+            self._registrar_fallo(db, copia_id, error.codigo, contexto, inicio, empresa_id)
+            raise self._error_funcional(error, ajustes.copias_max_bytes) from None
+        except Exception:
+            # Nunca la excepción cruda al cliente. Solo ids en el log: la copia no lleva datos de la empresa.
+            logger.exception("copia_error empresa=%s copia=%s", empresa_id, copia_id)
+            self._registrar_fallo(db, copia_id, "error_interno", contexto, inicio, empresa_id)
+            raise ErrorFuncional(
+                "copia_fallida", "No se pudo crear la copia de seguridad. Inténtalo de nuevo.", 500
+            ) from None
+
+        duracion_ms = int((time.monotonic() - inicio) * 1000)
+        copia = self._repo.cargar(db, copia_id)
+        self._repo.completar(
+            db,
+            copia,
+            tamano_bytes=len(resultado.contenido),
+            tablas=resultado.tablas,
+            version_esquema=resultado.manifiesto["version_esquema"],
+            checksum=resultado.checksum,
+        )
+        total_filas = sum(resultado.tablas.values())
+        politicas.registrar_bitacora_de(
+            db,
+            contexto,
+            ENTIDAD_COPIA_SEGURIDAD,
+            copia_id,
+            ACCION_DESCARGAR,
+            {"filas": total_filas, "bytes": len(resultado.contenido), "tablas": len(resultado.tablas), "duracion_ms": duracion_ms},
+        )
+        salieron = self._repo.purgar_antiguas(db, max(historial_maximo, HISTORIAL_MINIMO))
+        if salieron:
+            politicas.registrar_bitacora_de(
+                db,
+                contexto,
+                ENTIDAD_COPIA_SEGURIDAD,
+                None,
+                ACCION_ELIMINAR,
+                {"copias": salieron, "motivo": "limite_historial", "limite": max(historial_maximo, HISTORIAL_MINIMO)},
+            )
+        db.commit()
+        logger.info(
+            "copia_fin empresa=%s copia=%s estado=completada filas=%s bytes=%s ms=%s",
+            empresa_id, copia_id, total_filas, len(resultado.contenido), duracion_ms,
+        )  # fmt: skip
+
+        copia = self._repo.cargar(db, copia_id)
+        nombre = f"fashionstore-{datos_empresa['codigo']}-{ahora_bolivia().strftime('%Y%m%d-%H%M')}.zip"
+        return CopiaGenerada(contenido=resultado.contenido, nombre_archivo=nombre, copia=self._respuesta(db, copia))
+
+    def _registrar_fallo(
+        self, db: Session, copia_id: int, motivo: str, contexto: ContextoAuditoria | None, inicio: float, empresa_id: int
+    ) -> None:
+        """Marca la copia como fallida y deja la bitácora, en una transacción propia. Si esto también falla se
+        registra en el log y el candado lo libera `marcar_abandonadas` más adelante."""
+        try:
+            db.rollback()
+            copia = self._repo.cargar(db, copia_id)
+            if copia is not None and copia.estado == "en_proceso":
+                self._repo.fallar(db, copia, motivo)
+            politicas.registrar_bitacora_de(
+                db,
+                contexto,
+                ENTIDAD_COPIA_SEGURIDAD,
+                copia_id,
+                ACCION_FALLAR,
+                {"motivo": motivo, "duracion_ms": int((time.monotonic() - inicio) * 1000)},
+            )
+            db.commit()
+            logger.warning("copia_fin empresa=%s copia=%s estado=fallida motivo=%s", empresa_id, copia_id, motivo)
+        except Exception:
+            db.rollback()
+            logger.exception("copia_fallo_sin_registrar empresa=%s copia=%s", empresa_id, copia_id)
+
+    @staticmethod
+    def _error_funcional(error: copias.CopiaError, max_bytes: int) -> ErrorFuncional:
+        if isinstance(error, copias.CopiaDemasiadoGrandeError):
+            return ErrorFuncional(
+                error.codigo,
+                f"La copia supera el tamaño máximo permitido ({max_bytes // (1024 * 1024)} MB).",
+                413,
+                limite_bytes=max_bytes,
+            )
+        if isinstance(error, copias.CopiaTiempoAgotadoError):
+            return ErrorFuncional(error.codigo, "La copia tardó más de lo permitido. Inténtalo más tarde.", 504)
+        if isinstance(error, copias.ServidorOcupadoError):
+            return ErrorFuncional(
+                error.codigo, "El servidor está ocupado con otras copias. Inténtalo en unos minutos.", 503
+            )
+        return ErrorFuncional("copia_fallida", "No se pudo crear la copia de seguridad. Inténtalo de nuevo.", 500)
+
+    # -- consultar ---------------------------------------------------------------------------------
+
+    def listar(self, db: Session, paginacion: ParametrosPaginacion) -> CopiaPagina:
+        self._exigir_acceso(db)
+        copias_, total = self._repo.listar(db, paginacion)
+        nombres = self._repo.nombres_de_usuarios(db, [c.usuario_id for c in copias_])
+        return CopiaPagina(
+            total=total,
+            pagina=paginacion.pagina,
+            tamanio=paginacion.tamanio,
+            items=[self._respuesta(db, c, nombres) for c in copias_],
+        )
+
+    def obtener(self, db: Session, copia_id: int) -> CopiaRespuesta:
+        self._exigir_acceso(db)
+        copia = self._repo.obtener(db, copia_id)
+        if copia is None:
+            raise NoEncontradoError("Copia no encontrada")
+        return self._respuesta(db, copia)
+
+    def tablas(self, db: Session) -> CopiaTablasRespuesta:
+        """Qué incluye y qué no la copia: lista fija del sistema, igual para todas las empresas."""
+        self._exigir_acceso(db)
+        return CopiaTablasRespuesta(**copias.descripcion_de_tablas())
+
+    @staticmethod
+    def _exigir_acceso(db: Session) -> None:
+        exigir_empresa(db)
+        verificar_suscripcion_activa(db)
+        verificar_funcionalidad(db, FUNC_COPIAS_SEGURIDAD)
+
+    def _respuesta(self, db: Session, copia: CopiaSeguridad, nombres: dict[int, str] | None = None) -> CopiaRespuesta:
+        if nombres is None:
+            nombres = self._repo.nombres_de_usuarios(db, [copia.usuario_id])
+        tablas = copia.tablas_incluidas
+        return CopiaRespuesta(
+            id=copia.id,
+            estado=copia.estado,
+            usuario_id=copia.usuario_id,
+            usuario_nombre=nombres.get(copia.usuario_id),
+            tamano_bytes=copia.tamano_bytes,
+            total_filas=sum(tablas.values()) if tablas else None,
+            tablas_incluidas=tablas,
+            version_esquema=copia.version_esquema,
+            checksum=copia.checksum,
+            motivo_fallo=copia.motivo_fallo,
+            creado_en=copia.creado_en,
+            terminado_en=copia.terminado_en,
         )

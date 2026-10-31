@@ -38,7 +38,7 @@ from app.comercial.models import (
 from app.core.security import crear_access_token, permisos_de_usuario
 from app.core.tenant import fijar_empresa
 from app.inteligencia.models import ConsultaVoz, HistorialNavegacion, Recomendacion
-from app.plataforma.models import Bitacora, Cliente, Notificacion, Usuario
+from app.plataforma.models import Bitacora, Cliente, CopiaSeguridad, Notificacion, Usuario
 from app.plataforma.repository import ClienteRepository, UsuarioRepository
 from app.plataforma.schemas import UsuarioCrear
 from app.sincronizacion.models import OperacionSync
@@ -297,11 +297,19 @@ class Universo:
                 payload={"nota": "sin datos"}, resultado={"mensaje": m("operacion-sync")},
                 fecha_operacion=dt.datetime(2026, 10, 1, 12, 0, 0), procesada_en=dt.datetime(2026, 10, 1, 12, 0, 1),
             )
-            db.add_all([voz, historial, recomendacion, notificacion, bitacora, operacion_sync])
+            # Una copia de seguridad ya completada (E22): solo metadatos; la marca va en la versión del esquema,
+            # que es el único texto libre de la fila y sale en el detalle y en el historial.
+            copia = CopiaSeguridad(
+                usuario_id=self.empresa.admin_id, estado="completada", tamano_bytes=2048,
+                tablas_incluidas={"sucursal": 2, "producto": 1}, version_esquema=m("copia"), checksum="c" * 64,
+                terminado_en=dt.datetime(2026, 10, 1, 12, 0, 1),
+            )
+            db.add_all([voz, historial, recomendacion, notificacion, bitacora, operacion_sync, copia])
             db.flush()
             ids.update(
                 consulta_voz=voz.id, historial=historial.id, recomendacion=recomendacion.id,
                 notificacion=notificacion.id, bitacora=bitacora.id, operacion_sync=str(operacion_id),
+                copia_seguridad=copia.id,
             )
         return self
 
@@ -469,6 +477,13 @@ class Universo:
             "notificacion": lambda: self._insertar(Notificacion(usuario_id=self.empresa.admin_id, titulo=f"aviso {n}", tipo="aviso")),
             "activo_probador": lambda: self._insertar(
                 ActivoProbador(variante_id=self._variante_nueva(n), tipo="overlay_2d", url=f"activo-{n}", estado="pendiente")
+            ),
+            "copia_seguridad": lambda: self._insertar(
+                CopiaSeguridad(
+                    usuario_id=self.empresa.admin_id, estado="completada", tamano_bytes=1024,
+                    tablas_incluidas={"sucursal": 1}, version_esquema=f"copia-{n}", checksum="d" * 64,
+                    terminado_en=dt.datetime(2026, 10, 1, 12, 0, 1),
+                )
             ),
         }
         return fabricas[recurso]()

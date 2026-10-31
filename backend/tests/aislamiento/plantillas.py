@@ -50,6 +50,7 @@ PARAMETROS = {
     "activo_id": "activo_probador",
     "generacion_id": "generacion",
     "stock_id": "stock",
+    "copia_id": "copia_seguridad",
 }
 
 # --- token con el que A pide cada ruta ----------------------------------------------------

@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.crud_base import CRUDBase, CRUDBaseSinActivo
@@ -13,6 +13,7 @@ from app.plataforma.models import (
     Bitacora,
     Ciudad,
     Cliente,
+    CopiaSeguridad,
     Empleado,
     Empresa,
     HorarioSucursal,
@@ -767,3 +768,95 @@ class BitacoraRepository:
             return 0
         db.execute(delete(Bitacora.__table__).where(Bitacora.__table__.c.id.in_(ids)))
         return len(ids)
+
+
+# ---- Copias de seguridad (E22) ----
+
+
+class CopiaSeguridadRepository:
+    """Historial de copias de la empresa de la sesión (el filtro automático de `EmpresaMixin` aplica a todo). La fila
+    `en_proceso` es el candado: el índice único parcial `ux_copia_en_proceso` deja una sola por empresa. Nada se borra:
+    `activo` = False saca una copia del historial visible."""
+
+    def crear_en_proceso(self, db: Session, usuario_id: int) -> CopiaSeguridad:
+        """Inserta la fila candado. Si ya hay una en proceso lanza `IntegrityError` al volcar (lo traduce el caso de uso)."""
+        # La hora la fija Python en UTC (no el `now()` de la base): `marcar_abandonadas` la compara con UTC y una
+        # base con otro huso horario haría parecer abandonada a una copia recién creada.
+        copia = CopiaSeguridad(
+            usuario_id=usuario_id, estado="en_proceso", creado_en=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        )
+        db.add(copia)
+        db.flush()
+        return copia
+
+    def marcar_abandonadas(self, db: Session, creadas_antes_de: dt.datetime) -> int:
+        """Una copia `en_proceso` de hace mucho es de un proceso que murió: se marca fallida para liberar el candado."""
+        resultado = db.execute(
+            update(CopiaSeguridad)
+            .where(CopiaSeguridad.estado == "en_proceso", CopiaSeguridad.creado_en < creadas_antes_de)
+            .values(estado="fallida", motivo_fallo="abandonada", terminado_en=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
+        )
+        return resultado.rowcount or 0
+
+    def cargar(self, db: Session, copia_id: int) -> CopiaSeguridad | None:
+        return db.scalar(select(CopiaSeguridad).where(CopiaSeguridad.id == copia_id))
+
+    def obtener(self, db: Session, copia_id: int) -> CopiaSeguridad | None:
+        """Solo si sigue en el historial visible."""
+        return db.scalar(select(CopiaSeguridad).where(CopiaSeguridad.id == copia_id, CopiaSeguridad.activo.is_(True)))
+
+    def completar(
+        self, db: Session, copia: CopiaSeguridad, *, tamano_bytes: int, tablas: dict[str, int], version_esquema: str | None, checksum: str
+    ) -> CopiaSeguridad:
+        copia.estado = "completada"
+        copia.tamano_bytes = tamano_bytes
+        copia.tablas_incluidas = tablas
+        copia.version_esquema = version_esquema
+        copia.checksum = checksum
+        copia.motivo_fallo = None
+        copia.terminado_en = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        db.flush()
+        return copia
+
+    def fallar(self, db: Session, copia: CopiaSeguridad, motivo: str) -> CopiaSeguridad:
+        copia.estado = "fallida"
+        copia.motivo_fallo = motivo[:60]
+        copia.terminado_en = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        db.flush()
+        return copia
+
+    def listar(self, db: Session, paginacion) -> tuple[list[CopiaSeguridad], int]:
+        """El historial visible, la más reciente primero."""
+        visibles = CopiaSeguridad.activo.is_(True)
+        total = db.scalar(select(func.count()).select_from(CopiaSeguridad).where(visibles)) or 0
+        filas = db.scalars(
+            select(CopiaSeguridad)
+            .where(visibles)
+            .order_by(CopiaSeguridad.creado_en.desc(), CopiaSeguridad.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.tamanio)
+        )
+        return list(filas), total
+
+    def purgar_antiguas(self, db: Session, mantener: int) -> list[int]:
+        """Deja en el historial visible las `mantener` más recientes que ya terminaron y marca el resto como no activas
+        (sin borrar nada). Devuelve los ids que salieron."""
+        ids = list(
+            db.scalars(
+                select(CopiaSeguridad.id)
+                .where(CopiaSeguridad.activo.is_(True), CopiaSeguridad.estado != "en_proceso")
+                .order_by(CopiaSeguridad.creado_en.desc(), CopiaSeguridad.id.desc())
+                .offset(max(mantener, 0))
+            )
+        )
+        if ids:
+            db.execute(update(CopiaSeguridad).where(CopiaSeguridad.id.in_(ids)).values(activo=False))
+        return ids
+
+    def nombres_de_usuarios(self, db: Session, usuario_ids) -> dict[int, str]:
+        """Quién pidió cada copia. Los usuarios son de la misma empresa: el filtro automático alcanza."""
+        ids = {i for i in usuario_ids if i is not None}
+        if not ids:
+            return {}
+        filas = db.execute(select(Usuario.id, Usuario.nombre, Usuario.apellido).where(Usuario.id.in_(ids)))
+        return {fila.id: f"{fila.nombre} {fila.apellido}" for fila in filas}

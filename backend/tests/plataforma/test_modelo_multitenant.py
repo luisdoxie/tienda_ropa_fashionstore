@@ -40,6 +40,9 @@ OPERACION_SYNC = "operacion_sync"
 # E11: `modelo_ml` (modelos de Machine Learning por empresa) también es de empresa (EmpresaMixin,
 # NOT NULL) y se cuenta aparte, como `bitacora` y `operacion_sync`.
 MODELO_ML = "modelo_ml"
+# E22: `copia_seguridad` (historial de las copias de seguridad de una empresa) es de empresa (EmpresaMixin,
+# NOT NULL) y se cuenta aparte.
+COPIA_SEGURIDAD = "copia_seguridad"
 
 # Las 50 tablas EMPRESA de la sección 4.1 (49 con empresa_id NOT NULL más
 # `usuario`, que lo admite NULL: NULL = superadministrador).
@@ -92,14 +95,14 @@ def test_los_conjuntos_coinciden_con_la_seccion_4_1():
 
     nombres = {t.name for t in Base.metadata.sorted_tables}
     # 59 tablas del primer parcial + empresa, plan, suscripcion + bitacora (E06) + operacion_sync (E07)
-    # + modelo_ml (E11).
+    # + modelo_ml (E11) + copia_seguridad (E22).
     assert nombres == EMPRESA_4_1 | GLOBALES_4_1 | HEREDA | {
-        "empresa", "plan", "suscripcion", BITACORA, OPERACION_SYNC, MODELO_ML,
+        "empresa", "plan", "suscripcion", BITACORA, OPERACION_SYNC, MODELO_ML, COPIA_SEGURIDAD,
     }  # fmt: skip
-    assert len(nombres) == 65
-    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion, bitacora, operacion_sync y modelo_ml.
-    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion", BITACORA, OPERACION_SYNC, MODELO_ML}
-    assert len(_con_empresa_id()) == 54
+    assert len(nombres) == 66
+    # Las que llevan empresa_id: las 50 EMPRESA más suscripcion, bitacora, operacion_sync, modelo_ml y copia_seguridad.
+    assert _con_empresa_id() == EMPRESA_4_1 | {"suscripcion", BITACORA, OPERACION_SYNC, MODELO_ML, COPIA_SEGURIDAD}
+    assert len(_con_empresa_id()) == 55
 
 
 def test_empresa_id_es_not_null_salvo_en_usuario_y_apunta_a_empresa():

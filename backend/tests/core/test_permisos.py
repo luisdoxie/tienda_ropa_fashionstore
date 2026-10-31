@@ -16,6 +16,7 @@ VALORES_ESPERADOS = {
     "PERMISO_PLATAFORMA": "plataforma.gestionar",
     "PERMISO_EMPRESA": "empresa.gestionar",
     "PERMISO_BITACORA_VER": "bitacora.ver",
+    "PERMISO_COPIAS": "copias.gestionar",
     "PERMISO_SINCRONIZAR": "sincronizacion.operar",
     "PERMISO_SINCRONIZACION_SUPERVISAR": "sincronizacion.supervisar",
     "PERMISO_SINCRONIZACION_RESOLVER": "sincronizacion.resolver",

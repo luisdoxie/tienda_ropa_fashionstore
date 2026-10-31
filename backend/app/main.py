@@ -106,8 +106,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     # El ETag del paquete de descarga y el nombre del archivo exportado (Content-Disposition,
-    # E10): sin esto el JavaScript de la web no puede leerlos.
-    expose_headers=["ETag", "Content-Disposition"],
+    # E10): sin esto el JavaScript de la web no puede leerlos. X-Copia-Id y X-Checksum-SHA256: la
+    # copia de seguridad (E22) los entrega junto al ZIP.
+    expose_headers=["ETag", "Content-Disposition", "X-Copia-Id", "X-Checksum-SHA256"],
 )
 
 registrar_handlers(app)

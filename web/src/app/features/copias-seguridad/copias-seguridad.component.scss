@@ -1,0 +1,316 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+@include bo-panel;
+@include bo-giro;
+
+// ---- Nota de alcance ---------------------------------------------------------------------------
+.nota {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-3);
+  margin-bottom: var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-acento-suave);
+  border: 1px solid var(--fs-acento);
+  border-radius: var(--fs-radio-md);
+  font-size: 14px;
+
+  fs-icono {
+    flex: none;
+    margin-top: 1px;
+    color: var(--fs-acento);
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.aviso-conexion {
+  margin-bottom: var(--fs-espacio-4);
+}
+
+// ---- Plan, suscripción o rol sin acceso -------------------------------------------------------------
+.bloqueo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-4);
+  margin-bottom: var(--fs-espacio-4);
+  padding: var(--fs-espacio-6);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  box-shadow: var(--fs-sombra-sm);
+
+  fs-icono {
+    flex: none;
+    color: var(--fs-texto-tenue);
+  }
+
+  h2 {
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 18px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 640px;
+    font-size: 14px;
+    color: var(--fs-texto-tenue);
+  }
+}
+
+.bloqueo__acciones {
+  display: flex;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-top: var(--fs-espacio-4);
+}
+
+// ---- Crear y descargar ---------------------------------------------------------------------------------
+.crear {
+  margin-bottom: var(--fs-espacio-6);
+  padding: var(--fs-espacio-4) var(--fs-espacio-6);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  h2 {
+    margin: 0 0 var(--fs-espacio-3);
+    font-size: 16px;
+  }
+}
+
+.crear__acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.aviso-copia {
+  align-items: flex-start;
+  margin-top: var(--fs-espacio-4);
+
+  fs-icono {
+    flex: none;
+  }
+}
+
+.aviso-copia__texto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-2);
+  min-width: 0;
+  flex: 1 1 auto;
+  font-weight: 400;
+}
+
+.aviso-copia > .aviso-copia__texto + button {
+  flex: none;
+}
+
+.checksum-linea {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+}
+
+.checksum {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+// ---- Plegables --------------------------------------------------------------------------------------------
+.plegable {
+  margin-top: var(--fs-espacio-4);
+}
+
+.plegable__cabecera {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  min-height: var(--fs-toque);
+  padding: 0 var(--fs-espacio-2) 0 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fs-texto);
+  background: none;
+  border: 0;
+  border-radius: var(--fs-radio-md);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+
+  fs-icono {
+    transition: transform 0.15s ease;
+  }
+
+  .girado {
+    transform: rotate(180deg);
+  }
+}
+
+.plegable__cabecera--titulo {
+  font-family: var(--fs-fuente-display);
+  font-stretch: 112%;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.plegable__cuerpo {
+  padding: var(--fs-espacio-2) 0 0 var(--fs-espacio-6);
+  font-size: 14px;
+
+  p {
+    max-width: 640px;
+    margin: 0 0 var(--fs-espacio-3);
+  }
+
+  h3 {
+    margin: var(--fs-espacio-4) 0 var(--fs-espacio-2);
+    font-size: 14px;
+  }
+}
+
+.comando {
+  margin: 0;
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  overflow-x: auto;
+  background: var(--fs-fondo-alt);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+// ---- Historial -----------------------------------------------------------------------------------------------
+.historial {
+  margin-bottom: var(--fs-espacio-6);
+
+  h2 {
+    margin: 0;
+    font-family: var(--fs-fuente-display);
+    font-stretch: 112%;
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  .ayuda {
+    margin-top: var(--fs-espacio-1);
+  }
+}
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+
+  p {
+    margin: 0;
+    max-width: 520px;
+  }
+}
+
+.vacio__titulo {
+  color: var(--fs-texto);
+  font-weight: 600;
+}
+
+.celda-fecha {
+  white-space: nowrap;
+}
+
+.estado-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  font-weight: 600;
+}
+
+.motivo {
+  display: block;
+  margin-top: var(--fs-espacio-1);
+  font-size: 12px;
+  color: var(--fs-error);
+}
+
+.checksum-celda {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+}
+
+// ---- Qué incluye y qué no -------------------------------------------------------------------------------
+.incluye {
+  margin-bottom: var(--fs-espacio-6);
+  padding: var(--fs-espacio-2) var(--fs-espacio-6) var(--fs-espacio-2);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  .plegable__cuerpo {
+    padding-bottom: var(--fs-espacio-4);
+  }
+}
+
+.lista-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lista-excluidas {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--fs-espacio-4);
+    flex-wrap: wrap;
+    padding: var(--fs-espacio-2) 0;
+    border-bottom: 1px solid var(--fs-borde);
+  }
+
+  .tenue {
+    max-width: 560px;
+    text-align: right;
+  }
+}
+
+.bloque-error {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  color: var(--fs-error);
+}
+
+@media (max-width: 640px) {
+  .crear,
+  .incluye {
+    padding-left: var(--fs-espacio-4);
+    padding-right: var(--fs-espacio-4);
+  }
+
+  .lista-excluidas .tenue {
+    text-align: left;
+  }
+}

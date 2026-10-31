@@ -48,12 +48,13 @@ const PERMISOS_ADMIN = [
   'empresa.gestionar',
   'sincronizacion.supervisar',
   'bitacora.ver',
+  'copias.gestionar',
 ];
 
 // El orden del menú de antes. Esta lista NO se reordena: los ítems nuevos van al final de su lista.
 const INICIO_ESPERADO = ['Dashboard', 'Reportes', 'Reportes con IA', 'Analítica'];
 const GRUPOS_ESPERADOS: Record<string, string[]> = {
-  Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales', 'Auditoría'],
+  Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales', 'Auditoría', 'Copias de seguridad'],
   Catálogo: ['Productos', 'Categorías', 'Tallas', 'Colores', 'Temporadas', 'Colecciones'],
   Ventas: ['Caja', 'Promociones', 'Reservas', 'Catálogo local', 'Pendientes de envío', 'Sincronización'],
 };
@@ -233,6 +234,41 @@ describe('LayoutComponent', () => {
       fixture.destroy();
     });
 
+    it('"Copias de seguridad" (E22) va al final de Organización: gris con candado sin la función, normal con ella', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set(suscripcion(['reportes_ia', 'analitica_ml', 'operacion_offline'], 'Estándar'));
+      const { fixture, el } = crear();
+
+      const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
+      const copias = enlaces.find((a) => (a.textContent ?? '').includes('Copias de seguridad')) as HTMLElement;
+      expect(copias.classList).toContain('layout__enlace--deshabilitado');
+      expect(copias.getAttribute('aria-disabled')).toBe('true');
+      expect(copias.getAttribute('href')).toBe('/mi-empresa?ver=funcionalidades');
+      expect(copias.querySelector('.layout__candado')).not.toBeNull();
+      // El resto del plan sigue normal.
+      const analitica = enlaces.find((a) => (a.textContent ?? '').includes('Analítica')) as HTMLElement;
+      expect(analitica.classList).not.toContain('layout__enlace--deshabilitado');
+
+      plan.suscripcion.set(suscripcion(['copias_seguridad'], 'Profesional'));
+      fixture.detectChanges();
+      const habilitada = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+        (a.textContent ?? '').includes('Copias de seguridad'),
+      ) as HTMLElement;
+      expect(habilitada.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(habilitada.getAttribute('href')).toBe('/copias-seguridad');
+      expect(habilitada.querySelector('.layout__candado')).toBeNull();
+      fixture.destroy();
+    });
+
+    it('"Copias de seguridad" solo la ve quien tiene copias.gestionar', () => {
+      iniciarSesion(['encargado'], PERMISOS_ADMIN.filter((p) => p !== 'copias.gestionar'), 7);
+      const { fixture, el } = crear();
+
+      const textos = Array.from(el.querySelectorAll('nav a.layout__enlace')).map((a) => (a.textContent ?? '').trim());
+      expect(textos).not.toContain('Copias de seguridad');
+      fixture.destroy();
+    });
+
     it('si no se conoce el plan (empleado sin acceso a Mi empresa) no se deshabilita nada', () => {
       iniciarSesion(['cajero'], ['inventario.ver'], 7);
       const { fixture, comp } = crear();
@@ -323,7 +359,16 @@ describe('LayoutComponent', () => {
           'Sincronización',
         ],
         Análisis: ['Reportes', 'Reportes con IA', 'Analítica'],
-        Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa', 'Auditoría'],
+        Organización: [
+          'Sucursales',
+          'Ciudades',
+          'Empleados',
+          'Usuarios',
+          'Roles',
+          'Mi empresa',
+          'Auditoría',
+          'Copias de seguridad',
+        ],
       });
       fixture.destroy();
     });
@@ -511,14 +556,15 @@ describe('LayoutComponent', () => {
         href: a.getAttribute('href'),
       }));
 
-    it('el administrador (bitacora.ver) la ve al final de Organización, enlazada a /auditoria', () => {
+    it('el administrador (bitacora.ver) la ve en Organización, enlazada a /auditoria (solo "Copias de seguridad" va después)', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
       const { fixture, comp, el } = crear();
 
       const organizacion = (comp.secciones() as { id: string; items: { etiqueta: string; ruta: string }[] }[]).find(
         (s) => s.id === 'organizacion',
       )!;
-      expect(organizacion.items.at(-1)).toMatchObject({ etiqueta: 'Auditoría', ruta: '/auditoria' });
+      expect(organizacion.items.at(-2)).toMatchObject({ etiqueta: 'Auditoría', ruta: '/auditoria' });
+      expect(organizacion.items.at(-1)).toMatchObject({ etiqueta: 'Copias de seguridad', ruta: '/copias-seguridad' });
       expect(enlacesDelMenu(el)).toContainEqual({ texto: 'Auditoría', href: '/auditoria' });
       fixture.destroy();
     });

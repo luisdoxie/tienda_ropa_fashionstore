@@ -107,8 +107,11 @@ interface FilaFuncion extends DescripcionFuncion {
   proximamente: boolean;
 }
 
-/** Funcionalidades del plan que aún no existen (analítica ML, trabajo sin conexión, copias de seguridad). */
-const FUNCIONES_PROXIMAMENTE: ReadonlySet<string> = new Set(['copias_seguridad']);
+/**
+ * Funcionalidades del plan que aún no existen. Hoy todas están construidas (las copias de seguridad llegaron con la
+ * E22); el conjunto queda vacío por si una bandera nueva del plan se adelanta a su pantalla.
+ */
+const FUNCIONES_PROXIMAMENTE: ReadonlySet<string> = new Set<string>();
 
 /**
  * "Mi empresa": pantalla del administrador de cada empresa. Muestra su plan, los

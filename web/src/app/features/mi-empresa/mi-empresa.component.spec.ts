@@ -240,13 +240,14 @@ describe('MiEmpresaComponent', () => {
       expect(html().querySelector('.me-funcion--bloqueada')?.textContent).toContain('No incluido en tu plan');
     });
 
-    it('marca "Próximamente" lo que aún no existe, sin cambiar lo que incluye el plan', async () => {
+    it('ninguna función sale como "Próximamente" (las copias de seguridad ya existen), sin cambiar lo que incluye el plan', async () => {
       await cargar({ funcionalidades: FUNCIONES_PLAN.map((f) => f.id) });
 
       const proximas = filas()
         .filter((f) => f.querySelector('.me-proximamente'))
         .map((f) => f.dataset['funcion']);
-      expect(proximas).toEqual(['copias_seguridad']);
+      expect(proximas).toEqual([]);
+      expect(html().querySelector('[data-funcion="copias_seguridad"] .me-proximamente')).toBeNull();
       // Siguen figurando como incluidas: lo que dice el plan no se toca.
       expect(html().querySelectorAll('.me-funcion--bloqueada').length).toBe(0);
       expect(html().querySelector('[data-funcion="reportes_ia"] .me-proximamente')).toBeNull();
