@@ -1,0 +1,202 @@
+@use '../../shared/estilos/patron-bo' as *;
+@use './reportes-ia.estilos' as *;
+
+@include bo-base;
+@include bo-texto;
+@include bo-giro;
+@include ia-mensaje;
+@include ia-notas;
+
+.resultado {
+  padding: var(--fs-espacio-4) var(--fs-espacio-4) var(--fs-espacio-6);
+  margin-bottom: var(--fs-espacio-4);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.resultado__cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-4);
+}
+
+.resultado__titulo {
+  min-width: 0;
+
+  h2 {
+    margin: 0;
+    font-family: var(--fs-fuente-display);
+    font-stretch: 112%;
+    font-weight: 800;
+    font-size: 20px;
+  }
+
+  p {
+    margin: var(--fs-espacio-1) 0 0;
+    font-size: 13px;
+  }
+}
+
+.resultado__exportar {
+  display: flex;
+  gap: var(--fs-espacio-2);
+  flex-wrap: wrap;
+}
+
+.resultado__barra {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.grafico-controles {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--fs-espacio-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-2);
+}
+
+// Tipos de gráfico: botones de radio con el aspecto de un control segmentado (44 px de alto).
+.segmentos {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--fs-campo-borde);
+  border-radius: var(--fs-radio-md);
+  overflow: hidden;
+}
+
+.segmento {
+  min-height: var(--fs-toque);
+  padding: 0 var(--fs-espacio-4);
+  font: inherit;
+  font-size: 14px;
+  color: var(--fs-texto);
+  background: var(--fs-superficie);
+  border: 0;
+  border-right: 1px solid var(--fs-campo-borde);
+  cursor: pointer;
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  &:hover:not([disabled]) {
+    background: var(--fs-neutro-suave);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: -2px;
+  }
+
+  &--activo {
+    font-weight: 600;
+    color: var(--fs-claro);
+    background: var(--fs-tinta);
+
+    &:hover:not([disabled]) {
+      background: var(--fs-tinta);
+    }
+  }
+
+  &[disabled] {
+    color: var(--fs-texto-tenue);
+    background: var(--fs-fondo-alt);
+    cursor: not-allowed;
+  }
+}
+
+.medida {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.campo__etiqueta {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.razones {
+  margin: 0 0 var(--fs-espacio-3);
+  padding-left: var(--fs-espacio-4);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+}
+
+.grafico {
+  position: relative;
+  height: 300px;
+  margin-top: var(--fs-espacio-2);
+}
+
+.tabla-scroll {
+  overflow-x: auto;
+}
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+
+  p {
+    margin: 0;
+    max-width: 520px;
+  }
+}
+
+:host ::ng-deep {
+  .tabla-scroll .p-datatable-tfoot > tr > td {
+    background: var(--fs-fondo);
+    border-top: 1px solid var(--fs-texto);
+  }
+
+  .tabla-scroll th.num {
+    text-align: right;
+  }
+
+  .tabla-scroll th.num .p-datatable-column-header-content {
+    justify-content: flex-end;
+  }
+
+  .medida .p-select {
+    min-height: var(--fs-toque-barra);
+    align-items: center;
+  }
+
+  .resultado__barra .p-togglebutton {
+    min-height: var(--fs-toque);
+  }
+}
+
+.narrativa {
+  padding: var(--fs-espacio-4);
+  margin-bottom: var(--fs-espacio-4);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-left: 3px solid var(--fs-acento);
+  border-radius: var(--fs-radio-md);
+
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-2);
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 16px;
+  }
+}
+
+.narrativa__texto {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}

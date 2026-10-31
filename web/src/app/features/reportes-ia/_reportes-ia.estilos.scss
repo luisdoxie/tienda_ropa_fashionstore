@@ -1,0 +1,63 @@
+// Piezas visuales compartidas por la pantalla "Reportes con IA" y sus sub-componentes. Todo sale de los tokens --fs-*.
+
+// Tarjeta de mensaje: ámbar para lo que no es una falla (pedido incompleto, límite, plan), rojo solo para fallas reales.
+@mixin ia-mensaje {
+  .mensaje {
+    display: flex;
+    gap: var(--fs-espacio-3);
+    align-items: flex-start;
+    padding: var(--fs-espacio-4);
+    margin: 0 0 var(--fs-espacio-4);
+    border: 1px solid var(--fs-advertencia);
+    border-radius: var(--fs-radio-md);
+    background: var(--fs-advertencia-suave);
+    color: var(--fs-advertencia);
+
+    &--error {
+      border-color: var(--fs-error);
+      background: var(--fs-error-suave);
+      color: var(--fs-error);
+    }
+  }
+
+  .mensaje__texto {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .mensaje__sub {
+    margin: var(--fs-espacio-3) 0 var(--fs-espacio-2);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .mensaje__lista {
+    margin: 0;
+    padding-left: var(--fs-espacio-4);
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--fs-texto);
+  }
+}
+
+@mixin ia-notas {
+  .nota {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-2);
+    margin: var(--fs-espacio-2) 0 0;
+    font-size: 13px;
+    color: var(--fs-texto-tenue);
+
+    &--aviso {
+      color: var(--fs-advertencia);
+    }
+  }
+
+  .vacio__titulo {
+    margin: 0;
+    font-weight: 600;
+    color: var(--fs-texto);
+  }
+}

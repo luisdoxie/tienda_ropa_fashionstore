@@ -95,6 +95,9 @@ interface GrupoVista extends Omit<GrupoMenu, 'items'> {
 export const ITEMS_INICIO: ItemMenu[] = [
   { etiqueta: 'Dashboard', icono: 'dashboard', ruta: '/dashboard' },
   { etiqueta: 'Reportes', icono: 'grafico', ruta: '/reportes', permiso: 'reportes.ver' },
+  // E17: se agregan al final de Análisis sin tocar lo que ya había. Con un plan sin la función quedan en gris, con candado.
+  { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', permiso: 'reportes.ver', funcion: 'reportes_ia' },
+  { etiqueta: 'Analítica', icono: 'tendencia', ruta: '/analitica', permiso: 'reportes.ver', funcion: 'analitica_ml' },
 ];
 
 export const GRUPOS_MENU: GrupoMenu[] = [
@@ -218,7 +221,7 @@ const SECCIONES_MENU: SeccionDef[] = [
     plegable: true,
     rutas: ['/reservas', '/envios', '/zonas-envio', '/promociones', '/catalogo-local', RUTA_PENDIENTES, RUTA_SINCRONIZACION],
   },
-  { id: 'analisis', etiqueta: 'Análisis', plegable: false, rutas: ['/reportes'] },
+  { id: 'analisis', etiqueta: 'Análisis', plegable: false, rutas: ['/reportes', '/reportes-ia', '/analitica'] },
   {
     id: 'organizacion',
     etiqueta: 'Organización',

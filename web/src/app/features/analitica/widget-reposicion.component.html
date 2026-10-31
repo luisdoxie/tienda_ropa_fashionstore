@@ -1,0 +1,89 @@
+<app-bloque-analitica
+  data-bloque="reposicion"
+  titulo="Reposición sugerida"
+  icono="inventario"
+  subtitulo="Qué categorías podrían agotarse según la demanda prevista. Es orientativo y va por categoría, no por variante ni por sucursal."
+  [fase]="carga.fase()"
+  [mensaje]="carga.mensaje()"
+  [entrenando]="entrenando()"
+  [deshabilitado]="!activo()"
+  (entrenar)="entrenar.emit()"
+  (reintentar)="cargar()"
+>
+  <div controles>
+    <a class="fs-btn fs-btn--secundario fs-btn--sm" routerLink="/inventario" data-accion="ver-inventario">
+      <fs-icono nombre="inventario" [tam]="24" />
+      Ver inventario
+    </a>
+  </div>
+
+  @if (carga.datos(); as d) {
+    @for (aviso of avisos(); track $index) {
+      <div class="fs-aviso aviso" role="status" data-reposicion="aviso">{{ aviso }}</div>
+    }
+    @if (d.interpretacion.length) {
+      <p class="resumen" data-reposicion="resumen">{{ d.interpretacion[0] }}</p>
+    }
+
+    @if (filas().length === 0) {
+      <div class="vacio" data-reposicion="vacio">
+        <p>No hay categorías con demanda prevista para calcular la reposición.</p>
+      </div>
+    } @else {
+      <div class="tabla-scroll">
+        <p-table [value]="filas()" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '820px' }">
+          <ng-template #header>
+            <tr>
+              <th>Categoría</th>
+              <th class="num">Disponible hoy</th>
+              <th class="num">Demanda prevista</th>
+              <th class="num">Cobertura</th>
+              <th>Estado</th>
+              <th class="num">Sugerencia</th>
+            </tr>
+          </ng-template>
+          <ng-template #body let-i>
+            @let est = vistaEstado(i.estado);
+            <tr [attr.data-categoria]="i.categoria_id">
+              <td class="fuerte">{{ i.categoria }}</td>
+              <td class="num">{{ entero(i.disponible) }} unidades</td>
+              <td class="num">{{ demandaSemanal(i) }}</td>
+              <td class="num">
+                {{ cobertura(i) }}
+                @if (i.agotado_en_semana !== null) {
+                  <span class="agota">Se agotaría en la semana {{ i.agotado_en_semana }}</span>
+                }
+              </td>
+              <td>
+                <span class="fs-chip etiqueta" [class]="est.clase" [attr.data-estado-reposicion]="i.estado">
+                  <fs-icono [nombre]="est.icono" [tam]="20" />
+                  {{ est.texto }}
+                </span>
+              </td>
+              <td class="num">
+                @if (i.sugerencia_unidades > 0) {
+                  {{ entero(i.sugerencia_unidades) }} unidades <span class="orientativo">(orientativo)</span>
+                } @else {
+                  <span class="tenue">—</span>
+                }
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
+    }
+
+    <p class="ayuda" data-reposicion="nota">
+      Es una guía por categoría: no descuenta las órdenes de compra en camino ni las transferencias entre sucursales.
+    </p>
+
+    <details class="calculo" data-reposicion="supuestos">
+      <summary>Cómo se calcula</summary>
+      <ul>
+        @for (supuesto of d.supuestos; track $index) {
+          <li>{{ supuesto }}</li>
+        }
+      </ul>
+    </details>
+  }
+</app-bloque-analitica>

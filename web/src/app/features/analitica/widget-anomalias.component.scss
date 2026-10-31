@@ -1,0 +1,93 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+
+:host ::ng-deep .p-select {
+  min-height: var(--fs-toque-barra);
+  min-width: 200px;
+  align-items: center;
+}
+
+.totales {
+  margin: 0 0 var(--fs-espacio-3);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.aviso {
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.tabla-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.desviacion {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--fs-espacio-2);
+  font-weight: 600;
+  white-space: nowrap;
+
+  &--mas {
+    color: var(--fs-exito);
+  }
+
+  &--menos {
+    color: var(--fs-error);
+  }
+}
+
+.desviacion__texto {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  font-weight: 600;
+}
+
+.lectura {
+  margin-top: var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-fondo);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  h3 {
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 14px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+    font-size: 14px;
+  }
+}
+
+.calculo {
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--fs-toque);
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--fs-texto);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+  }
+}

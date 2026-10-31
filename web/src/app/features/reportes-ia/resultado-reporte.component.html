@@ -1,0 +1,196 @@
+<section class="resultado" data-seccion="resultado" aria-labelledby="resultado-titulo">
+  <header class="resultado__cabecera">
+    <div class="resultado__titulo">
+      <h2 id="resultado-titulo">{{ reporte().titulo }}</h2>
+      <p class="tenue" data-dato="generado">Generado el {{ generadoEn() }}</p>
+      <p class="tenue" data-dato="filtros-aplicados">{{ filtrosTexto() }}</p>
+    </div>
+    <div class="resultado__exportar" role="group" aria-label="Exportar el reporte">
+      <button
+        type="button"
+        class="fs-btn fs-btn--secundario fs-btn--sm"
+        data-accion="exportar-xlsx"
+        [disabled]="deshabilitado() || exportando() !== null || sinFilas()"
+        (click)="exportar.emit('xlsx')"
+      >
+        <fs-icono [nombre]="exportando() === 'xlsx' ? 'refrescar' : 'descargar'" [tam]="20" [class.giro]="exportando() === 'xlsx'" />
+        {{ exportando() === 'xlsx' ? 'Preparando…' : 'Excel' }}
+      </button>
+      <button
+        type="button"
+        class="fs-btn fs-btn--secundario fs-btn--sm"
+        data-accion="exportar-pdf"
+        [disabled]="deshabilitado() || exportando() !== null || sinFilas()"
+        (click)="exportar.emit('pdf')"
+      >
+        <fs-icono [nombre]="exportando() === 'pdf' ? 'refrescar' : 'descargar'" [tam]="20" [class.giro]="exportando() === 'pdf'" />
+        {{ exportando() === 'pdf' ? 'Preparando…' : 'PDF' }}
+      </button>
+    </div>
+  </header>
+
+  @if (errorExportacion(); as fallo) {
+    <div class="mensaje mensaje--advertencia" role="alert" data-estado="error-exportacion">
+      <fs-icono nombre="advertencia" [tam]="24" />
+      <div>
+        <p class="mensaje__texto">{{ fallo.mensaje }}</p>
+        @if (fallo.sugerencias.length > 0) {
+          <p class="mensaje__sub">Prueba con:</p>
+          <ul class="mensaje__lista">
+            @for (sugerencia of fallo.sugerencias; track sugerencia) {
+              <li>{{ sugerencia }}</li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+  }
+
+  @if (sinFilas()) {
+    <div class="vacio" role="status" data-estado="sin-filas">
+      <fs-icono nombre="sin-resultados" [tam]="36" />
+      <p class="vacio__titulo">No hay datos para esos filtros.</p>
+      <p>Prueba con otro rango de fechas o con todas las sucursales.</p>
+    </div>
+  } @else {
+    <div class="resultado__barra">
+      <p-selectbutton
+        data-control="vista"
+        ariaLabelledBy="resultado-titulo"
+        optionLabel="label"
+        optionValue="value"
+        [options]="opcionesVista"
+        [allowEmpty]="false"
+        [ngModel]="vista()"
+        (ngModelChange)="vista.set($event ?? 'tabla')"
+      />
+      @if (vista() === 'grafico' && !hayGrafico()) {
+        <span class="tenue" data-dato="sin-grafico">{{ razonSinGrafico() }}</span>
+      }
+    </div>
+
+    @if (vista() === 'grafico') {
+      <div class="grafico-controles">
+        <div class="segmentos" role="radiogroup" aria-label="Tipo de gráfico">
+          @for (opcion of opciones(); track opcion.tipo) {
+            <button
+              type="button"
+              role="radio"
+              class="segmento"
+              [attr.data-tipo-grafico]="opcion.tipo"
+              [attr.aria-checked]="opcion.tipo === tipoGrafico()"
+              [attr.title]="opcion.razon"
+              [class.segmento--activo]="opcion.tipo === tipoGrafico()"
+              [disabled]="!opcion.posible"
+              (click)="tipoGrafico.set(opcion.tipo)"
+            >
+              {{ opcion.etiqueta }}
+            </button>
+          }
+        </div>
+        @if (metricas().length > 1) {
+          <label class="medida">
+            <span class="campo__etiqueta">Medida</span>
+            <p-select
+              data-control="medida"
+              optionLabel="titulo"
+              optionValue="clave"
+              ariaLabel="Medida"
+              appendTo="body"
+              [options]="metricas()"
+              [ngModel]="metricaClave()"
+              (ngModelChange)="metricaClave.set($event)"
+            />
+          </label>
+        }
+      </div>
+
+      @if (razones().length > 0) {
+        <ul class="razones" data-dato="razones-grafico">
+          @for (opcion of razones(); track opcion.tipo) {
+            <li>
+              <span class="fuerte">{{ opcion.etiqueta }}:</span> {{ opcion.razon }}
+            </li>
+          }
+        </ul>
+      }
+
+      @if (datos(); as d) {
+        <div class="grafico" role="img" [attr.aria-label]="d.resumen" data-dato="grafico">
+          <p-chart [type]="d.tipoChart" [data]="datosChart()" [options]="opcionesChart()" height="300px" />
+        </div>
+        @for (aviso of d.avisos; track aviso) {
+          <p class="nota" data-dato="aviso-grafico">{{ aviso }}</p>
+        }
+      } @else {
+        <div class="vacio" role="status" data-estado="sin-grafico">
+          <p>No se puede dibujar un gráfico con estos datos. Mira la tabla.</p>
+        </div>
+      }
+    } @else {
+      <div class="tabla-scroll">
+        <p-table
+          [value]="filasTabla()"
+          [customSort]="true"
+          (sortFunction)="ordenar($event)"
+          [paginator]="filasTabla().length > filasPorPagina"
+          [rows]="filasPorPagina"
+          styleClass="p-datatable-sm"
+          [tableStyle]="{ 'min-width': '36rem' }"
+        >
+          <ng-template #header>
+            <tr>
+              @for (columna of reporte().columnas; track columna.clave) {
+                <th [pSortableColumn]="columna.clave" [class.num]="esNumerica(columna)">
+                  {{ columna.titulo }}
+                </th>
+              }
+            </tr>
+          </ng-template>
+          <ng-template #body let-fila>
+            <tr data-fila>
+              @for (columna of reporte().columnas; track columna.clave) {
+                <td [class.num]="esNumerica(columna)" [class.fs-num]="esNumerica(columna)">
+                  {{ formato(fila[columna.clave], columna.tipo) }}
+                </td>
+              }
+            </tr>
+          </ng-template>
+          <ng-template #footer>
+            @if (totales(); as celdas) {
+              <tr data-fila-total>
+                @for (celda of celdas; track celda.clave; let primera = $first) {
+                  <td [class.num]="celda.texto !== null" [class.fs-num]="celda.texto !== null" class="fuerte">
+                    @if (celda.texto !== null) {
+                      {{ celda.texto }}
+                    } @else if (primera) {
+                      Total
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </ng-template>
+        </p-table>
+      </div>
+    }
+
+    @if (reporte().truncado) {
+      <p class="nota nota--aviso" role="status" data-dato="truncado">
+        <fs-icono nombre="advertencia" [tam]="20" />
+        El reporte es muy largo y se muestran solo las primeras filas. Usa filtros más acotados para ver el resto.
+      </p>
+    }
+  }
+</section>
+
+@if (narrativa(); as texto) {
+  <section class="narrativa" aria-labelledby="resumen-titulo" data-seccion="narrativa">
+    <h3 id="resumen-titulo">
+      <fs-icono nombre="destellos" [tam]="20" />
+      Resumen
+    </h3>
+    <p class="narrativa__texto">{{ texto }}</p>
+    <p class="nota">Revisa las cifras en la tabla; el resumen es automático y puede equivocarse.</p>
+  </section>
+}

@@ -1,0 +1,201 @@
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Análisis</span>
+    <h1>Reportes con IA</h1>
+    <p>Pide un reporte con tu voz o escribiéndolo, míralo en tabla o gráfico y expórtalo a Excel o PDF.</p>
+  </div>
+  <a class="enlace-convencional" routerLink="/reportes" data-accion="ver-convencionales">Ver los reportes convencionales</a>
+</div>
+
+<!-- Plan sin reportes con IA: explicación, sin llamar a /reportes-ia/* -->
+@if (sinPlan()) {
+  <section class="plan" role="status" data-estado="sin-plan" aria-labelledby="plan-titulo">
+    <fs-icono nombre="candado" [tam]="36" />
+    <div class="plan__cuerpo">
+      <h2 id="plan-titulo">Tu plan no incluye reportes con IA</h2>
+      <p>Con el plan Profesional puedes pedir reportes con tu voz, ver gráficos y exportarlos.</p>
+      <div class="plan__acciones">
+        <a class="fs-btn fs-btn--primario fs-btn--sm" routerLink="/mi-empresa" data-accion="ver-plan">Ver mi plan</a>
+        <a class="fs-btn fs-btn--secundario fs-btn--sm" routerLink="/reportes" data-accion="ir-reportes">Ir a Reportes</a>
+      </div>
+    </div>
+  </section>
+} @else if (sinConexion()) {
+  <div class="mensaje" role="status" data-estado="sin-conexion">
+    <fs-icono nombre="enlace-roto" [tam]="24" />
+    <p class="mensaje__texto">Los reportes con IA necesitan conexión a Internet.</p>
+  </div>
+}
+
+<!-- Pedir -->
+<section class="panel pedir" aria-label="Pedir un reporte">
+  <div class="pedir__fila">
+    <input
+      pInputText
+      class="pedir__texto"
+      type="text"
+      aria-label="Escribe tu pedido"
+      placeholder="Ej.: Muéstrame las ventas de septiembre por sucursal"
+      data-campo="pedido"
+      [attr.maxlength]="maxTexto"
+      [ngModel]="texto()"
+      (ngModelChange)="texto.set($event)"
+      (keydown.enter)="generar('texto')"
+      [disabled]="!habilitado() || escuchando()"
+    />
+    <button
+      type="button"
+      class="btn-microfono"
+      data-accion="dictar"
+      aria-label="Dictar tu pedido"
+      [class.btn-microfono--activo]="escuchando()"
+      [attr.title]="vozDisponible ? 'Dictar tu pedido' : 'Tu navegador no permite dictar'"
+      [disabled]="!vozDisponible || !puedeLanzar()"
+      (click)="dictar()"
+    >
+      <fs-icono [nombre]="escuchando() ? 'refrescar' : 'microfono'" [tam]="28" [class.giro]="escuchando()" />
+    </button>
+    <button type="button" class="fs-btn fs-btn--primario pedir__generar" data-accion="generar" [disabled]="generarDeshabilitado()" (click)="generar('texto')">
+      <fs-icono [nombre]="ocupado() === 'generar' ? 'refrescar' : 'destellos'" [tam]="24" [class.giro]="ocupado() === 'generar'" />
+      {{ ocupado() === 'generar' ? 'Interpretando tu pedido…' : 'Generar reporte' }}
+    </button>
+  </div>
+
+  @if (!vozDisponible) {
+    <p class="ayuda" data-ayuda="sin-voz">Tu navegador no permite dictar (usa Chrome o Edge). Puedes escribir tu pedido.</p>
+  }
+  @if (escuchando()) {
+    <p class="ayuda" role="status" data-estado="escuchando">Escuchando… habla ahora</p>
+  }
+  @if (errorVoz(); as error) {
+    <p class="pedir__error" role="alert" data-estado="error-voz">{{ error }}</p>
+  }
+
+  <div class="atajos" role="group" aria-label="Ejemplos de pedidos">
+    <span class="atajos__titulo">Por ejemplo:</span>
+    @for (ejemplo of atajos(); track ejemplo) {
+      <button type="button" class="atajo" data-atajo [disabled]="!puedeLanzar()" (click)="usarEjemplo(ejemplo)">{{ ejemplo }}</button>
+    }
+  </div>
+</section>
+
+<!-- Fallas y límites -->
+@if (problema(); as p) {
+  <div class="mensaje" [class.mensaje--error]="p.tipo === 'red' || p.tipo === 'servidor'" role="alert" [attr.data-estado]="'problema-' + p.tipo">
+    <fs-icono [nombre]="p.tipo === 'red' || p.tipo === 'servidor' ? 'alerta' : 'reloj'" [tam]="24" />
+    <div>
+      <p class="mensaje__texto">{{ p.mensaje }}</p>
+      @if (p.reintentar) {
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar" (click)="reintentar()">Reintentar</button>
+      }
+    </div>
+  </div>
+}
+
+<!-- Pedido que no se pudo cumplir (incompleto, ambiguo, inválido, no soportado, no disponible) -->
+@if (respuestaNegocio(); as r) {
+  <section class="mensaje" role="status" data-estado="no-ok" [attr.data-estado-reporte]="r.estado">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    <div>
+      <p class="mensaje__texto" data-dato="mensaje">{{ r.mensaje }}</p>
+      @if (r.sugerencias.length > 0) {
+        <p class="mensaje__sub">Prueba con:</p>
+        <div class="atajos">
+          @for (sugerencia of r.sugerencias; track sugerencia) {
+            <button type="button" class="atajo" data-sugerencia [disabled]="!puedeLanzar()" (click)="usarEjemplo(sugerencia)">
+              {{ sugerencia }}
+            </button>
+          }
+        </div>
+      }
+      @if (catalogo().length > 0) {
+        <p class="mensaje__sub">Puedo ayudarte con:</p>
+        <ul class="mensaje__lista" data-dato="tipos">
+          @for (tipo of catalogo(); track tipo.codigo) {
+            <li>
+              <span class="fuerte">{{ tipo.titulo }}</span>{{ tipo.descripcion ? ': ' + tipo.descripcion : '' }}
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </section>
+}
+
+<!-- Carga -->
+@if (ocupado() !== null && ultimaOk() === null) {
+  <div class="esqueleto" role="status" aria-label="Preparando el reporte" data-estado="cargando">
+    <div class="esqueleto__bloque esqueleto__bloque--corto"></div>
+    <div class="esqueleto__bloque"></div>
+    <div class="esqueleto__bloque esqueleto__bloque--alto"></div>
+  </div>
+}
+
+<!-- Entendí esto + filtros + resultado -->
+@if (ultimaOk(); as ok) {
+  <div class="contenido" [class.contenido--ocupado]="ocupado() !== null" [attr.aria-busy]="ocupado() !== null">
+    <section class="panel entendi" data-seccion="entendi" aria-labelledby="entendi-titulo">
+      <div class="entendi__cabecera">
+        <div>
+          <span class="fs-eyebrow">Entendí esto</span>
+          <h2 id="entendi-titulo" data-dato="tipo">{{ tituloTipo() }}</h2>
+        </div>
+        @if (interprete(); as quien) {
+          <span class="insignia" [class.insignia--reglas]="quien === 'reglas'" data-dato="interprete">
+            <fs-icono [nombre]="quien === 'reglas' ? 'advertencia' : 'destellos'" [tam]="20" />
+            {{ etiquetaInterprete[quien] }}
+          </span>
+        }
+      </div>
+
+      <div class="chips" data-dato="chips">
+        @for (chip of chips(); track chip.clave) {
+          <span class="chip" [attr.data-chip]="chip.clave">{{ chip.texto }}</span>
+        } @empty {
+          <span class="chip chip--vacio">Sin filtros adicionales</span>
+        }
+      </div>
+
+      @for (aviso of ok.avisos; track aviso) {
+        <p class="nota" data-dato="aviso">
+          <fs-icono nombre="alerta" [tam]="20" />
+          {{ aviso }}
+        </p>
+      }
+
+      @if (filtrosDelTipo(); as filtros) {
+        @if (hayFiltrosEditables()) {
+          <div class="entendi__filtros">
+            <h3>Ajusta los filtros</h3>
+            <app-filtros-reporte
+              [solicitud]="ok.solicitud"
+              [inicial]="inicial()"
+              [filtros]="filtros"
+              [sucursales]="sucursales()"
+              [categorias]="categorias()"
+              [sucursalFija]="sucursalFija()"
+              [deshabilitado]="!habilitado() || bloqueoLimite()"
+              [ocupado]="ocupado() !== null"
+              (actualizar)="actualizar($event)"
+              (restablecer)="restablecer()"
+            />
+          </div>
+        }
+      } @else {
+        <p class="nota" data-dato="sin-filtros-editables">
+          Los filtros de este reporte no se pueden editar aquí. Escribe un pedido nuevo para cambiarlos.
+        </p>
+      }
+    </section>
+
+    <app-resultado-reporte
+      [reporte]="ok.reporte"
+      [solicitud]="ok.solicitud"
+      [narrativa]="ok.narrativa"
+      [exportando]="exportando()"
+      [errorExportacion]="errorExportacion()"
+      [deshabilitado]="!habilitado()"
+      (exportar)="exportar($event)"
+    />
+  </div>
+}

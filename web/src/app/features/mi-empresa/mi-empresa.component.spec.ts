@@ -246,7 +246,7 @@ describe('MiEmpresaComponent', () => {
       const proximas = filas()
         .filter((f) => f.querySelector('.me-proximamente'))
         .map((f) => f.dataset['funcion']);
-      expect(proximas).toEqual(['operacion_offline', 'analitica_ml', 'copias_seguridad']);
+      expect(proximas).toEqual(['copias_seguridad']);
       // Siguen figurando como incluidas: lo que dice el plan no se toca.
       expect(html().querySelectorAll('.me-funcion--bloqueada').length).toBe(0);
       expect(html().querySelector('[data-funcion="reportes_ia"] .me-proximamente')).toBeNull();

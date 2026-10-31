@@ -1,0 +1,144 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+
+.analizados {
+  margin: 0 0 var(--fs-espacio-3);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.aviso {
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.anillo-zona {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-8);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-4);
+}
+
+.anillo {
+  flex: 0 0 240px;
+  width: 240px;
+  max-width: 100%;
+}
+
+.leyenda {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-2);
+    flex-wrap: wrap;
+  }
+}
+
+.muestra {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--fs-borde-fuerte);
+}
+
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--fs-espacio-4);
+}
+
+.tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-3);
+  padding: var(--fs-espacio-4);
+  background: var(--fs-fondo);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.tarjeta__cab {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+  }
+}
+
+.tarjeta__descripcion,
+.tarjeta__accion {
+  margin: 0;
+  font-size: 14px;
+}
+
+.cifras {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fs-espacio-2) var(--fs-espacio-3);
+  margin: 0;
+
+  dt {
+    font-size: 12px;
+    color: var(--fs-texto-tenue);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
+
+.lectura {
+  margin-top: var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-fondo);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  h3 {
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 14px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+    font-size: 14px;
+  }
+}
+
+.calculo {
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--fs-toque);
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--fs-texto);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+  }
+}

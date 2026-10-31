@@ -1,0 +1,162 @@
+<p-confirmdialog />
+
+<div class="fs-pagina-encabezado">
+  <div>
+    <span class="fs-eyebrow">Inteligencia</span>
+    <h1>Analítica</h1>
+    <p>Qué se espera vender, cómo se agrupan tus clientes y qué categorías podrían agotarse, calculado con Machine Learning.</p>
+  </div>
+  <div class="cabecera-acciones">
+    <button
+      type="button"
+      class="fs-btn fs-btn--primario"
+      data-accion="entrenar"
+      [disabled]="!puedeEntrenar()"
+      [attr.aria-busy]="entrenando()"
+      (click)="pedirEntrenar()"
+    >
+      <fs-icono nombre="refrescar" [tam]="24" [class.giro]="entrenando()" />
+      {{ entrenando() ? 'Entrenando…' : hayEntrenado() ? 'Reentrenar' : 'Entrenar modelos' }}
+    </button>
+  </div>
+</div>
+
+<!-- Siempre visible: los datos de esta demostración son sintéticos -->
+<aside class="demo" role="note" data-aviso="datos-sinteticos">
+  <fs-icono nombre="advertencia" [tam]="24" />
+  <p>
+    <strong>Datos de demostración:</strong> en esta demostración el historial de ventas es sintético; los modelos aprenden los
+    patrones con que se generó, no el comportamiento de clientes reales.
+  </p>
+</aside>
+
+@if (sinConexion()) {
+  <div class="fs-aviso aviso-conexion" role="status" data-aviso="sin-conexion">
+    <fs-icono nombre="advertencia" [tam]="24" />
+    <span>La analítica necesita conexión a Internet. Cuando vuelva, se actualiza sola.</span>
+  </div>
+}
+
+@switch (bloqueo()) {
+  @case ('plan') {
+    <section class="bloqueo" role="status" data-bloqueo="plan">
+      <fs-icono nombre="candado" [tam]="36" />
+      <div class="bloqueo__texto">
+        <h2>Tu plan no incluye la analítica con Machine Learning</h2>
+        <p>Con el plan Profesional puedes ver la predicción de demanda, los grupos de clientes y las alertas de reposición.</p>
+        <div class="bloqueo__acciones">
+          <a class="fs-btn fs-btn--primario fs-btn--sm" routerLink="/mi-empresa" data-accion="ver-plan">Ver mi plan</a>
+          <a class="fs-btn fs-btn--secundario fs-btn--sm" routerLink="/reportes" data-accion="ir-reportes">Ir a Reportes</a>
+        </div>
+      </div>
+    </section>
+  }
+  @case ('alcance') {
+    <section class="bloqueo" role="status" data-bloqueo="alcance">
+      <fs-icono nombre="candado" [tam]="36" />
+      <div class="bloqueo__texto">
+        <h2>La analítica es solo para administradores de la empresa</h2>
+        <p>
+          Estos análisis son de toda la empresa, y tu usuario está asignado a una sucursal. Pídele a un administrador que los consulte,
+          o mira las ventas, el inventario y las reservas de tu sucursal en Reportes.
+        </p>
+        <div class="bloqueo__acciones">
+          <a class="fs-btn fs-btn--primario fs-btn--sm" routerLink="/reportes" data-accion="ir-reportes">Ir a Reportes</a>
+        </div>
+      </div>
+    </section>
+  }
+}
+
+<!-- Estado de los tres modelos -->
+@if (bloqueo() === null) {
+  <section class="modelos" aria-labelledby="titulo-modelos" data-seccion="modelos">
+    <h2 id="titulo-modelos">Estado de los modelos</h2>
+    @if (estado(); as e) {
+      <ul class="modelos__lista">
+        @for (m of modelos(); track m.tipo) {
+          <li class="modelo" [attr.data-modelo]="m.tipo" [attr.data-modelo-estado]="m.estado">
+            <span class="fs-chip etiqueta" [class]="m.clase" data-modelo-etiqueta>
+              <fs-icono [nombre]="m.icono" [tam]="20" />
+              {{ m.etiqueta }}
+            </span>
+            <div class="modelo__texto">
+              <strong>{{ m.titulo }}</strong>
+              @if (m.detalle) {
+                <span class="fs-num tenue" data-modelo-detalle>{{ m.detalle }}</span>
+              }
+              <span class="tenue" data-modelo-mensaje>{{ m.mensaje }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+    } @else if (errorEstado(); as mensaje) {
+      <div class="modelos__error" role="alert" data-estado="error-estado">
+        <fs-icono nombre="alerta" [tam]="24" />
+        <span>No pudimos leer el estado de los modelos. {{ mensaje }}</span>
+        <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="reintentar-estado" (click)="cargarEstado()">
+          Reintentar
+        </button>
+      </div>
+    } @else {
+      <p class="tenue" role="status" data-estado="cargando-estado">Leyendo el estado de los modelos…</p>
+    }
+  </section>
+}
+
+<!-- Horizonte: lo comparten la predicción y la reposición -->
+<div class="horizonte">
+  <span id="etiqueta-horizonte" class="horizonte__etiqueta">Mirar hacia adelante:</span>
+  <p-selectbutton
+    [options]="horizontes"
+    optionLabel="etiqueta"
+    optionValue="valor"
+    [allowEmpty]="false"
+    ariaLabelledBy="etiqueta-horizonte"
+    [disabled]="!activo()"
+    [ngModel]="semanas()"
+    (ngModelChange)="cambiarSemanas($event)"
+  />
+</div>
+
+<div class="bloques">
+  <app-widget-demanda
+    [semanas]="semanas()"
+    [recarga]="recarga()"
+    [activo]="activo()"
+    [entrenando]="entrenando()"
+    (entrenar)="pedirEntrenar()"
+    (bloqueado)="alBloquear($event)"
+    (cargada)="demanda.set($event)"
+  />
+  <app-widget-segmentos
+    [recarga]="recarga()"
+    [activo]="activo()"
+    [entrenando]="entrenando()"
+    (entrenar)="pedirEntrenar()"
+    (bloqueado)="alBloquear($event)"
+    (cargada)="segmentos.set($event)"
+  />
+  <app-widget-metricas [demanda]="demanda()" [segmentos]="segmentos()" [activo]="activo()" />
+  <app-widget-anomalias
+    [recarga]="recarga()"
+    [activo]="activo()"
+    [entrenando]="entrenando()"
+    (entrenar)="pedirEntrenar()"
+    (bloqueado)="alBloquear($event)"
+  />
+  <app-widget-reposicion
+    [semanas]="semanas()"
+    [recarga]="recarga()"
+    [activo]="activo()"
+    [entrenando]="entrenando()"
+    (entrenar)="pedirEntrenar()"
+    (bloqueado)="alBloquear($event)"
+  />
+</div>
+
+<a class="enlace-reportes" routerLink="/reportes" data-accion="ver-reportes">
+  <fs-icono nombre="grafico" [tam]="24" />
+  <span>Ver ventas, inventario y reservas</span>
+  <fs-icono nombre="flecha-derecha" [tam]="24" />
+</a>

@@ -108,7 +108,7 @@ interface FilaFuncion extends DescripcionFuncion {
 }
 
 /** Funcionalidades del plan que aún no existen (analítica ML, trabajo sin conexión, copias de seguridad). */
-const FUNCIONES_PROXIMAMENTE: ReadonlySet<string> = new Set(['operacion_offline', 'analitica_ml', 'copias_seguridad']);
+const FUNCIONES_PROXIMAMENTE: ReadonlySet<string> = new Set(['copias_seguridad']);
 
 /**
  * "Mi empresa": pantalla del administrador de cada empresa. Muestra su plan, los

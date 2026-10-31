@@ -1,0 +1,103 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+
+:host ::ng-deep .p-select {
+  min-height: var(--fs-toque-barra);
+  min-width: 220px;
+  align-items: center;
+}
+
+.resumen {
+  margin: 0 0 var(--fs-espacio-3);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fs-texto);
+}
+
+.aviso {
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.grafico {
+  position: relative;
+  min-height: 320px;
+}
+
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fs-espacio-2) var(--fs-espacio-6);
+  margin: var(--fs-espacio-3) 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--fs-espacio-2);
+  }
+}
+
+.muestra {
+  display: inline-block;
+  width: 28px;
+  height: 0;
+  border-top: 3px solid var(--fs-acento);
+
+  &--prediccion {
+    border-top-style: dashed;
+  }
+
+  &--rango {
+    height: 12px;
+    border-top: 0;
+    background: color-mix(in srgb, var(--fs-acento) 16%, transparent);
+    border-radius: var(--fs-radio-sm);
+  }
+}
+
+.lectura {
+  margin-top: var(--fs-espacio-3);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-fondo);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  h3 {
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 14px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+    font-size: 14px;
+  }
+
+  li + li {
+    margin-top: var(--fs-espacio-1);
+  }
+}
+
+.calculo {
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--fs-toque);
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--fs-texto);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+  }
+}

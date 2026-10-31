@@ -10,7 +10,7 @@ import { MiSuscripcion } from '../core/models/plan.models';
 import { AlmacenOfflineService } from '../core/offline/almacen-offline.service';
 import type { OperacionOffline } from '../core/offline/offline.models';
 import { PlanService } from '../core/plan.service';
-import { ITEMS_FIN, ITEMS_INICIO, ItemMenu, LayoutComponent } from './layout.component';
+import { ITEMS_INICIO, ItemMenu, LayoutComponent } from './layout.component';
 
 const API = environment.apiUrl;
 
@@ -51,7 +51,7 @@ const PERMISOS_ADMIN = [
 ];
 
 // El orden del menú de antes. Esta lista NO se reordena: los ítems nuevos van al final de su lista.
-const INICIO_ESPERADO = ['Dashboard', 'Reportes'];
+const INICIO_ESPERADO = ['Dashboard', 'Reportes', 'Reportes con IA', 'Analítica'];
 const GRUPOS_ESPERADOS: Record<string, string[]> = {
   Organización: ['Usuarios', 'Roles', 'Empleados', 'Ciudades', 'Sucursales', 'Auditoría'],
   Catálogo: ['Productos', 'Categorías', 'Tallas', 'Colores', 'Temporadas', 'Colecciones'],
@@ -166,19 +166,9 @@ describe('LayoutComponent', () => {
   });
 
   describe('funcionalidades que el plan no incluye', () => {
-    const itemIa: ItemMenu = { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', funcion: 'reportes_ia' };
+    // "Reportes con IA" y "Analítica" (E17) y "Sincronización" (E16 parte 2) son ítems reales del menú.
 
-    beforeEach(() => {
-      // Una etapa siguiente (E17) agrega este ítem: se simula al final de la lista.
-      // "Sincronización" (E16 parte 2) ya es real: está en el grupo Ventas y se prueba aparte.
-      ITEMS_FIN.push(itemIa);
-    });
-
-    afterEach(() => {
-      ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemIa), 1);
-    });
-
-    it('con plan Básico sale deshabilitado, en su lugar, con candado y enlace a Mi empresa', () => {
+    it('con plan Básico salen deshabilitados, en su lugar, con candado y enlace a Mi empresa', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
       plan.suscripcion.set(suscripcion(['operacion_offline']));
       const { fixture, el } = crear();
@@ -186,8 +176,9 @@ describe('LayoutComponent', () => {
 
       const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
       const textos = enlaces.map((a) => (a.textContent ?? '').trim());
-      // Mismo lugar y orden: después de "Mi empresa", en el orden en que se agregaron.
-      expect(textos.slice(-3)).toEqual(['Mi empresa', 'Auditoría', 'Reportes con IA']);
+      // Mismo lugar y orden: justo después de "Reportes".
+      const posicion = textos.indexOf('Reportes');
+      expect(textos.slice(posicion, posicion + 3)).toEqual(['Reportes', 'Reportes con IA', 'Analítica']);
 
       const ia = enlaces.find((a) => (a.textContent ?? '').includes('Reportes con IA')) as HTMLElement;
       expect(ia.classList).toContain('layout__enlace--deshabilitado');
@@ -196,6 +187,16 @@ describe('LayoutComponent', () => {
       expect(ia.querySelector('.layout__candado')).not.toBeNull();
       expect(ia.getAttribute('title')).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
 
+      const analitica = enlaces.find((a) => (a.textContent ?? '').includes('Analítica')) as HTMLElement;
+      expect(analitica.classList).toContain('layout__enlace--deshabilitado');
+      expect(analitica.getAttribute('href')).toBe('/mi-empresa?ver=funcionalidades');
+      expect(analitica.querySelector('.layout__candado')).not.toBeNull();
+
+      // "Reportes" (convencional) no depende del plan.
+      const reportes = enlaces.find((a) => (a.textContent ?? '').trim() === 'Reportes') as HTMLElement;
+      expect(reportes.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(reportes.getAttribute('href')).toBe('/reportes');
+
       // Lo que el plan sí incluye es un enlace normal.
       const offline = enlaces.find((a) => (a.textContent ?? '').includes('Sincronización')) as HTMLElement;
       expect(offline.classList).not.toContain('layout__enlace--deshabilitado');
@@ -203,17 +204,32 @@ describe('LayoutComponent', () => {
       fixture.destroy();
     });
 
-    it('con plan Profesional el ítem es normal', () => {
+    it('con plan Profesional los ítems son normales', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
-      plan.suscripcion.set(suscripcion(['reportes_ia', 'operacion_offline'], 'Profesional'));
+      plan.suscripcion.set(suscripcion(['reportes_ia', 'analitica_ml', 'operacion_offline'], 'Profesional'));
       const { fixture, el } = crear();
 
-      const ia = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
-        (a.textContent ?? '').includes('Reportes con IA'),
-      ) as HTMLElement;
+      const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
+      const ia = enlaces.find((a) => (a.textContent ?? '').includes('Reportes con IA')) as HTMLElement;
       expect(ia.classList).not.toContain('layout__enlace--deshabilitado');
       expect(ia.getAttribute('href')).toBe('/reportes-ia');
       expect(ia.querySelector('.layout__candado')).toBeNull();
+      const analitica = enlaces.find((a) => (a.textContent ?? '').includes('Analítica')) as HTMLElement;
+      expect(analitica.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(analitica.getAttribute('href')).toBe('/analitica');
+      fixture.destroy();
+    });
+
+    it('un plan con reportes con IA pero sin analítica deshabilita solo la analítica', () => {
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set(suscripcion(['reportes_ia'], 'Estándar'));
+      const { fixture, el } = crear();
+
+      const enlaces = Array.from(el.querySelectorAll('nav a.layout__enlace'));
+      const ia = enlaces.find((a) => (a.textContent ?? '').includes('Reportes con IA')) as HTMLElement;
+      const analitica = enlaces.find((a) => (a.textContent ?? '').includes('Analítica')) as HTMLElement;
+      expect(ia.classList).not.toContain('layout__enlace--deshabilitado');
+      expect(analitica.classList).toContain('layout__enlace--deshabilitado');
       fixture.destroy();
     });
 
@@ -306,7 +322,7 @@ describe('LayoutComponent', () => {
           'Pendientes de envío',
           'Sincronización',
         ],
-        Análisis: ['Reportes'],
+        Análisis: ['Reportes', 'Reportes con IA', 'Analítica'],
         Organización: ['Sucursales', 'Ciudades', 'Empleados', 'Usuarios', 'Roles', 'Mi empresa', 'Auditoría'],
       });
       fixture.destroy();
@@ -670,23 +686,17 @@ describe('LayoutComponent', () => {
     });
 
     it('el motivo de una opción deshabilitada por el plan se lee con aria-describedby, no solo con title', () => {
-      const itemIa: ItemMenu = { etiqueta: 'Reportes con IA', icono: 'destellos', ruta: '/reportes-ia', funcion: 'reportes_ia' };
-      ITEMS_FIN.push(itemIa);
-      try {
-        iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
-        plan.suscripcion.set(suscripcion([]));
-        const { fixture, el } = crear();
-        fixture.detectChanges();
+      iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
+      plan.suscripcion.set(suscripcion([]));
+      const { fixture, el } = crear();
+      fixture.detectChanges();
 
-        const enlace = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
-          (a.textContent ?? '').includes('Reportes con IA'),
-        ) as HTMLElement;
-        const motivo = el.querySelector(`#${enlace.getAttribute('aria-describedby')}`);
-        expect(motivo?.textContent).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
-        fixture.destroy();
-      } finally {
-        ITEMS_FIN.splice(ITEMS_FIN.indexOf(itemIa), 1);
-      }
+      const enlace = Array.from(el.querySelectorAll('nav a.layout__enlace')).find((a) =>
+        (a.textContent ?? '').includes('Reportes con IA'),
+      ) as HTMLElement;
+      const motivo = el.querySelector(`#${enlace.getAttribute('aria-describedby')}`);
+      expect(motivo?.textContent).toBe('Tu plan Básico no incluye esto. Más info en Mi empresa.');
+      fixture.destroy();
     });
 
     it('un administrador ve el logo de su empresa en la marca; sin logo queda el monograma', () => {
@@ -820,6 +830,14 @@ describe('LayoutComponent', () => {
   });
 
   it('exporta las listas de ítems (las usan las pruebas de orden)', () => {
-    expect(ITEMS_INICIO.length).toBe(2);
+    expect(ITEMS_INICIO.length).toBe(4);
+  });
+
+  it('los ítems de la E17 van al final de Análisis, sin cambiar el orden previo, y dependen del plan', () => {
+    expect(ITEMS_INICIO.map((i) => i.etiqueta)).toEqual(['Dashboard', 'Reportes', 'Reportes con IA', 'Analítica']);
+    const ia = ITEMS_INICIO.find((i) => i.ruta === '/reportes-ia');
+    const analitica = ITEMS_INICIO.find((i) => i.ruta === '/analitica');
+    expect(ia).toMatchObject({ permiso: 'reportes.ver', funcion: 'reportes_ia' });
+    expect(analitica).toMatchObject({ permiso: 'reportes.ver', funcion: 'analitica_ml' });
   });
 });

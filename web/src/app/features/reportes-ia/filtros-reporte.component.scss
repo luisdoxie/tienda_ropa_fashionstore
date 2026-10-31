@@ -1,0 +1,104 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-giro;
+
+.filtros-reporte__campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--fs-espacio-4);
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+
+  &--doble {
+    grid-column: span 2;
+  }
+}
+
+.campo__etiqueta {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fs-texto);
+}
+
+.campo__ayuda {
+  font-size: 12px;
+  color: var(--fs-texto-tenue);
+}
+
+.campo__par {
+  display: flex;
+  gap: var(--fs-espacio-2);
+  flex-wrap: wrap;
+
+  > * {
+    flex: 1 1 150px;
+  }
+}
+
+.chips {
+  display: flex;
+  gap: var(--fs-espacio-2);
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: var(--fs-toque);
+}
+
+.chip {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--fs-neutro-texto);
+  background: var(--fs-neutro-suave);
+  border-radius: var(--fs-radio-md);
+
+  &--vacio {
+    color: var(--fs-texto-tenue);
+    background: transparent;
+    border: 1px dashed var(--fs-campo-borde);
+  }
+}
+
+.filtros-reporte__error {
+  margin: var(--fs-espacio-3) 0 0;
+  font-size: 13px;
+  color: var(--fs-advertencia);
+}
+
+.filtros-reporte__acciones {
+  display: flex;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-top: var(--fs-espacio-4);
+}
+
+:host ::ng-deep {
+  .campo .p-select,
+  .campo .p-multiselect,
+  .campo .p-datepicker,
+  .campo .p-inputnumber {
+    width: 100%;
+  }
+
+  .campo .p-select,
+  .campo .p-multiselect {
+    min-height: var(--fs-toque-barra);
+    align-items: center;
+  }
+
+  .campo .p-inputnumber-input,
+  .campo .p-datepicker .p-inputtext {
+    min-height: var(--fs-toque-barra);
+  }
+}
+
+@media (max-width: 640px) {
+  .campo--doble {
+    grid-column: auto;
+  }
+}

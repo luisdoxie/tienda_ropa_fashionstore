@@ -287,6 +287,19 @@ export const routes: Routes = [
           import('./features/reportes/reportes.component').then((m) => m.ReportesComponent),
       },
       {
+        // Reportes en lenguaje natural (E17). El plan sin la función ve la pantalla en modo explicativo.
+        path: 'reportes-ia',
+        canActivate: [permisoGuard('reportes.ver')],
+        loadComponent: () =>
+          import('./features/reportes-ia/reportes-ia.component').then((m) => m.ReportesIaComponent),
+      },
+      {
+        // Dashboard del Machine Learning (E17b): solo el administrador de una empresa con el plan que lo incluye.
+        path: 'analitica',
+        canActivate: [permisoGuard('reportes.ver')],
+        loadComponent: () => import('./features/analitica/analitica.component').then((m) => m.AnaliticaComponent),
+      },
+      {
         path: 'caja',
         canActivate: [permisoGuard('ventas.presencial')],
         loadComponent: () => import('./features/caja/caja.component').then((m) => m.CajaComponent),

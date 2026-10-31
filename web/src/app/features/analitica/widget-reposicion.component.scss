@@ -1,0 +1,58 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+
+.resumen {
+  margin: 0 0 var(--fs-espacio-3);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.aviso {
+  margin-bottom: var(--fs-espacio-3);
+}
+
+.tabla-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+}
+
+.agota {
+  display: block;
+  font-size: 12px;
+  color: var(--fs-advertencia);
+}
+
+.orientativo {
+  font-size: 12px;
+  color: var(--fs-texto-tenue);
+}
+
+.etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  font-weight: 600;
+}
+
+.calculo {
+  margin-top: var(--fs-espacio-3);
+  font-size: 13px;
+  color: var(--fs-texto-tenue);
+
+  summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--fs-toque);
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--fs-texto);
+  }
+
+  ul {
+    margin: 0;
+    padding-left: var(--fs-espacio-6);
+  }
+}

@@ -1,0 +1,103 @@
+<app-bloque-analitica
+  data-bloque="anomalias"
+  titulo="Días de ventas inusuales"
+  icono="alerta"
+  subtitulo="Días en que una sucursal vendió mucho más o mucho menos de lo esperado para ese día de la semana."
+  [fase]="carga.fase()"
+  [mensaje]="carga.mensaje()"
+  [entrenando]="entrenando()"
+  [deshabilitado]="!activo()"
+  (entrenar)="entrenar.emit()"
+  (reintentar)="cargar()"
+>
+  <div controles>
+    <p-select
+      inputId="analitica-periodo"
+      [options]="periodos"
+      optionLabel="etiqueta"
+      optionValue="valor"
+      ariaLabel="Periodo"
+      [disabled]="!activo()"
+      [ngModel]="dias()"
+      (ngModelChange)="cambiarDias($event)"
+    />
+  </div>
+
+  @if (carga.datos(); as d) {
+    <p class="totales fs-num" data-anomalias="totales">
+      {{ totales() }} en los últimos {{ d.dias }} días.
+    </p>
+
+    <div class="fs-aviso aviso" role="note" data-anomalias="aviso-no-error">Un día inusual no es necesariamente un error.</div>
+    @for (aviso of avisos(); track $index) {
+      <div class="fs-aviso aviso" role="status" data-anomalias="aviso">{{ aviso }}</div>
+    }
+
+    @if (filas().length === 0) {
+      <div class="vacio" data-anomalias="vacio">
+        <p>No se detectaron días inusuales en este periodo.</p>
+      </div>
+    } @else {
+      <div class="tabla-scroll">
+        <p-table
+          [value]="filas()"
+          [paginator]="filas().length > filasPorPagina"
+          [rows]="filasPorPagina"
+          styleClass="p-datatable-sm"
+          [tableStyle]="{ 'min-width': '720px' }"
+        >
+          <ng-template #header>
+            <tr>
+              <th>Fecha</th>
+              <th>Sucursal</th>
+              <th class="num">Ventas del día</th>
+              <th class="num">Esperado</th>
+              <th>Desviación</th>
+              <th>Severidad</th>
+            </tr>
+          </ng-template>
+          <ng-template #body let-a>
+            @let sev = vistaSeveridad(a.severidad);
+            <tr [attr.data-anomalia]="a.fecha + '|' + a.sucursal_id">
+              <td class="fs-num">{{ fecha(a.fecha) }}</td>
+              <td>{{ a.sucursal }}</td>
+              <td class="num">{{ moneda(a.total_ventas) }}</td>
+              <td class="num">{{ moneda(a.esperado) }}</td>
+              <td>
+                <span class="desviacion fs-num" [class.desviacion--mas]="a.desviacion_pct >= 0" [class.desviacion--menos]="a.desviacion_pct < 0" data-desviacion>
+                  {{ textoDesviacion(a.desviacion_pct) }}
+                  <span class="desviacion__texto">{{ a.desviacion_pct >= 0 ? 'vendió de más' : 'vendió de menos' }}</span>
+                </span>
+              </td>
+              <td>
+                <span class="fs-chip etiqueta" [class]="sev.clase" [attr.data-severidad]="a.severidad">
+                  <fs-icono [nombre]="sev.icono" [tam]="20" />
+                  {{ sev.texto }}
+                </span>
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
+    }
+
+    @if (d.interpretacion.length) {
+      <div class="lectura" data-anomalias="interpretacion">
+        <h3>Cómo leer esta tabla</h3>
+        <ul>
+          @for (frase of d.interpretacion; track $index) {
+            <li>{{ frase }}</li>
+          }
+        </ul>
+      </div>
+    }
+    <details class="calculo" data-anomalias="supuestos">
+      <summary>Cómo se calcula</summary>
+      <ul>
+        @for (supuesto of d.supuestos; track $index) {
+          <li>{{ supuesto }}</li>
+        }
+      </ul>
+    </details>
+  }
+</app-bloque-analitica>

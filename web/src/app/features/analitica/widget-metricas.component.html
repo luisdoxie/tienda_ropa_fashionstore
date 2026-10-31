@@ -1,0 +1,40 @@
+<app-bloque-analitica
+  data-bloque="metricas"
+  titulo="Qué tan bien funcionan los modelos"
+  icono="escudo-check"
+  subtitulo="Las cifras se muestran tal cual, también las flojas. Con pocos datos es normal que algunas salgan débiles."
+  fase="listo"
+  [deshabilitado]="!activo()"
+>
+  @if (fichas().length > 0) {
+    <div class="fichas" data-metricas="fichas">
+      @for (m of fichas(); track m.nombre) {
+        <article class="ficha" [attr.data-metrica]="m.nombre">
+          <header class="ficha__cab">
+            <h3>{{ m.titulo }}</h3>
+            <button
+              type="button"
+              class="ficha__ayuda"
+              [pTooltip]="m.ayuda"
+              tooltipPosition="top"
+              [attr.aria-label]="'Qué significa: ' + m.titulo + '. ' + m.ayuda"
+            >
+              <i class="pi pi-question-circle" aria-hidden="true"></i>
+            </button>
+          </header>
+          <p class="ficha__valor fs-num" data-metrica-valor>{{ m.valorTexto }}</p>
+          @if (m.calidad !== null && m.etiqueta !== null) {
+            @let vista = vistaCalidad(m.calidad);
+            <span class="fs-chip etiqueta" [class]="vista.clase" data-metrica-calidad>
+              <fs-icono [nombre]="vista.icono" [tam]="20" />
+              {{ m.etiqueta }}
+            </span>
+          }
+          <p class="ficha__frase" data-metrica-frase>{{ m.frase }}</p>
+        </article>
+      }
+    </div>
+  } @else {
+    <p class="vacio-metricas" data-metricas="vacio">Las métricas aparecen cuando hay modelos entrenados.</p>
+  }
+</app-bloque-analitica>

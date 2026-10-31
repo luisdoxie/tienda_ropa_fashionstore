@@ -1,0 +1,69 @@
+<app-bloque-analitica
+  data-bloque="demanda"
+  titulo="Predicción de demanda"
+  icono="grafico"
+  subtitulo="Unidades que se espera vender por semana, según lo que se vendió antes."
+  [fase]="carga.fase()"
+  [mensaje]="carga.mensaje()"
+  [entrenando]="entrenando()"
+  [deshabilitado]="!activo()"
+  (entrenar)="entrenar.emit()"
+  (reintentar)="cargar()"
+>
+  <div controles>
+    @if (opciones().length > 0) {
+      <p-select
+        inputId="analitica-categoria"
+        [options]="opciones()"
+        optionLabel="etiqueta"
+        optionValue="id"
+        ariaLabel="Categoría"
+        [disabled]="!activo()"
+        [ngModel]="categoriaActual()"
+        (ngModelChange)="elegirCategoria($event)"
+      />
+    }
+  </div>
+
+  @if (vista()) {
+    <p class="resumen" data-demanda="resumen">{{ resumen() }}</p>
+
+    @for (aviso of avisos(); track $index) {
+      <div class="fs-aviso aviso" role="status" data-demanda="aviso">{{ aviso }}</div>
+    }
+
+    @if (grafico(); as g) {
+      <div class="grafico" role="img" [attr.aria-label]="g.resumen" data-demanda="grafico">
+        <p-chart type="line" [data]="g.data" [options]="g.options" height="320px" />
+      </div>
+    }
+
+    <ul class="leyenda" aria-label="Qué significa cada línea">
+      <li><span class="muestra muestra--real" aria-hidden="true"></span>Ventas reales</li>
+      <li><span class="muestra muestra--prediccion" aria-hidden="true"></span>Predicción (línea punteada)</li>
+      <li><span class="muestra muestra--rango" aria-hidden="true"></span>Rango estimado</li>
+    </ul>
+
+    @if (carga.datos(); as d) {
+      @if (d.interpretacion.length) {
+        <div class="lectura" data-demanda="interpretacion">
+          <h3>Cómo leer este gráfico</h3>
+          <ul>
+            @for (frase of d.interpretacion; track $index) {
+              <li>{{ frase }}</li>
+            }
+          </ul>
+        </div>
+      }
+      <details class="calculo" data-demanda="supuestos">
+        <summary>Cómo se calcula</summary>
+        <ul>
+          <li>El rango estimado va del valor previsto menos al previsto más el error típico del modelo. Es una referencia, no una garantía.</li>
+          @for (supuesto of d.supuestos; track $index) {
+            <li>{{ supuesto }}</li>
+          }
+        </ul>
+      </details>
+    }
+  }
+</app-bloque-analitica>

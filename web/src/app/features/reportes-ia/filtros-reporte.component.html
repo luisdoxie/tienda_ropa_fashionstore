@@ -1,0 +1,205 @@
+<form class="filtros-reporte" (ngSubmit)="enviar()" aria-label="Filtros del reporte" novalidate>
+  <div class="filtros-reporte__campos">
+    @for (campo of campos(); track campo.clave) {
+      <div class="campo" [attr.data-campo]="campo.clave" [class.campo--doble]="campo.clave === 'periodo'">
+        <span class="campo__etiqueta" [attr.title]="campo.definicion.descripcion">{{ etiquetas[campo.clave] }}</span>
+
+        @switch (campo.clave) {
+          @case ('periodo') {
+            <div class="campo__par">
+              <p-datepicker
+                data-filtro="desde"
+                dateFormat="dd/mm/yy"
+                placeholder="Desde"
+                ariaLabel="Fecha desde"
+                appendTo="body"
+                [showIcon]="true"
+                [showClear]="!campo.definicion.obligatorio"
+                [readonlyInput]="true"
+                [maxDate]="form().hasta"
+                [disabled]="bloqueado()"
+                [ngModel]="form().desde"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="poner('desde', $event)"
+              />
+              <p-datepicker
+                data-filtro="hasta"
+                dateFormat="dd/mm/yy"
+                placeholder="Hasta"
+                ariaLabel="Fecha hasta"
+                appendTo="body"
+                [showIcon]="true"
+                [showClear]="!campo.definicion.obligatorio"
+                [readonlyInput]="true"
+                [minDate]="form().desde"
+                [disabled]="bloqueado()"
+                [ngModel]="form().hasta"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="poner('hasta', $event)"
+              />
+            </div>
+          }
+          @case ('sucursales') {
+            @if (editable('sucursales')) {
+              <p-multiselect
+                data-filtro="sucursales"
+                [options]="sucursales() ?? []"
+                display="chip"
+                placeholder="Todas las sucursales"
+                ariaLabel="Sucursales"
+                appendTo="body"
+                [selectionLimit]="maxNombres"
+                [showToggleAll]="false"
+                [filter]="(sucursales()?.length ?? 0) > 8"
+                [disabled]="bloqueado()"
+                [ngModel]="form().sucursales"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="poner('sucursales', $event ?? [])"
+              />
+              <span class="campo__ayuda">Hasta {{ maxNombres }}.</span>
+            } @else {
+              <ng-container *ngTemplateOutlet="soloLectura; context: { lista: form().sucursales, vacio: 'Todas las sucursales' }" />
+              @if (sucursalFija()) {
+                <span class="campo__ayuda">Tu usuario ve solo su sucursal.</span>
+              }
+            }
+          }
+          @case ('categorias') {
+            @if (editable('categorias')) {
+              <p-multiselect
+                data-filtro="categorias"
+                [options]="categorias() ?? []"
+                display="chip"
+                placeholder="Todas las categorías"
+                ariaLabel="Categorías"
+                appendTo="body"
+                [selectionLimit]="maxNombres"
+                [showToggleAll]="false"
+                [filter]="(categorias()?.length ?? 0) > 8"
+                [disabled]="bloqueado()"
+                [ngModel]="form().categorias"
+                [ngModelOptions]="{ standalone: true }"
+                (ngModelChange)="poner('categorias', $event ?? [])"
+              />
+              <span class="campo__ayuda">Hasta {{ maxNombres }}.</span>
+            } @else {
+              <ng-container *ngTemplateOutlet="soloLectura; context: { lista: form().categorias, vacio: 'Todas las categorías' }" />
+            }
+          }
+          @case ('productos') {
+            <ng-container *ngTemplateOutlet="soloLectura; context: { lista: form().productos, vacio: 'Todos los productos' }" />
+            <span class="campo__ayuda">Para cambiar el producto, escribe un pedido nuevo.</span>
+          }
+          @case ('canal') {
+            <p-select
+              data-filtro="canal"
+              optionLabel="label"
+              optionValue="value"
+              ariaLabel="Canal"
+              appendTo="body"
+              [options]="opciones(campo)"
+              [disabled]="bloqueado()"
+              [ngModel]="form().canal"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="poner('canal', $event)"
+            />
+          }
+          @case ('agrupacion') {
+            <p-select
+              data-filtro="agrupacion"
+              optionLabel="label"
+              optionValue="value"
+              ariaLabel="Agrupación"
+              appendTo="body"
+              [options]="opciones(campo)"
+              [disabled]="bloqueado()"
+              [ngModel]="form().agrupacion"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="poner('agrupacion', $event)"
+            />
+          }
+          @case ('orden') {
+            <p-select
+              data-filtro="orden"
+              optionLabel="label"
+              optionValue="value"
+              ariaLabel="Orden"
+              appendTo="body"
+              [options]="opciones(campo)"
+              [disabled]="bloqueado()"
+              [ngModel]="form().orden"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="poner('orden', $event)"
+            />
+          }
+          @case ('limite') {
+            <p-inputnumber
+              data-filtro="limite"
+              inputId="filtro-limite"
+              ariaLabel="Límite de filas"
+              [showButtons]="true"
+              [useGrouping]="false"
+              [min]="campo.definicion.minimo ?? undefined"
+              [max]="campo.definicion.maximo ?? undefined"
+              [disabled]="bloqueado()"
+              [ngModel]="form().limite"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="poner('limite', $event ?? null)"
+            />
+            @if (campo.definicion.minimo !== null && campo.definicion.maximo !== null) {
+              <span class="campo__ayuda">Entre {{ campo.definicion.minimo }} y {{ campo.definicion.maximo }}.</span>
+            }
+          }
+          @case ('horizonte_semanas') {
+            <p-inputnumber
+              data-filtro="horizonte_semanas"
+              inputId="filtro-horizonte"
+              ariaLabel="Horizonte en semanas"
+              [showButtons]="true"
+              [useGrouping]="false"
+              [min]="campo.definicion.minimo ?? undefined"
+              [max]="campo.definicion.maximo ?? undefined"
+              [disabled]="bloqueado()"
+              [ngModel]="form().horizonte"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="poner('horizonte', $event ?? null)"
+            />
+            @if (campo.definicion.minimo !== null && campo.definicion.maximo !== null) {
+              <span class="campo__ayuda">Entre {{ campo.definicion.minimo }} y {{ campo.definicion.maximo }}.</span>
+            }
+          }
+        }
+      </div>
+    }
+  </div>
+
+  @if (error(); as mensaje) {
+    <p class="filtros-reporte__error" role="alert" data-estado="filtros-invalidos">{{ mensaje }}</p>
+  }
+
+  <div class="filtros-reporte__acciones">
+    <button
+      type="submit"
+      class="fs-btn fs-btn--primario fs-btn--sm"
+      data-accion="actualizar"
+      [disabled]="bloqueado() || error() !== null"
+    >
+      <fs-icono [nombre]="ocupado() ? 'refrescar' : 'check'" [tam]="20" [class.giro]="ocupado()" />
+      {{ ocupado() ? 'Actualizando…' : 'Actualizar reporte' }}
+    </button>
+    <button type="button" class="fs-btn fs-btn--secundario fs-btn--sm" data-accion="restablecer" [disabled]="bloqueado()" (click)="volver()">
+      <fs-icono nombre="deshacer" [tam]="20" />
+      Restablecer
+    </button>
+  </div>
+</form>
+
+<ng-template #soloLectura let-lista="lista" let-vacio="vacio">
+  <div class="chips">
+    @for (nombre of lista; track nombre) {
+      <span class="chip">{{ nombre }}</span>
+    } @empty {
+      <span class="chip chip--vacio">{{ vacio }}</span>
+    }
+  </div>
+</ng-template>

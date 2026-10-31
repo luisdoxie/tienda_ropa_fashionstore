@@ -1,0 +1,169 @@
+@use '../../shared/estilos/patron-bo' as *;
+
+@include bo-base;
+@include bo-texto;
+@include bo-giro;
+
+.cabecera-acciones {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+}
+
+// ---- Datos de demostración (siempre visible) -------------------------------------------------
+.demo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-3);
+  margin-bottom: var(--fs-espacio-4);
+  padding: var(--fs-espacio-3) var(--fs-espacio-4);
+  background: var(--fs-acento-suave);
+  border: 1px solid var(--fs-acento);
+  border-radius: var(--fs-radio-md);
+  font-size: 14px;
+
+  fs-icono {
+    margin-top: 1px;
+    color: var(--fs-acento);
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.aviso-conexion {
+  margin-bottom: var(--fs-espacio-4);
+}
+
+// ---- Plan o rol sin acceso ------------------------------------------------------------------------
+.bloqueo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-4);
+  margin-bottom: var(--fs-espacio-4);
+  padding: var(--fs-espacio-6);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+  box-shadow: var(--fs-sombra-sm);
+
+  fs-icono {
+    color: var(--fs-texto-tenue);
+  }
+
+  h2 {
+    margin: 0 0 var(--fs-espacio-2);
+    font-size: 18px;
+  }
+
+  p {
+    margin: 0;
+    max-width: 640px;
+    font-size: 14px;
+    color: var(--fs-texto-tenue);
+  }
+}
+
+.bloqueo__acciones {
+  display: flex;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-top: var(--fs-espacio-4);
+}
+
+// ---- Estado de los modelos ------------------------------------------------------------------------
+.modelos {
+  margin-bottom: var(--fs-espacio-4);
+  padding: var(--fs-espacio-4) var(--fs-espacio-6);
+  background: var(--fs-superficie);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  h2 {
+    margin: 0 0 var(--fs-espacio-3);
+    font-size: 16px;
+  }
+}
+
+.modelos__lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--fs-espacio-3) var(--fs-espacio-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.modelo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-espacio-3);
+  font-size: 14px;
+}
+
+.modelo__texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-1);
+  font-weight: 600;
+}
+
+.modelos__error {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: var(--fs-error);
+}
+
+// ---- Horizonte y bloques ---------------------------------------------------------------------------
+.horizonte {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-espacio-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--fs-espacio-4);
+}
+
+.horizonte__etiqueta {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+:host ::ng-deep .horizonte .p-togglebutton {
+  min-height: var(--fs-toque-barra);
+  min-width: var(--fs-toque-barra);
+}
+
+.bloques {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-espacio-6);
+  margin-bottom: var(--fs-espacio-6);
+}
+
+.enlace-reportes {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-espacio-2);
+  min-height: var(--fs-toque);
+  padding: 0 var(--fs-espacio-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fs-texto);
+  text-decoration: underline;
+
+  &:focus-visible {
+    outline: 2px solid var(--fs-tinta);
+    outline-offset: 2px;
+  }
+}

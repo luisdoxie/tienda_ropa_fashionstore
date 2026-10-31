@@ -78,6 +78,7 @@ export const ICONOS = {
   promociones:
     'M19 5L5 19M6 7.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0M15 16.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0',
   grafico: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  tendencia: 'M3 17l6-6 4 4 8-8M15 7h6v6',
   usuarios:
     'M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1M6.5 10a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0M20 19v-1a4 4 0 0 0-3-3.8M16 3.2a3.5 3.5 0 0 1 0 6.6',
   'ojo-tachado':

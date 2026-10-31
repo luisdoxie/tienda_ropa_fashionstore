@@ -1,0 +1,93 @@
+<app-bloque-analitica
+  data-bloque="segmentos"
+  titulo="Grupos de clientes"
+  icono="usuarios"
+  subtitulo="Tus clientes agrupados por cómo compran: cuándo compraron por última vez, cuántas veces y cuánto gastaron."
+  [fase]="carga.fase()"
+  [mensaje]="carga.mensaje()"
+  [entrenando]="entrenando()"
+  [deshabilitado]="!activo()"
+  (entrenar)="entrenar.emit()"
+  (reintentar)="cargar()"
+>
+  @if (carga.datos(); as d) {
+    <p class="analizados fs-num" data-segmentos="analizados">Clientes analizados: {{ entero(d.clientes_segmentados) }}</p>
+
+    @for (aviso of d.avisos; track $index) {
+      <div class="fs-aviso aviso" role="status" data-segmentos="aviso">{{ aviso }}</div>
+    }
+    @if (d.modelo.estado === 'desactualizado' && d.modelo.mensaje) {
+      <div class="fs-aviso aviso" role="status" data-segmentos="aviso-modelo">{{ d.modelo.mensaje }}</div>
+    }
+
+    @if (grafico(); as g) {
+      <div class="anillo-zona">
+        <div class="anillo" role="img" [attr.aria-label]="g.resumen" data-segmentos="grafico">
+          <p-chart type="doughnut" [data]="g.data" [options]="g.options" height="220px" />
+        </div>
+        <ul class="leyenda" aria-label="Clientes por grupo" data-segmentos="leyenda">
+          @for (s of g.segmentos; track s.id) {
+            <li>
+              <span class="muestra" [style.background]="color(s.nombre)" aria-hidden="true"></span>
+              <span class="fuerte">{{ s.nombre }}</span>&ngsp;<span class="fs-num tenue">{{ entero(s.clientes) }} clientes · {{ porcentaje(s.porcentaje_clientes) }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+
+    <div class="tarjetas" data-segmentos="tarjetas">
+      @for (s of d.segmentos; track s.id) {
+        <article class="tarjeta" [attr.data-segmento]="s.nombre">
+          <header class="tarjeta__cab">
+            <span class="muestra" [style.background]="color(s.nombre)" aria-hidden="true"></span>
+            <h3>{{ s.nombre }}</h3>
+          </header>
+          <p class="tarjeta__descripcion">{{ s.descripcion }}</p>
+          <dl class="cifras">
+            <div>
+              <dt>Clientes</dt>
+              <dd class="fs-num">{{ entero(s.clientes) }} ({{ porcentaje(s.porcentaje_clientes) }})</dd>
+            </div>
+            <div>
+              <dt>Última compra</dt>
+              <dd class="fs-num">hace {{ decimal(s.recencia_media_dias, 0) }} días</dd>
+            </div>
+            <div>
+              <dt>Compras por cliente</dt>
+              <dd class="fs-num">{{ decimal(s.frecuencia_media) }}</dd>
+            </div>
+            <div>
+              <dt>Gasto por cliente</dt>
+              <dd class="fs-num">{{ moneda(s.monto_medio) }}</dd>
+            </div>
+            <div>
+              <dt>Parte de las ventas</dt>
+              <dd class="fs-num">{{ porcentaje(s.porcentaje_monto) }}</dd>
+            </div>
+          </dl>
+          <p class="tarjeta__accion"><strong>Qué hacer:</strong> {{ s.accion_sugerida }}</p>
+        </article>
+      }
+    </div>
+
+    @if (d.interpretacion.length) {
+      <div class="lectura" data-segmentos="interpretacion">
+        <h3>Cómo leer este gráfico</h3>
+        <ul>
+          @for (frase of d.interpretacion; track $index) {
+            <li>{{ frase }}</li>
+          }
+        </ul>
+      </div>
+    }
+    <details class="calculo" data-segmentos="supuestos">
+      <summary>Cómo se calcula</summary>
+      <ul>
+        @for (supuesto of d.supuestos; track $index) {
+          <li>{{ supuesto }}</li>
+        }
+      </ul>
+    </details>
+  }
+</app-bloque-analitica>
