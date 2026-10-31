@@ -343,10 +343,6 @@
   color: var(--fs-tinta);
 }
 
-.home-nota {
-  margin: 24px 0 0;
-}
-
 // "Cómo funciona"
 .home-banda {
   margin-top: 48px;
@@ -411,59 +407,24 @@
 }
 
 // Planes
-.home-planes {
+.home-planes-carga {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 20px;
-  max-width: 920px;
 }
 
-.home-plan {
+.home-plan-esqueleto {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   padding: 32px;
   background: var(--fs-superficie);
-  color: var(--fs-texto);
   border: 1px solid var(--fs-borde);
   border-radius: var(--fs-radio-md);
+  pointer-events: none;
 
-  --home-plan-check: var(--fs-tinta);
-
-  &--oscuro {
-    background: var(--fs-carbon);
-    color: var(--fs-claro);
-    border-color: var(--fs-carbon);
-    --home-plan-check: var(--fs-acento-oscuro);
-  }
-}
-
-.home-plan__nombre {
-  margin: 0;
-  font-family: var(--fs-fuente-display);
-  font-stretch: 125%;
-  font-weight: 800;
-  font-size: 22px;
-  text-transform: uppercase;
-}
-
-.home-plan__items {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-
-  li {
-    display: flex;
-    gap: 12px;
-    font-size: 14px;
-    line-height: 1.4;
-  }
-
-  fs-icono {
-    color: var(--home-plan-check);
+  .tarjeta__linea {
+    flex: none;
   }
 }
 
@@ -738,7 +699,7 @@
     padding-block: 40px;
   }
 
-  .home-plan {
+  .home-plan-esqueleto {
     padding: var(--fs-espacio-6);
   }
 }

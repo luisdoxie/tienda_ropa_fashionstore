@@ -1,0 +1,50 @@
+// Solo vale en el modo historia (escena 3D): la clase `home--3d` la pone el host.
+//
+// El canvas de la escena es `position: fixed; z-index: 0`; un bloque normal se pintaría DEBAJO de él.
+// Por eso lo que va después del recorrido (lista de tiendas, CTA y pie) se coloca por encima, con fondo
+// opaco, y cubre la escena. La lista pasa a oscuro (la marca `fs-zona-oscura` ya remapea los tokens).
+:host(.home--3d) {
+  .home-tiendas {
+    position: relative;
+    z-index: 2;
+    margin-top: 0;
+    background: var(--fs-carbon);
+
+    // La escena se funde con la lista en vez de cortarse de golpe.
+    &::before {
+      content: '';
+      position: absolute;
+      inset: -120px 0 auto;
+      height: 120px;
+      background: linear-gradient(to bottom, transparent, var(--fs-carbon));
+      pointer-events: none;
+    }
+  }
+
+  .home-cta,
+  .home-pie {
+    position: relative;
+    z-index: 2;
+  }
+
+  // Lo que en claro se resuelve con neutros claros, aquí con neutros oscuros.
+  .tarjeta {
+    background: var(--fs-carbon-panel);
+
+    &:hover {
+      background: var(--fs-carbon-campo);
+    }
+  }
+
+  .tarjeta--esqueleto:hover {
+    background: var(--fs-carbon-panel);
+  }
+
+  .tarjeta__logo {
+    background: var(--fs-carbon-2);
+  }
+
+  .fs-btn--secundario:hover:not([disabled]) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}

@@ -1,0 +1,15 @@
+// El lienzo cubre toda la pantalla detrás del contenido de la página. `pan-y` deja pasar el scroll
+// vertical y entrega los arrastres horizontales a la polera del inicio.
+:host {
+  display: contents;
+}
+
+.escena {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100vw;
+  height: 100svh;
+  z-index: 0;
+  touch-action: pan-y;
+}

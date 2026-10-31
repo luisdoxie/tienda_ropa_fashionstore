@@ -339,6 +339,11 @@ funciona hasta que se adapten (E15, E16, E18).
   9 capitales de Bolivia) mediante `core.tenant.registrar_inicializador`; el
   superadministrador trabaja sobre una empresa ajena solo con `en_empresa`.
 - Siempre queda al menos un administrador activo por empresa.
+- `GET /api/v1/public/planes` (sin sesión ni parámetros, 60/min; para la portada pública): los planes
+  activos, por `max_sucursales` y luego `id`, con solo `codigo`, `nombre`, `max_sucursales`,
+  `max_copias_historial`, `plazo_cambio_horas_defecto` y las 8 banderas de funcionalidad (sin `id` ni
+  `activo`). Exenta de la suscripción activa (`RUTAS_SIN_SUSCRIPCION`). Es parte de CU-04
+  (`GestionarPlanes.listar_publicos`): leer la tabla `plan` hace que editar un plan cambie la portada.
 - Semilla de demostración: `python -m scripts.seed_empresas_prueba` (dry-run por
   defecto): FashionStore (Profesional) y Boutique Andina (Básico).
 - Población de demostración (8 organizaciones): `python -m scripts.poblar_demo --origen <carpeta
@@ -678,6 +683,35 @@ sobre oscuro y oliva sobre claro. Fuente de verdad: los tokens `--fs-*` de
   a 24 px. La marca de la empresa es `<fs-marca>` (logo o monograma con siglas).
 - El probador virtual NO existe en la web: se menciona como "Probador virtual con
   IA en la app". No hay inicio de sesión social ni "Recordarme".
+
+### Portada pública 3D (`web/src/app/features/plataforma-home/`)
+La portada de la plataforma ("/", no las tiendas `/t/<codigo>` ni el back office) tiene dos modos. El
+CLÁSICO es el de siempre. El modo HISTORIA (`historia-tienda/`) es un recorrido por una tienda 3D con
+three.js (`three@0.187.0`, versión exacta), movido por el scroll: inicio con una polera que el visitante
+personaliza (nombre y color, solo demostración: no guarda nada y el acento solo cambia dentro del
+elemento de la historia), caja, inventario, probador virtual, planes y calle de tiendas reales; debajo
+siguen la lista y el buscador de tiendas de siempre.
+- **Decisión.** `modo3d` se calcula una vez con `puedeUsarEscena3D()` (`escena-3d/capacidades.ts`: sin
+  WebGL, `prefers-reduced-motion`, ahorro de datos o equipo con menos de 4 GB o 4 núcleos → modo
+  clásico). Si la escena falla, `EscenaTiendaComponent` emite `sinEscena` y la página vuelve al clásico.
+- **Carga.** El motor y three viven en el chunk perezoso `escena-tienda` (~622 kB, ~131 kB comprimido);
+  el bundle inicial no crece. El Service Worker lo precachea con el resto de `/*.js` (es el trade-off
+  conocido: lo bajan también quienes solo usan el back office).
+- **Capas.** `escena-3d/contrato.ts` (interfaces `Parada`, `ContextoParada`, `Paleta`...) y `ayudas.ts`
+  (materiales que siguen el acento, cajas redondeadas, sombras, etiquetas) son lo único que conocen las
+  paradas (`paradas/parada-*.ts`); el motor es `escena-tienda.ts` y la polera `polera.ts`. Los colores
+  salen de los tokens `--fs-*` (`paleta.ts`), nunca de hex sueltos.
+- **Datos reales.** Los planes salen de `GET /public/planes` (`PlanesPublicosService`; el comparativo
+  `planes-comparativo/` sirve para 2 a 5 planes y muestra solo lo que cambia entre ellos) y la calle usa
+  las tiendas de `GET /public/tiendas` (su acento sobre oscuro viene de `calcularPaletaAcento`).
+- **Scroll.** El motor mide el recorrido en pantallas enteras (`scrollY / (5 * innerHeight)`) y no dibuja
+  pasado `6,05 * innerHeight`: cada paso de la historia debe medir EXACTAMENTE `100svh`, o la cámara se
+  desfasa. La lista de tiendas (fondo carbón opaco) tapa la escena.
+- **Pruebas.** `vi.mock` con rutas relativas no funciona en este ejecutor: la carga del motor y
+  `puedeUsarEscena3D` se sustituyen con los tokens `CARGAR_ESCENA` y `PUEDE_USAR_ESCENA_3D`. jsdom no
+  tiene WebGL ni `getContext('2d')`: todo dibujo en canvas se protege con `if (g)`.
+- **Liberación.** `EscenaTienda.destruir()` cancela el bucle, quita los listeners y libera geometrías,
+  materiales, texturas y el renderer.
 
 ## Alcance del probador virtual
 Solo prendas superiores masculinas (poleras, camisas, chamarras).

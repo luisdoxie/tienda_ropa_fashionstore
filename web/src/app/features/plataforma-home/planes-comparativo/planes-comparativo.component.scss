@@ -1,0 +1,160 @@
+:host {
+  display: block;
+}
+
+.planes-comunes {
+  margin: 0 0 var(--fs-espacio-6);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fs-neutro-texto);
+
+  strong {
+    color: var(--fs-texto);
+  }
+}
+
+.planes-grilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 20px;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 32px;
+  background: var(--fs-superficie);
+  color: var(--fs-texto);
+  border: 1px solid var(--fs-borde);
+  border-radius: var(--fs-radio-md);
+
+  --plan-check: var(--fs-acento);
+  --plan-tenue: var(--fs-texto-tenue);
+
+  // El plan con más sucursales: oscuro y con borde de acento.
+  &--completo {
+    background: var(--fs-carbon);
+    color: var(--fs-claro);
+    border-color: var(--fs-acento-oscuro);
+    --plan-check: var(--fs-acento-oscuro);
+    --plan-tenue: var(--fs-claro-tenue);
+  }
+}
+
+.plan__cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-espacio-2);
+}
+
+.plan__nombre {
+  margin: 0;
+  font-family: var(--fs-fuente-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 22px;
+  text-transform: uppercase;
+}
+
+.plan__sello {
+  padding: 2px var(--fs-espacio-2);
+  border: 1px solid var(--fs-acento-oscuro);
+  border-radius: var(--fs-radio-sm);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fs-acento-oscuro);
+}
+
+.plan__filas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan__fila {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+
+  fs-icono {
+    flex: none;
+    color: var(--plan-check);
+  }
+
+  // Lo que el plan no incluye: guion y texto atenuado.
+  &--no {
+    color: var(--plan-tenue);
+
+    fs-icono {
+      color: inherit;
+    }
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .plan {
+    padding: var(--fs-espacio-6);
+  }
+}
+
+// Sobre la escena 3D: tarjetas oscuras y traslúcidas; el texto y el acento siguen a los tokens oscuros.
+:host(.planes--oscuro) {
+  .planes-comunes {
+    color: var(--fs-claro-tenue);
+
+    strong {
+      color: var(--fs-claro);
+    }
+  }
+
+  .plan {
+    background: rgba(18, 17, 16, 0.78);
+    color: var(--fs-claro);
+    border-color: var(--fs-carbon-borde);
+    backdrop-filter: blur(10px);
+    --plan-check: var(--fs-acento-oscuro);
+    --plan-tenue: var(--fs-claro-tenue);
+  }
+
+  .plan--completo {
+    border-color: var(--fs-acento-oscuro);
+  }
+
+  @media (max-width: 860px) {
+    .plan {
+      padding: 14px 18px;
+      gap: 10px;
+    }
+
+    .plan__nombre {
+      font-size: 18px;
+    }
+
+    .plan__filas {
+      gap: 4px;
+    }
+
+    .plan__fila {
+      font-size: 13px;
+    }
+  }
+}

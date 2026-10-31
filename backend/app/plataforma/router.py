@@ -69,6 +69,7 @@ from app.plataforma.schemas import (
     PermisoRespuesta,
     PlanActualizar,
     PlanCrear,
+    PlanPublicoRespuesta,
     PlanRespuesta,
     RecuperarConfirmarRequest,
     RecuperarRequest,
@@ -842,6 +843,13 @@ def listar_tiendas(
     paginacion: ParametrosPaginacion = Depends(_paginacion_tiendas),
 ) -> list[TiendaPublicaRespuesta]:
     return cu_gestionar_empresas.listar_tiendas(db, paginacion, q)
+
+
+# Los planes activos para la portada pública. Tampoco choca con /public/{codigo}/...
+@publico_tiendas_router.get("/planes", response_model=list[PlanPublicoRespuesta])
+@limiter.limit("60/minute")
+def listar_planes_publicos(request: Request, db: Session = Depends(get_db)) -> list[PlanPublicoRespuesta]:
+    return cu_gestionar_planes.listar_publicos(db)
 
 
 # ---- /api/v1/tareas (token de servicio) ------------------------------------------------------

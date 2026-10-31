@@ -411,6 +411,26 @@ class PlanRespuesta(BaseModel):
     activo: bool
 
 
+class PlanPublicoRespuesta(BaseModel):
+    """Lo que la portada pública muestra de un plan (sin `id` ni `activo`)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    codigo: str
+    nombre: str
+    max_sucursales: int
+    max_copias_historial: int
+    plazo_cambio_horas_defecto: int
+    gestion_productos: bool
+    gestion_ventas: bool
+    reservas: bool
+    reportes_convencionales: bool
+    reportes_ia: bool
+    operacion_offline: bool
+    analitica_ml: bool
+    copias_seguridad: bool
+
+
 class AdministradorRegistrar(BaseModel):
     nombre: str = Field(min_length=1, max_length=60)
     apellido: str = Field(min_length=1, max_length=60)
