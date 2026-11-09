@@ -307,6 +307,9 @@ export class SolicitarCambioComponent implements OnInit {
         this.enviando.set(false);
         this.enviada.set(solicitud);
         this.abierto.set(false);
+        // Las prendas pedidas dejan de ofrecerse AL INSTANTE (sin esperar a que vuelva la lista): mientras la solicitud
+        // siga pendiente no se puede pedir otra operación sobre ellas. Después se relee la lista para mostrar lo real.
+        this.solicitudes.update((lista) => [solicitud, ...lista.filter((s) => s.id !== solicitud.id)]);
         this.cargarSolicitudes();
       },
       error: (error: HttpErrorResponse) => {
