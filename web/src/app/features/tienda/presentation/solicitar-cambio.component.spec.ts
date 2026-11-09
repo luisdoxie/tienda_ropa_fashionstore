@@ -325,6 +325,21 @@ describe('SolicitarCambioComponent', () => {
     expect(texto()).toContain('Ya pediste el cambio de todas las prendas');
   });
 
+  it('al enviar, la prenda deja de ofrecerse AL INSTANTE, sin esperar a que vuelva la lista de solicitudes', () => {
+    montar();
+    abrirFormulario();
+    masUno().click();
+    fixture.detectChanges();
+    boton('enviar-cambio')!.click();
+    http.expectOne(`${API}/solicitudes-cambio`).flush(solicitud());
+    fixture.detectChanges(); // la lectura de `/mias` sigue en vuelo: todavía NO se responde
+
+    expect(boton('abrir-cambio')!.disabled).toBe(true);
+    expect(texto()).toContain('Ya pediste el cambio de todas las prendas');
+
+    http.expectOne((r) => r.url === `${API}/solicitudes-cambio/mias`).flush([solicitud()]);
+  });
+
   describe('devolver y recibir mi dinero', () => {
     const casilla = (linea = 5) =>
       el.querySelector<HTMLInputElement>(`[data-linea="${linea}"] [data-estado="devolver-dinero"]`)!;

@@ -11,6 +11,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
+from app.catalogo.models import Stock
 from app.comercial.models import EstadoPago, Pago, Reembolso, Venta
 from app.comercial.politicas import crear_reembolso, pago_aprobado_de_venta
 from app.core.exceptions import ErrorFuncional
@@ -372,6 +373,104 @@ def test_el_cliente_pide_devolver_y_el_personal_aprueba_y_se_le_reembolsa(
     (reembolso,) = aprobada.json()["reembolsos"]
     assert reembolso["monto"] == "200.00" and reembolso["estado"] == "reembolsado"
     assert len(_avisos_de_reembolso(db_session)) == 1
+
+
+# ---- el stock vuelve a la sucursal de la venta ----------------------------------------------------------------------------
+
+
+def _fisico_en(db_session, variante_id: int, sucursal_id: int) -> int:
+    db_session.expire_all()
+    stock = db_session.scalar(select(Stock).where(Stock.variante_id == variante_id, Stock.sucursal_id == sucursal_id))
+    return stock.cantidad_fisica
+
+
+def _sucursal_con_stock(client, admin_headers, variante_id: int, cantidad: int = 20) -> int:
+    ciudad = client.post(f"{API}/ciudades", json={"nombre": "Ciudad Dos", "departamento": "Dos"}, headers=admin_headers)
+    sucursal = client.post(
+        f"{API}/sucursales",
+        json={"ciudad_id": ciudad.json()["id"], "codigo": "SUC-DOS", "nombre": "Sucursal Dos", "direccion": "Av. 2"},
+        headers=admin_headers,
+    )
+    assert sucursal.status_code == 201, sucursal.text
+    recibida = client.post(
+        f"{API}/inventario/movimientos",
+        json={
+            "variante_id": variante_id,
+            "sucursal_id": sucursal.json()["id"],
+            "tipo_movimiento_codigo": "recepcion",
+            "cantidad": cantidad,
+            "costo_unitario": "10.00",
+        },
+        headers=admin_headers,
+    )
+    assert recibida.status_code == 201, recibida.text
+    return sucursal.json()["id"]
+
+
+def test_lo_devuelto_y_lo_anulado_vuelven_al_stock_de_la_sucursal_de_la_venta(client, db_session, admin_headers, ctx):
+    otra = _sucursal_con_stock(client, admin_headers, ctx["m"])
+    inicial, inicial_otra = _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]), _fisico_en(db_session, ctx["m"], otra)
+    venta, pago_id = _cobrar_qr(client, ctx)  # 4 unidades salen de la sucursal de la venta
+    assert _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]) == inicial - VENDIDAS
+
+    assert _devolver(client, ctx, venta, cantidad=1).status_code == 201  # devolución en la Caja: vuelve 1
+    assert _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]) == inicial - VENDIDAS + 1
+
+    assert client.post(f"{API}/pagos/{pago_id}/anular", headers=admin_headers).status_code == 200
+    # Anular reingresa solo lo que seguía fuera: las 3 unidades que no se habían devuelto.
+    assert _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]) == inicial
+    assert _fisico_en(db_session, ctx["m"], otra) == inicial_otra  # la otra sucursal nunca se toca
+
+
+def test_la_solicitud_del_cliente_aprobada_reingresa_la_prenda_a_la_sucursal_de_la_venta(
+    client, db_session, admin_headers, ctx, cliente_headers
+):
+    otra = _sucursal_con_stock(client, admin_headers, ctx["m"])
+    venta, _pago = _cobrar_qr(client, ctx, cliente_id=_cliente_id(db_session))
+    _fechar_hoy(db_session, venta["id"])
+    solicitud = client.post(
+        f"{API}/solicitudes-cambio",
+        json={"venta_id": venta["id"], "detalle": [{"venta_detalle_id": venta["detalle"][0]["id"], "cantidad": 2}]},
+        headers=cliente_headers,
+    )
+    assert solicitud.status_code == 201, solicitud.text
+    antes, antes_otra = _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]), _fisico_en(db_session, ctx["m"], otra)
+
+    # Pedir no mueve stock; lo mueve el personal al aprobar, cuando revisa la prenda.
+    assert _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]) == antes
+    aprobada = client.post(f"{API}/solicitudes-cambio/{solicitud.json()['id']}/aprobar", headers=ctx["cajero_headers"])
+
+    assert aprobada.status_code == 200, aprobada.text
+    assert _fisico_en(db_session, ctx["m"], ctx["sucursal_id"]) == antes + 2
+    assert _fisico_en(db_session, ctx["m"], otra) == antes_otra
+
+
+def test_una_prenda_con_solicitud_pendiente_no_admite_otra_operacion_hasta_que_se_resuelva(
+    client, db_session, ctx, cliente_headers
+):
+    venta, _pago = _cobrar_qr(client, ctx, cliente_id=_cliente_id(db_session))
+    _fechar_hoy(db_session, venta["id"])
+    linea = {"venta_detalle_id": venta["detalle"][0]["id"], "cantidad": 1}
+    primera = client.post(f"{API}/solicitudes-cambio", json={"venta_id": venta["id"], "detalle": [linea]}, headers=cliente_headers)
+    assert primera.status_code == 201, primera.text
+
+    # Un cambio de talla sobre la MISMA prenda mientras la devolución sigue pendiente: 409.
+    cambio = client.post(
+        f"{API}/solicitudes-cambio",
+        json={"venta_id": venta["id"], "detalle": [{**linea, "variante_nueva_id": ctx["l"]}]},
+        headers=cliente_headers,
+    )
+    assert cambio.status_code == 409 and "pendiente" in cambio.json()["detail"]
+
+    # Cancelada la primera, la prenda queda libre otra vez.
+    cancelada = client.post(f"{API}/solicitudes-cambio/{primera.json()['id']}/cancelar", headers=cliente_headers)
+    assert cancelada.status_code == 200
+    de_nuevo = client.post(
+        f"{API}/solicitudes-cambio",
+        json={"venta_id": venta["id"], "detalle": [{**linea, "variante_nueva_id": ctx["l"]}]},
+        headers=cliente_headers,
+    )
+    assert de_nuevo.status_code == 201, de_nuevo.text
 
 
 def test_pago_aprobado_de_venta_solo_cuenta_pagos_aprobados(client, db_session, ctx):
