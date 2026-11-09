@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/conectividad/reconexiones.dart';
 import '../../../features/tracking/models/evento.dart';
 import '../../../features/tracking/state/tracking_service.dart';
 import '../../../features/tienda/state/tienda_controller.dart';
 import '../models/catalogo_item.dart';
 import '../models/filtros_catalogo.dart';
 import 'catalogo_providers.dart';
+import 'precarga_catalogo.dart';
 
 class CatalogoState {
   const CatalogoState({
@@ -57,10 +59,36 @@ class CatalogoState {
 class CatalogoController extends StateNotifier<CatalogoState> {
   CatalogoController(this._ref) : super(const CatalogoState()) {
     cargarPrimeraPagina();
+    // Si la lista salió de lo guardado en el teléfono (sin conexión), al volver la red se pone al día sola.
+    _ref.listen<int>(reconexionesProvider, (anterior, actual) {
+      if (actual != anterior) actualizarAlVolverConexion();
+    });
   }
 
   final Ref _ref;
   static const _tamanioPagina = 20;
+
+  /// Vuelve a pedir la primera página SIN tapar la lista con el indicador de carga y sin perder lo que la persona ya
+  /// había desplazado: la primera página se reemplaza por la del servidor y las demás se conservan (sin repetir prendas).
+  /// Si falla, la lista que se veía se queda como estaba.
+  Future<void> actualizarAlVolverConexion() async {
+    if (state.cargandoPrimeraPagina || state.cargando) return;
+    try {
+      final nuevos = await _obtenerPagina(1);
+      if (!mounted) return;
+      final idsNuevos = {for (final item in nuevos) item.id};
+      final resto = state.items.skip(_tamanioPagina).where((item) => !idsNuevos.contains(item.id));
+      state = state.copyWith(
+        items: [...nuevos, ...resto],
+        // Lo guardado pudo terminar antes que el servidor: con conexión puede haber más páginas.
+        hayMas: state.hayMas || nuevos.length == _tamanioPagina,
+        error: false,
+      );
+      if (!state.filtros.tieneFiltros) iniciarPrecargaDeFotos(_ref);
+    } catch (_) {
+      // Sigue mostrando lo que tenía.
+    }
+  }
 
   Future<void> cargarPrimeraPagina() async {
     state = state.copyWith(cargandoPrimeraPagina: true, error: false);
@@ -74,6 +102,8 @@ class CatalogoController extends StateNotifier<CatalogoState> {
         hayMas: items.length == _tamanioPagina,
         cargandoPrimeraPagina: false,
       );
+      // Con el listado completo (sin filtros) se bajan por adelantado las fotos para verlas sin conexión.
+      if (!state.filtros.tieneFiltros) iniciarPrecargaDeFotos(_ref);
     } catch (_) {
       if (!mounted) return;
       state = state.copyWith(cargandoPrimeraPagina: false, error: true);

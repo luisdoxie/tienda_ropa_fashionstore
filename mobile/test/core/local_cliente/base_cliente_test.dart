@@ -5,6 +5,7 @@ import 'package:mobile/core/local/abrir_base_local.dart';
 import 'package:mobile/core/local/esquema_local.dart';
 import 'package:mobile/core/local_cliente/abrir_base_cliente.dart';
 import 'package:mobile/core/local_cliente/esquema_cliente.dart';
+import 'package:mobile/core/local_cliente/migraciones_cliente.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -74,7 +75,7 @@ void main() {
     });
 
     test('la versión del esquema queda en user_version', () async {
-      final db = await abrir();
+      final db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
       expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], versionEsquemaCliente);
       await db.close();
     });
@@ -161,6 +162,77 @@ void main() {
       expect(pedido['estado'], 'pendiente');
       expect((await db.query('cli_meta')), isEmpty);
       await db.insert('cli_meta', {'empresa_id': 7, 'usuario_id': 4, 'clave': 'k', 'valor': 'v', 'nota': 'n'});
+      await db.close();
+    });
+
+    test('la migración real 1 → 2 conserva lo guardado y deja guardar el carrusel de recomendaciones', () async {
+      var db = await abrir();
+      await insertarPedido(db);
+      for (final tipo in ['item', 'detalle', 'talla', 'color', 'sucursal']) {
+        await db.insert('cli_cache', {
+          'tienda': 'chaski',
+          'tipo': tipo,
+          'clave': '1',
+          'orden': tipo == 'item' ? 0 : null,
+          'json': '{"x":"$tipo"}',
+          'guardado_en': '2026-11-06T12:00:00Z',
+        });
+      }
+      await expectLater(
+        db.insert('cli_cache', {
+          'tienda': 'chaski',
+          'tipo': 'recomendaciones',
+          'clave': 'inicio',
+          'json': '[]',
+          'guardado_en': 'x',
+        }),
+        throwsA(isA<DatabaseException>()),
+        reason: 'en la versión 1 el tipo no existe',
+      );
+      await db.close();
+
+      db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
+
+      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], 2);
+      final filas = await db.query('cli_cache', orderBy: 'tipo');
+      expect(filas.map((f) => f['tipo']), ['color', 'detalle', 'item', 'sucursal', 'talla']);
+      expect(filas.firstWhere((f) => f['tipo'] == 'item')['orden'], 0);
+      expect(filas.firstWhere((f) => f['tipo'] == 'detalle')['json'], '{"x":"detalle"}');
+      expect(await db.query('cli_pedido'), hasLength(1), reason: 'el pedido sin enviar sigue ahí');
+      expect(await tablas(db), unorderedEquals(tablasEsquemaClienteV1), reason: 'no queda la tabla vieja');
+
+      await db.insert('cli_cache', {
+        'tienda': 'chaski',
+        'tipo': 'recomendaciones',
+        'clave': 'inicio',
+        'json': '[]',
+        'guardado_en': 'x',
+      });
+      await expectLater(
+        db.insert('cli_cache', {'tienda': 'a', 'tipo': 'otro', 'clave': '1', 'json': '{}', 'guardado_en': 'x'}),
+        throwsA(isA<DatabaseException>()),
+        reason: 'los demás tipos siguen sin admitirse',
+      );
+      final indices = [
+        for (final f in await db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cli_cache'"))
+          f['name'],
+      ];
+      expect(indices, contains('ix_cli_cache_orden'));
+      await db.close();
+    });
+
+    test('una instalación nueva queda en la versión 2 y admite el carrusel', () async {
+      final db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
+
+      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], versionEsquemaCliente);
+      await db.insert('cli_cache', {
+        'tienda': 'a',
+        'tipo': 'recomendaciones',
+        'clave': 'inicio',
+        'json': '[]',
+        'guardado_en': 'x',
+      });
+      expect(await tablas(db), unorderedEquals(tablasEsquemaClienteV1));
       await db.close();
     });
 

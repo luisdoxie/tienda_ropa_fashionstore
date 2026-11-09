@@ -8,7 +8,11 @@ const _rutasPublicas = ['/auth/login', '/auth/registro', '/auth/refresh', '/auth
 // por el carrito, para resolver nombre/foto de cada línea) exige un usuario
 // logueado del lado del backend -- sin esto, quedaría marcado como público
 // y nunca se le mandaría el token.
-const _rutasCatalogoConToken = ['/catalogo/variantes/detalle'];
+//
+// Lo mismo con el paquete de descarga del personal (`/sincronizacion/paquete/catalogo`): su ruta también contiene
+// '/catalogo', pero exige sesión. Sin esta excepción no llevaba el token, el servidor respondía 401 y, al estar marcada
+// como pública, ni siquiera se intentaba refrescar: "Actualizar datos" decía "Tu sesión venció" con la sesión vigente.
+const _rutasCatalogoConToken = ['/catalogo/variantes/detalle', '/sincronizacion/'];
 
 bool _esRutaPublica(String path) {
   if (_rutasCatalogoConToken.any((ruta) => path.contains(ruta))) return false;

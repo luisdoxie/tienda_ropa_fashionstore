@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/sesion/dialogos_sesion.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../auth/state/auth_controller.dart';
 import '../../tienda/presentation/marca_tienda.dart';
 import '../../tienda/state/tienda_controller.dart';
@@ -435,16 +435,7 @@ class _TarjetaProducto extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.base),
               child: item.imagenPrincipal != null
-                  ? CachedNetworkImage(
-                      imageUrl: item.imagenPrincipal!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      placeholder: (context, url) => Container(color: AppColors.fondoAlterno),
-                      errorWidget: (context, url, error) => Container(
-                        color: AppColors.fondoAlterno,
-                        child: const Icon(Icons.checkroom, color: AppColors.textoTenue),
-                      ),
-                    )
+                  ? FotoPrenda(url: item.imagenPrincipal!)
                   : Container(
                       color: AppColors.fondoAlterno,
                       child: const Icon(Icons.checkroom, color: AppColors.textoTenue),

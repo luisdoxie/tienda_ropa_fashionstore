@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../models/recomendacion_item.dart';
 
 /// Carrusel de recomendaciones (P6.2), reusado en el home y en el detalle
@@ -83,15 +83,7 @@ class _TarjetaRecomendacion extends StatelessWidget {
                 height: 140,
                 width: 140,
                 child: producto.imagenPrincipal != null
-                    ? CachedNetworkImage(
-                        imageUrl: producto.imagenPrincipal!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(color: AppColors.fondoAlterno),
-                        errorWidget: (context, url, error) => Container(
-                          color: AppColors.fondoAlterno,
-                          child: const Icon(Icons.checkroom, color: AppColors.textoTenue),
-                        ),
-                      )
+                    ? FotoPrenda(url: producto.imagenPrincipal!, ancho: 140, alto: 140)
                     : Container(
                         color: AppColors.fondoAlterno,
                         child: const Icon(Icons.checkroom, color: AppColors.textoTenue),

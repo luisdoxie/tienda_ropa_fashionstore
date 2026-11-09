@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/conectividad/conectividad_service.dart';
 import 'package:mobile/core/network/error_app.dart';
 import 'package:mobile/core/network/providers.dart';
 import 'package:mobile/features/auth/models/usuario.dart';
@@ -19,6 +20,7 @@ import 'package:mobile/features/tienda/state/tienda_controller.dart';
 import 'package:mobile/features/tracking/models/evento.dart';
 import 'package:mobile/features/tracking/state/tracking_service.dart';
 
+import '../../helpers/conectividad_falsa.dart';
 import '../../helpers/sesion_storage_falso.dart';
 import '../../helpers/token_storage_falso.dart';
 
@@ -109,6 +111,8 @@ Future<_Entorno> _entorno({Tienda? inicial = _alpha}) async {
       dioProvider.overrideWithValue(dio),
       tokenStorageProvider.overrideWithValue(TokenStorageFalso()),
       sesionStorageProvider.overrideWithValue(SesionStorageFalso(tienda: inicial)),
+      // Sin conexión simulada: el servicio real necesita la plataforma, y la precarga de fotos no debe correr aquí.
+      conectividadServiceProvider.overrideWithValue(ConectividadFalsa(enLinea: false)),
     ],
   );
   addTearDown(contenedor.dispose);
@@ -381,6 +385,7 @@ void main() {
           dioProvider.overrideWithValue(dio),
           tokenStorageProvider.overrideWithValue(TokenStorageFalso()),
           sesionStorageProvider.overrideWithValue(SesionStorageFalso(tienda: _alpha)),
+          conectividadServiceProvider.overrideWithValue(ConectividadFalsa(enLinea: false)),
           authControllerProvider.overrideWith(
             (ref) => _AuthFalso(ref, const AuthState(estado: EstadoSesion.autenticado, usuario: usuario)),
           ),

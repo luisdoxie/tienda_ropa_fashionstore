@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../catalogo/models/referencia.dart';
 import '../models/horario_sucursal.dart';
 import '../models/item_reserva_temporal.dart';
@@ -294,7 +294,7 @@ class _TarjetaItem extends StatelessWidget {
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.base),
               child: item.imagenUrl != null
-                  ? CachedNetworkImage(imageUrl: item.imagenUrl!, width: 48, height: 48, fit: BoxFit.cover)
+                  ? FotoPrenda(url: item.imagenUrl!, ancho: 48, alto: 48)
                   : Container(
                       width: 48,
                       height: 48,

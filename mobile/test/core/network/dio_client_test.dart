@@ -37,6 +37,35 @@ ResponseBody _json(String cuerpo, int status) {
 }
 
 void main() {
+  group('buildDio - qué rutas llevan el token', () {
+    Future<String?> autorizacionDe(String ruta) async {
+      final storage = TokenStorageFalso()
+        ..accessToken = 'ACCESS'
+        ..refreshToken = 'REFRESH';
+      final dio = buildDio(tokenStorage: storage, onSesionExpirada: () async {});
+      String? enviado;
+      dio.httpClientAdapter = AdaptadorFalso((options) async {
+        enviado = options.headers['Authorization'] as String?;
+        return _json('{"ok":true}', 200);
+      });
+      await dio.get<Map<String, dynamic>>(ruta);
+      return enviado;
+    }
+
+    test('el paquete de descarga del personal lleva el token aunque su ruta contenga /catalogo', () async {
+      expect(await autorizacionDe('/sincronizacion/paquete'), 'Bearer ACCESS');
+      expect(await autorizacionDe('/sincronizacion/paquete/catalogo'), 'Bearer ACCESS');
+      expect(await autorizacionDe('/sincronizacion/paquete/stock'), 'Bearer ACCESS');
+      expect(await autorizacionDe('/sincronizacion/paquete/clientes'), 'Bearer ACCESS');
+    });
+
+    test('el catálogo público sigue sin token y el detalle por variantes sigue con token', () async {
+      expect(await autorizacionDe('/catalogo'), isNull);
+      expect(await autorizacionDe('/catalogo/buscar'), isNull);
+      expect(await autorizacionDe('/catalogo/variantes/detalle'), 'Bearer ACCESS');
+    });
+  });
+
   group('buildDio - refresh automático', () {
     test('un 401 dispara refresh y reintenta la request original una sola vez', () async {
       final storage = TokenStorageFalso()

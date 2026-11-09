@@ -11,6 +11,12 @@ const cacheTalla = 'talla';
 const cacheColor = 'color';
 const cacheSucursal = 'sucursal';
 
+/// El carrusel "Para vos" del inicio (una sola fila por tienda) y el texto que se muestra en lugar del motivo personal de
+/// cada recomendación: lo guardado no lleva nada de lo que la persona vio o compró.
+const cacheRecomendaciones = 'recomendaciones';
+const claveRecomendacionesInicio = 'inicio';
+const motivoRecomendacionGuardada = 'Prenda recomendada';
+
 /// Cuántas prendas y detalles como máximo se recuerdan para verlos sin conexión (se borran los más viejos).
 const maxItemsEnCache = 300;
 const maxDetallesEnCache = 150;
