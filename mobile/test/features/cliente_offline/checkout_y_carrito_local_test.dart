@@ -86,6 +86,12 @@ class _CacheSucursales implements CacheCatalogoCliente {
 
   @override
   Future<void> guardarReferencias(String tipo, List<Map<String, dynamic>> crudos) async {}
+
+  @override
+  Future<void> guardarRecomendaciones(List<Map<String, dynamic>> crudos) async {}
+
+  @override
+  Future<List<Map<String, dynamic>>> leerRecomendaciones() async => [];
 }
 
 Map<String, dynamic> _sucursal(int id, String nombre, {bool deposito = false}) => {

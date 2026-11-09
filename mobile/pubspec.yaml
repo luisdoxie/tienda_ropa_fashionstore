@@ -39,6 +39,9 @@ dependencies:
   flutter_riverpod: ^2.6.1
   flutter_secure_storage: ^11.0.0
   cached_network_image: ^4.0.0
+  # Ya venían como dependencias de cached_network_image; ahora se usan directo para la caché de fotos duradera.
+  flutter_cache_manager: ^3.4.1
+  file: ^7.0.0
   permission_handler: ^13.0.1
   path_provider: ^2.1.6
   gal: ^2.3.3

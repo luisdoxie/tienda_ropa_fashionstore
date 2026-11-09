@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../../core/widgets/boton_cargando.dart';
 import '../../../core/widgets/fila_monto.dart';
 import '../../../core/utils/fecha_servidor.dart';
@@ -430,7 +430,7 @@ class _TarjetaLinea extends StatelessWidget {
         leading: ClipRRect(
           borderRadius: BorderRadius.circular(AppRadius.base),
           child: linea.imagenPrincipal != null
-              ? CachedNetworkImage(imageUrl: linea.imagenPrincipal!, width: 48, height: 48, fit: BoxFit.cover)
+              ? FotoPrenda(url: linea.imagenPrincipal!, ancho: 48, alto: 48)
               : Container(
                   width: 48,
                   height: 48,

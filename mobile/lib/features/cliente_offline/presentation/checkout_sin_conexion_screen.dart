@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/dinero.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../catalogo/models/referencia.dart';
 import '../../catalogo/state/catalogo_providers.dart';
 import '../config/cliente_offline_config.dart';
@@ -384,14 +384,7 @@ class MiniaturaPrenda extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.base),
       child: url == null
           ? vacio
-          : CachedNetworkImage(
-              imageUrl: url!,
-              width: tamano,
-              height: tamano,
-              fit: BoxFit.cover,
-              placeholder: (context, _) => vacio,
-              errorWidget: (context, _, error) => vacio,
-            ),
+          : FotoPrenda(url: url!, ancho: tamano, alto: tamano),
     );
   }
 }

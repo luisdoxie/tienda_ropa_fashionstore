@@ -27,6 +27,12 @@ abstract interface class CacheCatalogoCliente {
   Future<void> guardarReferencias(String tipo, List<Map<String, dynamic>> crudos);
 
   Future<List<Map<String, dynamic>>> leerReferencias(String tipo);
+
+  /// Guarda el carrusel del inicio (reemplaza el anterior). Cada elemento es una recomendación tal como la mandó el servidor.
+  Future<void> guardarRecomendaciones(List<Map<String, dynamic>> crudos);
+
+  /// El carrusel guardado; lista vacía si nunca se guardó.
+  Future<List<Map<String, dynamic>>> leerRecomendaciones();
 }
 
 class CacheCatalogoClienteSqlite implements CacheCatalogoCliente {
@@ -182,5 +188,36 @@ class CacheCatalogoClienteSqlite implements CacheCatalogoCliente {
       }
     }
     return lista;
+  }
+
+  @override
+  Future<void> guardarRecomendaciones(List<Map<String, dynamic>> crudos) async {
+    if (crudos.isEmpty) return;
+    final db = await _base();
+    await db.insert('cli_cache', {
+      'tienda': _codigo,
+      'tipo': cacheRecomendaciones,
+      'clave': claveRecomendacionesInicio,
+      'orden': null,
+      'json': jsonEncode(crudos),
+      'guardado_en': _ahora,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> leerRecomendaciones() async {
+    final db = await _base();
+    final filas = await db.query(
+      'cli_cache',
+      columns: ['json'],
+      where: 'tienda = ? AND tipo = ? AND clave = ?',
+      whereArgs: [_codigo, cacheRecomendaciones, claveRecomendacionesInicio],
+    );
+    if (filas.isEmpty) return const [];
+    try {
+      return (jsonDecode(filas.first['json']! as String) as List<dynamic>).cast<Map<String, dynamic>>();
+    } catch (_) {
+      return const [];
+    }
   }
 }

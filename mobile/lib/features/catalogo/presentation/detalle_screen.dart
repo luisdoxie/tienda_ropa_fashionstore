@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import '../../../core/network/error_app.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/dinero.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../auth/state/auth_controller.dart';
 import '../../cliente_offline/presentation/aviso_sin_conexion_cliente.dart';
 import '../../cliente_offline/state/cliente_offline_providers.dart';
@@ -266,11 +266,7 @@ class _Carrusel extends StatelessWidget {
       child: PageView.builder(
         itemCount: imagenes.length,
         itemBuilder: (context, index) {
-          return CachedNetworkImage(
-            imageUrl: imagenes[index].url,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Container(color: AppColors.fondoAlterno),
-          );
+          return FotoPrenda(url: imagenes[index].url, decodificarCompleta: true, tamanoIcono: 48);
         },
       ),
     );

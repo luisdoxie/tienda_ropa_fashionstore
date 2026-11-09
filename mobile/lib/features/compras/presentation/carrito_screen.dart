@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/foto_prenda.dart';
 import '../../../core/widgets/fila_monto.dart';
 import '../../cliente_offline/presentation/aviso_sin_conexion_cliente.dart';
 import '../../cliente_offline/presentation/carrito_local_vista.dart';
@@ -202,7 +202,7 @@ class _TarjetaLineaState extends ConsumerState<_TarjetaLinea> {
             ClipRRect(
               borderRadius: BorderRadius.circular(AppRadius.base),
               child: linea.imagenPrincipal != null
-                  ? CachedNetworkImage(imageUrl: linea.imagenPrincipal!, width: 56, height: 56, fit: BoxFit.cover)
+                  ? FotoPrenda(url: linea.imagenPrincipal!, ancho: 56, alto: 56)
                   : Container(
                       width: 56,
                       height: 56,

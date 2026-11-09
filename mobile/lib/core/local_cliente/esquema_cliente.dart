@@ -12,7 +12,9 @@
 /// - Fechas: texto ISO-8601 en UTC. Dinero: ENTERO en centavos. Booleanos: 0/1.
 /// - No se guarda ningún token de PayPal ni dato de tarjeta: solo "tiene PayPal guardado" y el correo enmascarado.
 /// - Una migración nueva se agrega en `migraciones_cliente.dart`; NUNCA se edita el DDL de la versión 1.
-const versionEsquemaCliente = 1;
+///
+/// Este archivo es la versión 1; `versionEsquemaCliente` es la más nueva (ver las migraciones).
+const versionEsquemaCliente = 2;
 
 const sentenciasEsquemaClienteV1 = <String>[
   // Valores sueltos de la persona: el método de pago recordado, etc. El valor es texto (JSON).

@@ -5,6 +5,7 @@ import 'package:mobile/features/catalogo/data/referencia_repository.dart';
 import 'package:mobile/features/catalogo/models/filtros_catalogo.dart';
 import 'package:mobile/features/cliente_offline/config/cliente_offline_config.dart';
 import 'package:mobile/features/cliente_offline/data/cache_catalogo_cliente.dart';
+import 'package:mobile/features/recomendador/data/recomendador_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../helpers/api_client_falso.dart';
@@ -337,6 +338,108 @@ void main() {
       final repo = ReferenciaRepository(api, cache: cache);
 
       await expectLater(repo.sucursales(), throwsA(isA<ErrorApp>()));
+    });
+  });
+
+  group('carrusel de recomendaciones', () {
+    Map<String, dynamic> recomendacion(int variante, int producto, String motivo) => {
+      'variante_id': variante,
+      'producto': _item(producto, 'Prenda $producto', imagen: 'https://fotos.test/$producto.jpg'),
+      'motivo': motivo,
+    };
+
+    test('la caché guarda y lee el carrusel, lo reemplaza entero y no se mezcla entre tiendas', () async {
+      expect(await cache.leerRecomendaciones(), isEmpty);
+
+      await cache.guardarRecomendaciones([recomendacion(1, 10, 'a'), recomendacion(2, 20, 'b')]);
+      await cache.guardarRecomendaciones([recomendacion(3, 30, 'c')]);
+
+      expect((await cache.leerRecomendaciones()).map((r) => r['variante_id']), [3]);
+      tienda = 'andina';
+      expect(await cache.leerRecomendaciones(), isEmpty);
+    });
+
+    test('un carrusel vacío no borra el que ya estaba guardado', () async {
+      await cache.guardarRecomendaciones([recomendacion(1, 10, 'a')]);
+
+      await cache.guardarRecomendaciones([]);
+
+      expect(await cache.leerRecomendaciones(), hasLength(1));
+    });
+
+    test('con conexión se recuerda sin el motivo personal; sin conexión se muestra lo recordado', () async {
+      final api = ApiClientFalso()
+        ..responder('POST', '/ia/recomendaciones', {
+          'recomendaciones': [recomendacion(1, 10, 'Porque compraste una polera roja'), recomendacion(2, 20, 'Vista hoy')],
+        });
+      final repo = RecomendadorRepository(api, cache: cache);
+
+      final enLinea = await repo.obtenerRecomendaciones();
+      expect(enLinea.first.motivo, 'Porque compraste una polera roja', reason: 'con conexión se ve el motivo real');
+
+      final sinRed = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorSinRed);
+      final guardadas = await RecomendadorRepository(sinRed, cache: cache).obtenerRecomendaciones();
+
+      expect(guardadas.map((r) => r.producto.id), [10, 20]);
+      expect(guardadas.map((r) => r.motivo), everyElement(motivoRecomendacionGuardada));
+      expect(guardadas.first.producto.imagenPrincipal, 'https://fotos.test/10.jpg');
+    });
+
+    test('también con el servidor caído (5xx)', () async {
+      await cache.guardarRecomendaciones([recomendacion(1, 10, 'x')]);
+      final api = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorHttp(503));
+
+      expect(await RecomendadorRepository(api, cache: cache).obtenerRecomendaciones(), hasLength(1));
+    });
+
+    test('sin conexión y sin nada guardado, el error original llega (el carrusel se oculta)', () async {
+      final api = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorSinRed);
+
+      await expectLater(
+        RecomendadorRepository(api, cache: cache).obtenerRecomendaciones(),
+        throwsA(same(errorSinRed)),
+      );
+    });
+
+    test('un error que NO es de red no se tapa con lo guardado', () async {
+      await cache.guardarRecomendaciones([recomendacion(1, 10, 'x')]);
+      final api = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorHttp(422));
+
+      await expectLater(RecomendadorRepository(api, cache: cache).obtenerRecomendaciones(), throwsA(isA<ErrorApp>()));
+    });
+
+    test('el carrusel del detalle de una prenda no se guarda ni se sirve de lo guardado', () async {
+      await cache.guardarRecomendaciones([recomendacion(1, 10, 'inicio')]);
+      final api = ApiClientFalso()
+        ..responder('POST', '/ia/recomendaciones', {
+          'recomendaciones': [recomendacion(5, 50, 'otro')],
+        });
+      final repo = RecomendadorRepository(api, cache: cache);
+
+      await repo.obtenerRecomendaciones(excluirProductoId: 7);
+      expect((await cache.leerRecomendaciones()).single['variante_id'], 1, reason: 'no pisa el del inicio');
+
+      final sinRed = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorSinRed);
+      await expectLater(
+        RecomendadorRepository(sinRed, cache: cache).obtenerRecomendaciones(excluirProductoId: 7),
+        throwsA(isA<ErrorApp>()),
+      );
+    });
+
+    test('si la base local falla, la consulta con conexión sigue funcionando', () async {
+      final api = ApiClientFalso()
+        ..responder('POST', '/ia/recomendaciones', {
+          'recomendaciones': [recomendacion(1, 10, 'x')],
+        });
+      tienda = null; // el cache lanza StateError
+
+      expect(await RecomendadorRepository(api, cache: cache).obtenerRecomendaciones(), hasLength(1));
+    });
+
+    test('sin cache se comporta igual que antes', () async {
+      final api = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorSinRed);
+
+      await expectLater(RecomendadorRepository(api).obtenerRecomendaciones(), throwsA(isA<ErrorApp>()));
     });
   });
 }
