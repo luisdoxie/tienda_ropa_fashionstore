@@ -215,7 +215,6 @@ _DEFINICIONES: tuple[DefinicionReporte, ...] = (
         ejemplos=(
             "cuales fueron los diez productos mas vendidos este mes",
             "top 5 de prendas más vendidas el mes pasado",
-            "productos más vendidos por el canal digital en los últimos 7 días",
             "los 10 productos más vendidos de los últimos 3 meses agrupado por sucursal",
         ),
         filtros=MappingProxyType(
