@@ -269,7 +269,7 @@ def _productos_mas_vendidos_por_sucursal(db: Session, ctx: ContextoEjecucion) ->
     sucursal. Una sucursal sin ventas en el periodo no aparece."""
     ascendente = ctx.orden == "menor_a_mayor"
     salida: list[dict] = []
-    for sucursal_id, nombre in plataforma_politicas.listar_sucursales_activas_minimas(db, ctx.sucursal_ids):
+    for sucursal_id, nombre in plataforma_politicas.listar_sucursales_activas_por_ids(db, ctx.sucursal_ids):
         filas = comercial_politicas.reporte_ventas_top_productos(
             db,
             ctx.periodo,

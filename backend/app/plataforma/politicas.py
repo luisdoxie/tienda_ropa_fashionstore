@@ -797,7 +797,7 @@ def listar_nombres_sucursales_activas(db: Session) -> list[str]:
     return [sucursal.nombre for sucursal in sucursal_repo.listar_activas(db)]
 
 
-def listar_sucursales_activas_minimas(db: Session, sucursal_ids: list[int] | None = None) -> list[tuple[int, str]]:
+def listar_sucursales_activas_por_ids(db: Session, sucursal_ids: list[int] | None = None) -> list[tuple[int, str]]:
     """Para `inteligencia` (reportes generativos): `(id, nombre)` de las sucursales activas de la empresa de la
     sesión, por id. Con `sucursal_ids` solo esas (una lista vacía no devuelve ninguna)."""
     return [
