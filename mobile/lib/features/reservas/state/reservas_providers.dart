@@ -3,6 +3,8 @@ import '../../../core/network/providers.dart';
 import '../../auth/state/auth_controller.dart';
 import '../../catalogo/models/referencia.dart';
 import '../../catalogo/state/catalogo_providers.dart';
+import '../../cliente_offline/models/stock_guardado.dart';
+import '../../cliente_offline/state/cliente_offline_providers.dart';
 import '../data/disponibilidad_repository.dart';
 import '../data/horarios_repository.dart';
 import '../data/reservas_repository.dart';
@@ -14,7 +16,7 @@ import 'carrito_reserva_controller.dart';
 final reservasRepositoryProvider = Provider<ReservasRepository>((ref) => ReservasRepository(ref.watch(dioProvider)));
 
 final disponibilidadRepositoryProvider = Provider<DisponibilidadRepository>(
-  (ref) => DisponibilidadRepository(ref.watch(apiClientProvider)),
+  (ref) => DisponibilidadRepository(ref.watch(apiClientProvider), cache: ref.watch(cacheCatalogoClienteProvider)),
 );
 
 final horariosRepositoryProvider = Provider<HorariosRepository>(
@@ -32,6 +34,16 @@ final horariosSucursalProvider = FutureProvider.family<List<HorarioSucursal>, in
 final disponibilidadPorVarianteProvider = FutureProvider.autoDispose.family<List<DisponibilidadSucursal>, int>(
   (ref, varianteId) => ref.watch(disponibilidadRepositoryProvider).porVariante(varianteId),
 );
+
+/// Lo último que se vio del stock de una variante (guardado en el teléfono), o null si nunca se vio o no se pudo leer. Es lo que
+/// el detalle muestra cuando no se puede pedir el stock actual.
+final stockGuardadoDeVarianteProvider = FutureProvider.autoDispose.family<StockGuardado?, int>((ref, varianteId) async {
+  try {
+    return (await ref.read(cacheCatalogoClienteProvider).leerDisponibilidades([varianteId]))[varianteId];
+  } catch (_) {
+    return null;
+  }
+});
 
 /// Unidades disponibles de una variante sumando todas las sucursales.
 final disponibleTotalProvider = FutureProvider.autoDispose.family<int, int>((ref, varianteId) async {

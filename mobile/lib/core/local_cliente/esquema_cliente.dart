@@ -14,7 +14,7 @@
 /// - Una migración nueva se agrega en `migraciones_cliente.dart`; NUNCA se edita el DDL de la versión 1.
 ///
 /// Este archivo es la versión 1; `versionEsquemaCliente` es la más nueva (ver las migraciones).
-const versionEsquemaCliente = 2;
+const versionEsquemaCliente = 3;
 
 const sentenciasEsquemaClienteV1 = <String>[
   // Valores sueltos de la persona: el método de pago recordado, etc. El valor es texto (JSON).

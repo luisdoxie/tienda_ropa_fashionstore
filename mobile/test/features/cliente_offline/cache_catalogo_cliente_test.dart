@@ -6,6 +6,7 @@ import 'package:mobile/features/catalogo/models/filtros_catalogo.dart';
 import 'package:mobile/features/cliente_offline/config/cliente_offline_config.dart';
 import 'package:mobile/features/cliente_offline/data/cache_catalogo_cliente.dart';
 import 'package:mobile/features/recomendador/data/recomendador_repository.dart';
+import 'package:mobile/features/reservas/data/disponibilidad_repository.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../helpers/api_client_falso.dart';
@@ -440,6 +441,135 @@ void main() {
       final api = ApiClientFalso()..responder('POST', '/ia/recomendaciones', errorSinRed);
 
       await expectLater(RecomendadorRepository(api).obtenerRecomendaciones(), throwsA(isA<ErrorApp>()));
+    });
+  });
+
+  group('stock por sucursal guardado', () {
+    Map<String, dynamic> fila(int variante, int sucursal, int cantidad) => {
+      'variante_id': variante,
+      'sucursal_id': sucursal,
+      'cantidad_disponible': cantidad,
+    };
+
+    test('guarda el stock de una variante con la hora en que se vio y lo lee', () async {
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 3), fila(10, 2, 0)]);
+
+      final guardado = (await cache.leerDisponibilidades([10]))[10]!;
+
+      expect(guardado.porSucursal, {1: 3, 2: 0});
+      expect(guardado.vistoEn, DateTime.utc(2026, 11, 6, 12));
+      expect(guardado.enSucursal(1), 3);
+      expect(guardado.enSucursal(99), 0, reason: 'una sucursal que no aparece no tenía stock registrado');
+    });
+
+    test('volver a guardar la misma variante reemplaza lo anterior y actualiza la hora', () async {
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 3)]);
+      reloj.actual = DateTime.utc(2026, 11, 6, 15);
+
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 1), fila(10, 2, 4)]);
+
+      final guardado = (await cache.leerDisponibilidades([10]))[10]!;
+      expect(guardado.porSucursal, {1: 1, 2: 4});
+      expect(guardado.vistoEn, DateTime.utc(2026, 11, 6, 15));
+    });
+
+    test('lee varias variantes a la vez; las nunca vistas no aparecen', () async {
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 3)]);
+      await cache.guardarDisponibilidad(11, [fila(11, 2, 5)]);
+
+      final leidas = await cache.leerDisponibilidades([10, 11, 12]);
+
+      expect(leidas.keys, unorderedEquals([10, 11]));
+      expect(await cache.leerDisponibilidades(const []), isEmpty);
+    });
+
+    test('una variante sin stock en ninguna sucursal también se recuerda (lista vacía)', () async {
+      await cache.guardarDisponibilidad(10, const []);
+
+      final guardado = (await cache.leerDisponibilidades([10]))[10]!;
+
+      expect(guardado.porSucursal, isEmpty);
+    });
+
+    test('no se mezcla entre tiendas', () async {
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 3)]);
+
+      tienda = 'andina';
+
+      expect(await cache.leerDisponibilidades([10]), isEmpty);
+    });
+
+    test('nunca crece sin límite: se quedan las vistas más recientemente', () async {
+      for (var i = 1; i <= maxDisponibilidadesEnCache + 5; i++) {
+        reloj.actual = DateTime.utc(2026, 11, 6, 12).add(Duration(seconds: i));
+        await cache.guardarDisponibilidad(i, [fila(i, 1, 1)]);
+      }
+
+      final total = (await db.rawQuery(
+        "SELECT COUNT(*) AS n FROM cli_cache WHERE tipo = '$cacheDisponibilidad'",
+      )).single['n'];
+      expect(total, maxDisponibilidadesEnCache);
+      expect(await cache.leerDisponibilidades([1]), isEmpty, reason: 'la más vieja se borró');
+      expect(await cache.leerDisponibilidades([maxDisponibilidadesEnCache + 5]), isNotEmpty);
+    });
+
+    test('una fila dañada no tumba las demás', () async {
+      await cache.guardarDisponibilidad(10, [fila(10, 1, 3)]);
+      await cache.guardarDisponibilidad(11, [fila(11, 1, 2)]);
+      await db.update(
+        'cli_cache',
+        {'json': 'esto no es json'},
+        where: 'tipo = ? AND clave = ?',
+        whereArgs: [cacheDisponibilidad, '10'],
+      );
+
+      final leidas = await cache.leerDisponibilidades([10, 11]);
+
+      expect(leidas.keys, [11]);
+    });
+
+    test('guardar el stock no toca las prendas, detalles ni referencias ya guardadas', () async {
+      await cache.guardarItems([_item(1, 'Polera')], primeraPosicion: 0);
+      await cache.guardarDetalle(1, _detalle(1, 'Polera'));
+
+      await cache.guardarDisponibilidad(101, [fila(101, 1, 3)]);
+
+      expect(await cache.leerItems(), hasLength(1));
+      expect(await cache.leerDetalle(1), isNotNull);
+    });
+
+    group('DisponibilidadRepository', () {
+      final respuesta = [fila(10, 1, 3), fila(10, 2, 0)];
+
+      test('cada consulta con conexión deja guardado el stock de esa variante', () async {
+        final api = ApiClientFalso()..responder('GET', '/inventario/disponibilidad', respuesta);
+
+        final lista = await DisponibilidadRepository(api, cache: cache).porVariante(10);
+
+        expect(lista, hasLength(2));
+        expect((await cache.leerDisponibilidades([10]))[10]!.porSucursal, {1: 3, 2: 0});
+      });
+
+      test('si falla la red el error llega tal cual (no se tapa con lo guardado)', () async {
+        await cache.guardarDisponibilidad(10, [fila(10, 1, 9)]);
+        final api = ApiClientFalso()..responder('GET', '/inventario/disponibilidad', errorSinRed);
+
+        await expectLater(DisponibilidadRepository(api, cache: cache).porVariante(10), throwsA(same(errorSinRed)));
+        expect((await cache.leerDisponibilidades([10]))[10]!.porSucursal, {1: 9}, reason: 'lo guardado no se pierde');
+      });
+
+      test('si la base local falla, la consulta con conexión sigue funcionando', () async {
+        final api = ApiClientFalso()..responder('GET', '/inventario/disponibilidad', respuesta);
+        tienda = null; // el cache lanza StateError
+
+        expect(await DisponibilidadRepository(api, cache: cache).porVariante(10), hasLength(2));
+      });
+
+      test('sin cache se comporta igual que antes', () async {
+        final api = ApiClientFalso()..responder('GET', '/inventario/disponibilidad', respuesta);
+
+        expect(await DisponibilidadRepository(api).porVariante(10), hasLength(2));
+      });
     });
   });
 }

@@ -165,7 +165,7 @@ void main() {
       await db.close();
     });
 
-    test('la migración real 1 → 2 conserva lo guardado y deja guardar el carrusel de recomendaciones', () async {
+    test('la migración real 1 → vigente conserva lo guardado y deja guardar el carrusel de recomendaciones', () async {
       var db = await abrir();
       await insertarPedido(db);
       for (final tipo in ['item', 'detalle', 'talla', 'color', 'sucursal']) {
@@ -193,7 +193,7 @@ void main() {
 
       db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
 
-      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], 2);
+      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], versionEsquemaCliente);
       final filas = await db.query('cli_cache', orderBy: 'tipo');
       expect(filas.map((f) => f['tipo']), ['color', 'detalle', 'item', 'sucursal', 'talla']);
       expect(filas.firstWhere((f) => f['tipo'] == 'item')['orden'], 0);
@@ -221,17 +221,76 @@ void main() {
       await db.close();
     });
 
-    test('una instalación nueva queda en la versión 2 y admite el carrusel', () async {
-      final db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
+    test('la migración real 2 → 3 conserva TODO lo guardado y deja guardar el stock por sucursal', () async {
+      var db = await abrir(version: 2, migraciones: migracionesCliente);
+      await insertarPedido(db);
+      for (final tipo in ['item', 'detalle', 'talla', 'color', 'sucursal', 'recomendaciones']) {
+        await db.insert('cli_cache', {
+          'tienda': 'chaski',
+          'tipo': tipo,
+          'clave': '1',
+          'orden': tipo == 'item' ? 0 : null,
+          'json': '{"x":"$tipo"}',
+          'guardado_en': '2026-11-06T12:00:00Z',
+        });
+      }
+      await expectLater(
+        db.insert('cli_cache', {
+          'tienda': 'chaski',
+          'tipo': 'disponibilidad',
+          'clave': '10',
+          'json': '[]',
+          'guardado_en': 'x',
+        }),
+        throwsA(isA<DatabaseException>()),
+        reason: 'en la versión 2 el tipo no existe',
+      );
+      await db.close();
 
-      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], versionEsquemaCliente);
+      db = await abrir(version: 3, migraciones: migracionesCliente);
+
+      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], 3);
+      final filas = await db.query('cli_cache', orderBy: 'tipo');
+      expect(filas.map((f) => f['tipo']), ['color', 'detalle', 'item', 'recomendaciones', 'sucursal', 'talla']);
+      expect(filas.firstWhere((f) => f['tipo'] == 'item')['orden'], 0);
+      expect(filas.firstWhere((f) => f['tipo'] == 'recomendaciones')['json'], '{"x":"recomendaciones"}');
+      expect(await db.query('cli_pedido'), hasLength(1), reason: 'el pedido sin enviar sigue ahí');
+      expect(await tablas(db), unorderedEquals(tablasEsquemaClienteV1), reason: 'no queda la tabla vieja');
+
       await db.insert('cli_cache', {
-        'tienda': 'a',
-        'tipo': 'recomendaciones',
-        'clave': 'inicio',
+        'tienda': 'chaski',
+        'tipo': 'disponibilidad',
+        'clave': '10',
         'json': '[]',
         'guardado_en': 'x',
       });
+      await expectLater(
+        db.insert('cli_cache', {'tienda': 'a', 'tipo': 'otro', 'clave': '1', 'json': '{}', 'guardado_en': 'x'}),
+        throwsA(isA<DatabaseException>()),
+        reason: 'los demás tipos siguen sin admitirse',
+      );
+      final indices = [
+        for (final f in await db.rawQuery("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cli_cache'"))
+          f['name'],
+      ];
+      expect(indices, contains('ix_cli_cache_orden'));
+      await db.close();
+    });
+
+    test('una instalación nueva queda en la versión vigente y admite el carrusel y el stock', () async {
+      final db = await abrir(version: versionEsquemaCliente, migraciones: migracionesCliente);
+
+      expect((await db.rawQuery('PRAGMA user_version')).single['user_version'], versionEsquemaCliente);
+      expect(versionEsquemaCliente, 3);
+      for (final tipo in ['recomendaciones', 'disponibilidad']) {
+        await db.insert('cli_cache', {
+          'tienda': 'a',
+          'tipo': tipo,
+          'clave': 'inicio',
+          'json': '[]',
+          'guardado_en': 'x',
+        });
+      }
       expect(await tablas(db), unorderedEquals(tablasEsquemaClienteV1));
       await db.close();
     });

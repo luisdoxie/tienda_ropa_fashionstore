@@ -7,6 +7,7 @@ import '../../../core/utils/texto.dart';
 import '../../catalogo/models/catalogo_detalle.dart';
 import '../../catalogo/models/catalogo_item.dart';
 import '../config/cliente_offline_config.dart';
+import '../models/stock_guardado.dart';
 
 /// Lo público de la tienda que el cliente ya vio, guardado en el teléfono para mostrarlo sin conexión: las prendas del
 /// catálogo, el detalle de cada una (con sus variantes) y las tallas, colores y sucursales. Es lo mismo que mandó el
@@ -33,6 +34,12 @@ abstract interface class CacheCatalogoCliente {
 
   /// El carrusel guardado; lista vacía si nunca se guardó.
   Future<List<Map<String, dynamic>>> leerRecomendaciones();
+
+  /// Guarda el stock por sucursal de una variante (reemplaza el anterior), tal como lo mandó el servidor, y anota cuándo se vio.
+  Future<void> guardarDisponibilidad(int varianteId, List<Map<String, dynamic>> crudos);
+
+  /// El último stock visto de cada una de esas variantes. Las que nunca se vieron no aparecen.
+  Future<Map<int, StockGuardado>> leerDisponibilidades(Iterable<int> varianteIds);
 }
 
 class CacheCatalogoClienteSqlite implements CacheCatalogoCliente {
@@ -219,5 +226,55 @@ class CacheCatalogoClienteSqlite implements CacheCatalogoCliente {
     } catch (_) {
       return const [];
     }
+  }
+
+  @override
+  Future<void> guardarDisponibilidad(int varianteId, List<Map<String, dynamic>> crudos) async {
+    final db = await _base();
+    final tienda = _codigo;
+    await db.transaction((txn) async {
+      await txn.insert('cli_cache', {
+        'tienda': tienda,
+        'tipo': cacheDisponibilidad,
+        'clave': '$varianteId',
+        'orden': null,
+        'json': jsonEncode(crudos),
+        'guardado_en': _ahora,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      // Nunca crece sin límite: se quedan las variantes vistas más recientemente.
+      await txn.rawDelete(
+        'DELETE FROM cli_cache WHERE tienda = ? AND tipo = ? AND clave NOT IN ('
+        'SELECT clave FROM cli_cache WHERE tienda = ? AND tipo = ? ORDER BY guardado_en DESC LIMIT ?)',
+        [tienda, cacheDisponibilidad, tienda, cacheDisponibilidad, maxDisponibilidadesEnCache],
+      );
+    });
+  }
+
+  @override
+  Future<Map<int, StockGuardado>> leerDisponibilidades(Iterable<int> varianteIds) async {
+    final ids = varianteIds.toSet();
+    if (ids.isEmpty) return const {};
+    final db = await _base();
+    final filas = await db.query(
+      'cli_cache',
+      columns: ['clave', 'json', 'guardado_en'],
+      where: 'tienda = ? AND tipo = ? AND clave IN (${List.filled(ids.length, '?').join(', ')})',
+      whereArgs: [_codigo, cacheDisponibilidad, for (final id in ids) '$id'],
+    );
+    final resultado = <int, StockGuardado>{};
+    for (final fila in filas) {
+      try {
+        final varianteId = int.parse(fila['clave']! as String);
+        final vistoEn = DateTime.parse(fila['guardado_en']! as String).toUtc();
+        final porSucursal = <int, int>{};
+        for (final crudo in (jsonDecode(fila['json']! as String) as List<dynamic>).cast<Map<String, dynamic>>()) {
+          porSucursal[crudo['sucursal_id'] as int] = crudo['cantidad_disponible'] as int;
+        }
+        resultado[varianteId] = StockGuardado(porSucursal: porSucursal, vistoEn: vistoEn);
+      } catch (_) {
+        // Una fila dañada no tumba el resto: esa variante simplemente queda "sin datos".
+      }
+    }
+    return resultado;
   }
 }
