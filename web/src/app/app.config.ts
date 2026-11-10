@@ -7,7 +7,7 @@ import {
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter, withNavigationErrorHandler } from '@angular/router';
+import { provideRouter, withInMemoryScrolling, withNavigationErrorHandler } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 import { definePreset } from '@primeuix/themes';
 import Aura from '@primeuix/themes/aura';
@@ -105,7 +105,13 @@ const FashionStorePreset = definePreset(Aura, {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes, withNavigationErrorHandler(alFallarLaNavegacion)),
+    provideRouter(
+      routes,
+      // Cada pantalla nueva se abre ARRIBA (sin esto el navegador conserva el scroll de la anterior: una tienda abierta desde
+      // la lista de tiendas, que está al final de la portada, aparecía en su pie) y "atrás" vuelve a donde se estaba.
+      withInMemoryScrolling({ scrollPositionRestoration: 'enabled' }),
+      withNavigationErrorHandler(alFallarLaNavegacion),
+    ),
     provideHttpClient(withInterceptors([errorInterceptor, authInterceptor])),
     provideAnimationsAsync(),
     providePrimeNG({

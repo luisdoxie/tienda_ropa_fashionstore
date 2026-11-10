@@ -188,6 +188,44 @@ describe('AuthService (tienda por empresa)', () => {
       expect(navegar).toHaveBeenCalledWith(['/admin/login']);
     });
 
+    describe('por dónde se entró', () => {
+      it('sin tienda actual (en el back office), tras entrar por el login de su tienda vuelve a ESE login', () => {
+        auth.recordarOrigenDeLogin('acme');
+        const navegar = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+        auth.logout();
+        expect(navegar).toHaveBeenCalledWith(['/t', 'acme', 'login']);
+      });
+
+      it('tras entrar por /admin/login vuelve a /admin/login', () => {
+        auth.recordarOrigenDeLogin('acme');
+        auth.recordarOrigenDeLogin(null); // la última entrada fue por /admin/login
+        const navegar = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+        auth.logout();
+        expect(navegar).toHaveBeenCalledWith(['/admin/login']);
+      });
+
+      it('lo anotado sobrevive a la limpieza de la sesión (es justo lo que se usa después de limpiarla)', () => {
+        auth.recordarOrigenDeLogin('acme');
+        auth.limpiarSesion();
+        expect(localStorage.getItem('fs_origen_login')).toBe('acme');
+      });
+
+      it('con una tienda actual manda su login aunque lo anotado sea otra', () => {
+        auth.recordarOrigenDeLogin('otra');
+        fijarAcme();
+        const navegar = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+        auth.logout();
+        expect(navegar).toHaveBeenCalledWith(['/t', 'acme', 'login']);
+      });
+
+      it('un valor guardado con forma rara se ignora', () => {
+        localStorage.setItem('fs_origen_login', '../admin');
+        const navegar = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+        auth.logout();
+        expect(navegar).toHaveBeenCalledWith(['/admin/login']);
+      });
+    });
+
     it('limpia los tokens guardados', () => {
       localStorage.setItem('fs_access_token', 'a');
       localStorage.setItem('fs_refresh_token', 'r');

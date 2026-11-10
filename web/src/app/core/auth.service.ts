@@ -19,6 +19,14 @@ const CLAVE_REFRESH_TOKEN = 'fs_refresh_token';
  * usuario y se borra al limpiar la sesión.
  */
 const CLAVE_ALCANCE_SESION = 'fs_offline_sesion';
+/**
+ * Por qué puerta entró la persona la última vez: el código de la tienda en cuyo login escribió (`acme`), o nada si entró por
+ * /admin/login. Al salir (o al vencerse la sesión) vuelve a esa misma puerta. No es un secreto y NO se borra al limpiar la
+ * sesión: es justo lo que se necesita después de limpiarla.
+ */
+const CLAVE_ORIGEN_LOGIN = 'fs_origen_login';
+/** Un código de tienda es `empresa.codigo` (minúsculas, números y guiones): lo guardado con otra forma se ignora. */
+const FORMA_CODIGO_TIENDA = /^[a-z0-9-]{1,64}$/;
 
 /** Rol global del superadministrador de la plataforma (`core/permisos.py`). */
 export const ROL_SUPERADMINISTRADOR = 'superadministrador';
@@ -242,12 +250,33 @@ export class AuthService {
     // Con la sesión todavía puesta (la baja del aviso push va con su token). Mejor esfuerzo: no retrasa ni impide salir.
     this.darDeBajaAvisosPush();
     this.limpiarSesion();
-    // Dentro de una tienda se vuelve a su login; fuera, al login del personal.
-    if (this.tienda.codigo()) {
-      this.router.navigate(this.tienda.ruta('login'));
-    } else {
-      this.router.navigate([RUTA_LOGIN_PERSONAL]);
+    this.router.navigate(this.rutaDeSalida());
+  }
+
+  /**
+   * Anota por dónde entró la persona: el código de la tienda en cuyo login escribió, o `null` si entró por /admin/login.
+   * Hay que hacerlo al entrar porque el back office queda FUERA de /t/:codigo (al salir de la tienda se olvida la empresa
+   * actual): sin esta nota, quien entró por el login de su tienda salía a /admin/login, que le pide la empresa.
+   */
+  recordarOrigenDeLogin(codigoTienda: string | null): void {
+    try {
+      if (codigoTienda) localStorage.setItem(CLAVE_ORIGEN_LOGIN, codigoTienda);
+      else localStorage.removeItem(CLAVE_ORIGEN_LOGIN);
+    } catch {
+      // Sin localStorage (modo privado, cuota): al salir se va al login del personal, como siempre.
     }
+  }
+
+  /** A dónde ir al salir: el login de la tienda en la que está; si no, por donde entró; y si no se sabe, el del personal. */
+  private rutaDeSalida(): string[] {
+    if (this.tienda.codigo()) return this.tienda.ruta('login');
+    try {
+      const codigo = localStorage.getItem(CLAVE_ORIGEN_LOGIN);
+      if (codigo !== null && FORMA_CODIGO_TIENDA.test(codigo)) return ['/t', codigo, 'login'];
+    } catch {
+      // Se usa el login del personal.
+    }
+    return [RUTA_LOGIN_PERSONAL];
   }
 
   /**
