@@ -37,7 +37,11 @@ describe('InventarioComponent', () => {
     };
   });
 
-  function abrir(permisos: string[], transferencias: unknown[] = []) {
+  function abrir(
+    permisos: string[],
+    transferencias: unknown[] = [],
+    filasConsolidado: unknown[] = [fila('Camisa Oxford', 12, 5, 1680), fila('Polera básica', 3, 8, 232)],
+  ) {
     TestBed.configureTestingModule({
       imports: [InventarioComponent],
       providers: [
@@ -55,9 +59,7 @@ describe('InventarioComponent', () => {
       http.expectOne(`${API}/proveedores?pagina=1&tamanio=100`).flush([]);
       http.expectOne(`${API}/recepciones`).flush([]);
     }
-    http
-      .expectOne((r) => r.url === `${API}/inventario/consolidado`)
-      .flush([fila('Camisa Oxford', 12, 5, 1680), fila('Polera básica', 3, 8, 232)]);
+    http.expectOne((r) => r.url === `${API}/inventario/consolidado`).flush(filasConsolidado);
     http.expectOne((r) => r.url === `${API}/transferencias`).flush(transferencias);
     fixture.detectChanges();
     return { fixture, el: fixture.nativeElement as HTMLElement };
@@ -85,6 +87,17 @@ describe('InventarioComponent', () => {
     expect(filas[1].querySelector('.fs-chip--advertencia')?.textContent).toBe('Bajo mínimo');
     expect(filas[1].querySelector('[aria-label="Ajustar stock"]')).not.toBeNull();
     expect(filas[1].querySelector('[aria-label="Ver kardex"]')).not.toBeNull();
+  });
+
+  it('una variante sin fila de stock se marca "Sin stock", con ajuste pero sin kardex', () => {
+    const sinStock = { ...fila('Polera Nike', 0, 0, 0), sku: 'SKU-M', talla: 'M', sin_registro: true };
+    const { el } = abrir(['inventario.gestionar'], [], [fila('Camisa Oxford', 12, 5, 1680), sinStock]);
+
+    const filas = el.querySelectorAll('p-tabpanel[value="consolidado"] tbody tr');
+    expect(filas[1].querySelector('.fs-chip--advertencia')?.textContent).toBe('Sin stock');
+    expect(filas[1].classList).not.toContain('fila-alerta');
+    expect(filas[1].querySelector('[aria-label="Ajustar stock"]')).not.toBeNull();
+    expect(filas[1].querySelector('[aria-label="Ver kardex"]')).toBeNull();
   });
 
   it('"Solo bajo mínimo" y la búsqueda filtran las filas cargadas', () => {

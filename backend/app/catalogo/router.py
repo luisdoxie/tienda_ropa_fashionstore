@@ -678,10 +678,13 @@ def listar_tipos_movimiento(db: Session = Depends(get_db)) -> list[TipoMovimient
 def listar_consolidado(
     sucursal_id: int | None = Query(default=None),
     producto_id: int | None = Query(default=None),
+    incluir_sin_stock: bool = Query(default=False),
     usuario=Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ConsolidadoRespuesta]:
-    filas = cu_consultar_inventario.listar_consolidado(db, usuario.id, sucursal_id, producto_id)
+    filas = cu_consultar_inventario.listar_consolidado(
+        db, usuario.id, sucursal_id, producto_id, incluir_sin_stock
+    )
     return [ConsolidadoRespuesta(**fila) for fila in filas]
 
 

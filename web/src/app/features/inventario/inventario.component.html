@@ -109,18 +109,22 @@
                 <td class="num">{{ fila.valor_inventario | number: '1.2-2' }}</td>
                 <td>
                   <div class="acciones">
-                    @if (esBajoMinimo(fila)) {
+                    @if (fila.sin_registro) {
+                      <span class="fs-chip fs-chip--advertencia">Sin stock</span>
+                    } @else if (esBajoMinimo(fila)) {
                       <span class="fs-chip fs-chip--advertencia">Bajo mínimo</span>
                     }
-                    <button
-                      type="button"
-                      class="btn-icono"
-                      aria-label="Ver kardex"
-                      pTooltip="Ver kardex"
-                      (click)="verKardex(fila)"
-                    >
-                      <fs-icono nombre="historial" [tam]="24" />
-                    </button>
+                    @if (!fila.sin_registro) {
+                      <button
+                        type="button"
+                        class="btn-icono"
+                        aria-label="Ver kardex"
+                        pTooltip="Ver kardex"
+                        (click)="verKardex(fila)"
+                      >
+                        <fs-icono nombre="historial" [tam]="24" />
+                      </button>
+                    }
                     @if (puedeGestionarInventario()) {
                       <button
                         type="button"
@@ -658,6 +662,12 @@
     <p class="ayuda">
       {{ fila.producto }} — {{ fila.sku }} en {{ fila.sucursal }} (disponible: {{ fila.cantidad_disponible }})
     </p>
+    @if (fila.sin_registro) {
+      <p class="ayuda">
+        Esta prenda aún no tiene stock en esta sucursal. Un ajuste positivo le crea el registro con costo 0; si quieres
+        que quede con su costo de compra, usa Recepción.
+      </p>
+    }
     <form [formGroup]="formularioAjuste" (ngSubmit)="guardarAjuste()" class="formulario-dialogo">
       <div class="campo">
         <label for="ajuste-cantidad">Cantidad (positivo = sobrante, negativo = faltante)</label>

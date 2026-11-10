@@ -129,11 +129,19 @@
 // ---- Pestañas subrayadas (p-tabs con el aspecto de .fs-tabs) -----------------------
 @mixin bo-pestanias {
   :host ::ng-deep {
-    .p-tablist-tab-list {
-      gap: 28px;
+    // PrimeNG 22: la barra es `.p-tablist` (fondo y borde) y las pestañas viven directamente dentro de
+    // `.p-tablist-content` (el contenedor flex). La clase `.p-tablist-tab-list` de versiones anteriores ya no
+    // existe: apuntar a ella dejaba las pestañas pegadas, sin separación.
+    // Propiedades sueltas (no el atajo `border-bottom: ... var(...)`): jsdom, en las pruebas, no lo entiende.
+    .p-tablist {
       background: transparent;
-      border: 0;
-      border-bottom: 1px solid var(--fs-borde);
+      border-style: solid;
+      border-width: 0 0 1px;
+      border-color: var(--fs-borde);
+    }
+
+    .p-tablist-content {
+      gap: 28px;
     }
 
     .p-tab {

@@ -913,6 +913,17 @@ def listar_sucursales_autorizadas(
     return [(sucursal, horarios[sucursal.id]) for sucursal in sucursales]
 
 
+def listar_sucursales_activas_minimas(db: Session, sucursal_id: int | None = None) -> list[tuple[int, str]]:
+    """Para `catalogo` (Inventario > Consolidado): (id, nombre) de las sucursales ACTIVAS de la empresa, o solo de
+    `sucursal_id` si sigue activa. El alcance del usuario ya lo resolvió quien llama (`acotar_sucursal`)."""
+    if sucursal_id is None:
+        sucursales = sucursal_repo.listar_activas(db)
+    else:
+        sucursal = sucursal_repo.buscar(db, sucursal_id)
+        sucursales = [sucursal] if sucursal is not None and sucursal.activo else []
+    return [(sucursal.id, sucursal.nombre) for sucursal in sucursales]
+
+
 def listar_clientes_minimos(db: Session, desde_id: int, limite: int) -> tuple[list[tuple], int, bool]:
     """Para `sincronizacion` (paquete offline): los clientes activos de la empresa con solo
     (id, nombre, apellido, ci_nit), por clave (`id > desde_id`). Devuelve (filas, total, hay_mas)."""
