@@ -109,7 +109,9 @@ export const appConfig: ApplicationConfig = {
       routes,
       // Cada pantalla nueva se abre ARRIBA (sin esto el navegador conserva el scroll de la anterior: una tienda abierta desde
       // la lista de tiendas, que está al final de la portada, aparecía en su pie) y "atrás" vuelve a donde se estaba.
-      withInMemoryScrolling({ scrollPositionRestoration: 'enabled' }),
+      // `anchorScrolling` es necesario junto a lo anterior: sin él el router ignora los enlaces `#servicios`, `#planes`,
+      // `#tiendas`... de la portada y los lleva arriba en vez de a su sección.
+      withInMemoryScrolling({ scrollPositionRestoration: 'enabled', anchorScrolling: 'enabled' }),
       withNavigationErrorHandler(alFallarLaNavegacion),
     ),
     provideHttpClient(withInterceptors([errorInterceptor, authInterceptor])),
