@@ -130,6 +130,8 @@ export class LoginComponent {
             return;
           }
           if (empresaIngresada) guardarUltimaEmpresa(empresaIngresada);
+          // Al salir se vuelve por donde se entró: el login de esta tienda, o /admin/login.
+          this.authService.recordarOrigenDeLogin(this.esPersonal ? null : this.tienda.codigo());
           navegarDespuesDeLogin(this.router, this.authService, this.returnTo, this.tienda);
         },
         error: (error: unknown) => {

@@ -96,6 +96,35 @@ describe('LoginComponent', () => {
     });
   });
 
+  describe('por dónde se entró (para volver ahí al salir)', () => {
+    it('quien entra por el login de su tienda deja anotada esa tienda', async () => {
+      TestBed.inject(TiendaActualService).fijar('acme', 'lista', {
+        codigo: 'acme',
+        nombre: 'Acme',
+        logo_url: null,
+        color_acento: null,
+      });
+      const { comp } = await abrir('/t/acme/login');
+      llenar(comp, { email: 'caja@b.com', password: 'secreto123' });
+      comp.enviar();
+      responderSesion(['cajero'], 7);
+      await harness!.fixture.whenStable();
+
+      expect(localStorage.getItem('fs_origen_login')).toBe('acme');
+    });
+
+    it('quien entra por /admin/login no deja ninguna tienda anotada', async () => {
+      localStorage.setItem('fs_origen_login', 'acme'); // de una entrada anterior por la tienda
+      const { comp } = await abrir('/admin/login');
+      llenar(comp, { empresa: 'acme', email: 'a@b.com', password: 'secreto123' });
+      comp.enviar();
+      responderSesion(['administrador'], 7);
+      await harness!.fixture.whenStable();
+
+      expect(localStorage.getItem('fs_origen_login')).toBeNull();
+    });
+  });
+
   describe('login del personal (/admin/login)', () => {
     it('pide la empresa arriba del correo y no tiene enlace de registro', async () => {
       const { el } = await abrir('/admin/login');
