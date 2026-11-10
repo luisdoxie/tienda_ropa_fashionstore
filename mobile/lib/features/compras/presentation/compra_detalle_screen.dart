@@ -77,6 +77,13 @@ class CompraDetalleScreen extends ConsumerWidget {
               // El comprobante con QR y PDF: solo una compra pagada o entregada (la tarjeta lo decide).
               ComprobanteTarjeta(venta: venta),
 
+              // Dónde y desde qué hora pasar a recoger, con el horario que la sucursal tiene para ese día. Solo una
+              // compra de retiro pagada y aún no entregada (el servidor manda null en el resto).
+              if (venta.retiro != null) ...[
+                _RetiroEnSucursal(texto: venta.retiro!),
+                const SizedBox(height: AppSpacing.md),
+              ],
+
               // Con la compra pendiente o anulada el envío no está en marcha.
               if (venta.esEnvioADomicilio && (venta.estado == 'pagada' || venta.estado == 'entregada')) ...[
                 _SeguimientoEnvio(ventaId: venta.id),
@@ -233,6 +240,32 @@ class _TipoDeEntrega extends ConsumerWidget {
     final base = venta.esEnvioADomicilio ? 'Envío a domicilio' : 'Retiro en sucursal';
     final texto = sucursal == null ? base : '$base · ${venta.esEnvioADomicilio ? 'despacha ' : ''}$sucursal';
     return Text(texto, style: const TextStyle(color: AppColors.textoTenue, fontSize: 13));
+  }
+}
+
+/// "Retira en Centro (Av. Uno 123): hoy, hasta las 21:00." El texto lo arma el servidor con el horario que la sucursal
+/// definió para cada día; la app lo muestra tal cual.
+class _RetiroEnSucursal extends StatelessWidget {
+  const _RetiroEnSucursal({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('retiro-compra'),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.storefront_outlined, color: AppColors.exito, size: 28),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+          ],
+        ),
+      ),
+    );
   }
 }
 

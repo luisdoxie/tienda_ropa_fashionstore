@@ -81,6 +81,7 @@ class Venta {
     this.sucursalId,
     this.unidadesDevueltas = 0,
     this.enlaceVerificacion,
+    this.retiro,
   });
 
   factory Venta.fromJson(Map<String, dynamic> json) => Venta(
@@ -96,6 +97,7 @@ class Venta {
     sucursalId: json['sucursal_id'] as int?,
     unidadesDevueltas: json['unidades_devueltas'] as int? ?? 0,
     enlaceVerificacion: _textoNoVacio(json['enlace_verificacion']),
+    retiro: _textoNoVacio(json['retiro']),
   );
 
   final int id;
@@ -116,6 +118,11 @@ class Venta {
 
   /// La dirección que lleva el QR del comprobante (solo la trae `GET /ventas/{id}/comprobante`). Si falta, no hay QR.
   final String? enlaceVerificacion;
+
+  /// Dónde y a partir de qué hora pasar a recoger ("Retira en Centro (Av. Uno 123): hoy, hasta las 21:00."), según el
+  /// horario que la sucursal tiene definido para ese día. Solo lo trae `GET /ventas/{id}/comprobante`, en una compra de
+  /// retiro pagada y aún no entregada; en el resto es null.
+  final String? retiro;
 
   /// Una compra pagada o entregada tiene comprobante con QR y PDF; la pendiente de pago o la anulada, no.
   bool get tieneComprobante => estado == 'pagada' || estado == 'entregada';
@@ -172,6 +179,7 @@ class Venta {
     sucursalId: sucursalId,
     unidadesDevueltas: unidadesDevueltas,
     enlaceVerificacion: enlaceVerificacion,
+    retiro: retiro,
   );
 }
 

@@ -1056,6 +1056,22 @@ sincronización offline y pedido sin conexión), así que el aviso vive ahí y n
 - **Sin duplicados.** `confirmar_venta`, `resolver_pago` y `registrar_cobro_pasarela_aprobado` reciben `avisar_compra: bool = True`; el
   pedido sin conexión (CU-13) pasa `False` y conserva su correo "Cobramos tu pedido" y su notificación `pedido_diferido`. Un
   webhook repetido, o polling más webhook, no confirman dos veces (la venta ya no está `pendiente_pago`).
+- **Cuándo retirar (compra de retiro).** Una compra digital SIN envío a domicilio (el envío se crea antes de pagar, así que al
+  confirmar ya existe o no) es de retiro, y también todo pedido sin conexión. Su notificación, su correo (bloque en negrita) y el
+  detalle de la compra (web y app) dicen dónde y desde qué hora pasar: `plataforma.politicas.texto_de_retiro` →
+  "Retira en {sucursal} ({dirección}): hoy, hasta las 21:00." / "hoy, desde las 07:00 hasta las 21:00" / "el martes 10/11, desde
+  las 09:00 hasta las 19:00". Usa el horario que el administrador define POR SUCURSAL Y POR DÍA (Sucursales > Horarios de
+  atención; `HorarioSucursal`, sin tablas nuevas) y la hora de Bolivia: hoy cuenta mientras no haya pasado la hora de cierre; si ya
+  cerró, o ese día no hay horario (un domingo sin fila), se pasa al próximo día con horario (hasta una semana). Sin ningún horario
+  cargado solo dice dónde. `calcular_ventana_de_retiro` es pura. NO bloquea pedidos fuera de horario: solo informa.
+  `VentaRespuesta.retiro` lo llena SOLO `GET /ventas/{id}/comprobante`, con la compra `pagada` (null en envío, venta en caja,
+  entregada). Pruebas: `tests/comercial/test_horario_de_retiro.py`.
+- **Envío nuevo para el personal.** Al confirmarse el pago de una compra con envío a domicilio, `confirmar_venta` avisa
+  (`envio_nuevo`, `referencia_id` = el envío, con su push) a los empleados de la sucursal de la venta que tienen
+  `entregas.gestionar` (un cajero no). Se avisa al pagar y no al crear el envío porque este se crea antes del pago y un pago
+  abandonado dejaría un aviso falso. El aviso abre `/envios` (tablas `push-rutas.ts` y `firebase-messaging-sw.js`) y la pantalla
+  Envíos se recarga sola cuando llega. Los administradores sin fila de `empleado` no lo reciben (igual que el aviso de reservas).
+  La pantalla Zonas de envío es solo de quien tiene alcance global (`organizacion.gestionar`): lee las ciudades.
 - **Comprobante.** `VentaRespuesta.enlace_verificacion` (`str | None`) lo llena SOLO `GET /ventas/{id}/comprobante`:
   `{frontend_public_url}/caja?venta={codigo}` (`construir_enlace_verificacion`, sin barra final duplicada). Es lo que dibujan el QR
   de la web y de la app. No se repite `costo_unitario` en nada nuevo.

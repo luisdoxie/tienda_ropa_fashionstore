@@ -301,6 +301,10 @@ class VentaRespuesta(BaseModel):
     # Lo que lleva el QR del comprobante (la venta en la Caja). SOLO lo llena `GET /ventas/{id}/comprobante`; en el resto
     # de las respuestas es null. Web y app dibujan este texto tal cual.
     enlace_verificacion: str | None = None
+    # Dónde y cuándo pasar a retirar ("Retira en Centro (dirección): hoy, hasta las 21:00."), con el horario que la
+    # sucursal tiene definido para ese día. SOLO lo llena `GET /ventas/{id}/comprobante`, y solo en una compra de retiro
+    # ya pagada y aún no entregada; en el resto es null.
+    retiro: str | None = None
 
     @classmethod
     def from_modelo(

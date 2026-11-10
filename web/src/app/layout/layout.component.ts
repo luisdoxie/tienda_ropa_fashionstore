@@ -206,7 +206,15 @@ export const ITEMS_FIN: ItemMenu[] = [
   { etiqueta: 'Inventario', icono: 'inventario', ruta: '/inventario', permiso: 'inventario.ver' },
   { etiqueta: 'Proveedores', icono: 'camion', ruta: '/proveedores', permiso: 'abastecimiento.gestionar' },
   { etiqueta: 'Envíos', icono: 'envios', ruta: '/envios', permiso: 'entregas.gestionar' },
-  { etiqueta: 'Zonas de envío', icono: 'mapa', ruta: '/zonas-envio', permiso: 'entregas.gestionar' },
+  // Las zonas y sus tarifas son de toda la empresa (y la pantalla lee las ciudades): las gestiona quien tiene alcance
+  // global. El encargado de sucursal conserva Envíos, pero no esta pantalla (le daba un 403 al cargar las ciudades).
+  {
+    etiqueta: 'Zonas de envío',
+    icono: 'mapa',
+    ruta: '/zonas-envio',
+    permiso: 'entregas.gestionar',
+    ademas: PERMISO_ALCANCE_GLOBAL,
+  },
   { etiqueta: 'Assets del probador', icono: 'imagen', ruta: '/probador', permiso: 'probador.gestionar' },
   { etiqueta: 'Mi empresa', icono: 'edificio', ruta: '/mi-empresa', permiso: 'empresa.gestionar' },
 ];

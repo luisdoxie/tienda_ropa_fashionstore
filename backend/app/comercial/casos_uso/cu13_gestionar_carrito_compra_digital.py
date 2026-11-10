@@ -56,6 +56,7 @@ from app.comercial.politicas import (
     registrar_cobro_pasarela_aprobado,
     registrar_venta,
     request_id_de_pedido,
+    texto_de_retiro_de_venta,
 )
 from app.comercial.repository import CarritoRepository, MetodoPagoGuardadoRepository, PedidoDiferidoRepository
 from app.comercial.schemas import (
@@ -720,6 +721,9 @@ class RealizarPedidoDiferido:
         contexto: ContextoAuditoria | None,
     ) -> None:
         mensaje = f"Cobramos tu pedido {venta.codigo} por Bs {venta.total} (sucursal {sucursal.nombre})."
+        retiro = texto_de_retiro_de_venta(db, venta)  # un pedido sin conexión siempre es de retiro: cuándo pasar
+        if retiro:
+            mensaje = f"{mensaje} {retiro}"
         fila.estado = "cobrado"
         fila.motivo = None
         fila.mensaje = mensaje[:300]

@@ -12,6 +12,7 @@ describe('rutaDeAviso', () => {
 
   it('el personal va a su pantalla del back office', () => {
     expect(rutaDeAviso('reserva', 5, 'acme')).toBe('/reservas');
+    expect(rutaDeAviso('envio_nuevo', 5, 'acme')).toBe('/envios');
     expect(rutaDeAviso('sincronizacion', 5, null)).toBe('/sincronizacion');
   });
 

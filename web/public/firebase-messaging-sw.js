@@ -46,7 +46,8 @@ function datosDe(notificacion) {
 /**
  * A qué pantalla lleva cada tipo de aviso (la misma tabla que core/push/push-rutas.ts):
  * compra, envío, pedido sin conexión y reembolso -> la compra; reserva preparada -> sus reservas; y para el personal,
- * reserva -> /reservas y sincronizacion -> /sincronizacion. Un tipo desconocido abre la portada de la tienda.
+ * reserva -> /reservas, envio_nuevo -> /envios y sincronizacion -> /sincronizacion. Un tipo desconocido abre la portada
+ * de la tienda.
  */
 function rutaDeAviso(datos) {
   const tipo = datos.tipo;
@@ -62,6 +63,8 @@ function rutaDeAviso(datos) {
       return tienda ? tienda + '/mis-reservas' : '/';
     case 'reserva':
       return '/reservas';
+    case 'envio_nuevo':
+      return '/envios';
     case 'sincronizacion':
       return '/sincronizacion';
     default:

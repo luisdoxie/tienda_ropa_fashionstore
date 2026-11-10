@@ -104,7 +104,8 @@ def test_el_webhook_avisa_con_una_notificacion_un_push_y_un_correo(client, clien
 
     (aviso,) = _avisos_de_compra(client, cliente_headers)
     assert aviso["titulo"] == "Compra confirmada" and aviso["referencia_id"] == venta["id"]
-    assert aviso["mensaje"] == f"Tu compra {venta['codigo']} por Bs 100.00 está pagada."
+    # Es una compra de retiro: además de pagada, dice dónde pasar a recogerla (sin horarios cargados, solo dónde).
+    assert aviso["mensaje"] == f"Tu compra {venta['codigo']} por Bs 100.00 está pagada. Retira en Sucursal Pago (Av. 1)."
     (push,) = avisos.fcm.mensajes
     assert push["message"]["token"] == TOKEN
     assert push["message"]["data"] == {

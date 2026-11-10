@@ -99,6 +99,13 @@
           </section>
         }
 
+        @if (venta()!.retiro; as retiro) {
+          <p class="fs-aviso fs-aviso--exito aviso-compra" role="status" data-estado="retiro-compra">
+            <fs-icono nombre="tienda" [tam]="24" />
+            <span>{{ retiro }}</span>
+          </p>
+        }
+
         @if (envio(); as envio) {
           <div class="seguimiento">
             <span class="seguimiento__icono" [class]="'seguimiento__icono seguimiento__icono--' + envio.estado">

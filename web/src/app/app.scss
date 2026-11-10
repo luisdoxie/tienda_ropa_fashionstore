@@ -1,14 +1,19 @@
 // Aviso push con la pestaña abierta (el toast con botón "Ver" de app.html).
+// El texto ocupa lo que sobra y el botón "Ver" nunca se encoge ni parte su palabra (antes, con un título largo, el botón
+// quedaba aplastado y el texto se veía desacomodado).
 .aviso-push {
   display: flex;
   flex: 1;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .aviso-push__texto {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .aviso-push__titulo {
@@ -18,4 +23,9 @@
 .aviso-push__detalle {
   margin-top: 2px;
   font-size: 14px;
+}
+
+.aviso-push .fs-btn {
+  flex: none;
+  white-space: nowrap;
 }

@@ -56,6 +56,7 @@ from app.comercial.politicas import (
     mapa_codigos_estado_reserva,
     mapa_codigos_estado_venta,
     devuelto_por_venta_y_linea,
+    texto_de_retiro_de_venta,
 )
 from app.comercial.schemas import (
     CajaDeSucursalRespuesta,
@@ -366,6 +367,8 @@ def obtener_comprobante(
     venta = cu_historial_compras.obtener_comprobante(db, venta_id, usuario.id)
     respuesta = _venta_respuesta(db, venta, ocultar_costos=not _es_personal_de_ventas(db, usuario.id))
     respuesta.enlace_verificacion = construir_enlace_verificacion(respuesta.codigo)  # solo el comprobante lo trae
+    if respuesta.estado == "pagada":
+        respuesta.retiro = texto_de_retiro_de_venta(db, venta)  # cuándo pasar a recoger (None si no es de retiro)
     return respuesta
 
 
