@@ -101,7 +101,8 @@ export class InventarioComponent implements OnInit {
   }
 
   protected esBajoMinimo(fila: FilaConsolidado): boolean {
-    return fila.cantidad_disponible <= fila.stock_minimo;
+    // Una prenda que aún no tiene fila de stock no es una alerta de reposición: se marca aparte ("Sin stock").
+    return !fila.sin_registro && fila.cantidad_disponible <= fila.stock_minimo;
   }
 
   protected readonly puedeGestionarInventario = computed(() =>
@@ -239,7 +240,8 @@ export class InventarioComponent implements OnInit {
 
   buscarConsolidado(): void {
     this.cargandoConsolidado.set(true);
-    let params = new HttpParams();
+    // `incluir_sin_stock`: también las variantes sin fila de stock (agotadas desde siempre), para darles su primer stock.
+    let params = new HttpParams().set('incluir_sin_stock', true);
     if (this.filtroSucursalConsolidado() !== null) {
       params = params.set('sucursal_id', this.filtroSucursalConsolidado()!);
     }

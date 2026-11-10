@@ -60,6 +60,8 @@ export interface FilaConsolidado {
   stock_minimo: number;
   costo_promedio: number;
   valor_inventario: number;
+  /** true: la variante aún no tiene fila de stock en esa sucursal (solo con `incluir_sin_stock`). */
+  sin_registro?: boolean;
 }
 
 export interface FilaValuacion {

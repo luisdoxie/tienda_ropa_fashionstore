@@ -71,10 +71,24 @@ class ConsultarInventarioGlobal:
     # `inteligencia`, en reportes).
 
     def listar_consolidado(
-        self, db: Session, usuario_id: int, sucursal_id: int | None = None, producto_id: int | None = None
+        self,
+        db: Session,
+        usuario_id: int,
+        sucursal_id: int | None = None,
+        producto_id: int | None = None,
+        incluir_sin_stock: bool = False,
     ) -> list[dict]:
+        """Con `incluir_sin_stock`, suma las variantes activas que aún no tienen fila de stock en la sucursal
+        (o en cada sucursal activa del alcance), en cero y con `sin_registro`: es la forma de verlas y darles
+        de alta su primer stock con un ajuste, que crea la fila (`obtener_o_crear_bloqueado`)."""
         sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)
-        return catalogo_repo.consolidado(db, sucursal_id, producto_id)
+        filas = catalogo_repo.consolidado(db, sucursal_id, producto_id)
+        if incluir_sin_stock:
+            sucursales = plataforma_politicas.listar_sucursales_activas_minimas(db, sucursal_id)
+            con_fila = {(fila["variante_id"], fila["sucursal_id"]) for fila in filas}
+            filas = filas + catalogo_repo.filas_consolidado_sin_stock(db, sucursales, con_fila, producto_id)
+            filas.sort(key=lambda fila: (fila["producto_id"], fila["variante_id"], fila["sucursal_id"]))
+        return filas
 
     def listar_alertas(self, db: Session, usuario_id: int, sucursal_id: int | None = None) -> list[dict]:
         sucursal_id = plataforma_politicas.acotar_sucursal(db, usuario_id, sucursal_id)

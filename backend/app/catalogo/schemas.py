@@ -581,6 +581,8 @@ class ConsolidadoRespuesta(BaseModel):
     stock_minimo: int
     costo_promedio: Decimal
     valor_inventario: Decimal
+    # True: la variante aún no tiene fila de stock en esa sucursal (solo con `incluir_sin_stock`).
+    sin_registro: bool = False
 
 
 class ValuacionRespuesta(BaseModel):

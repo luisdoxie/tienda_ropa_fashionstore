@@ -881,6 +881,62 @@ def consolidado(db: Session, sucursal_id: int | None = None, producto_id: int | 
     return _filas_a_dicts(db, consulta, parametros)
 
 
+def filas_consolidado_sin_stock(
+    db: Session,
+    sucursales: list[tuple[int, str]],
+    con_fila: set[tuple[int, int]],
+    producto_id: int | None = None,
+) -> list[dict]:
+    """Filas del consolidado para las variantes ACTIVAS (de productos activos) que no tienen fila en `stock`
+    en alguna de las `sucursales` ((id, nombre)): la vista `vw_inventario_consolidado` parte de `stock`, así que
+    una prenda que nunca tuvo un movimiento ahí no aparece, y sin verla no se le puede dar de alta el stock.
+    `con_fila` son los pares (variante_id, sucursal_id) que ya salieron de la vista. Van en cero y marcadas
+    `sin_registro`; ORM, así que el filtro por empresa es el automático."""
+    if not sucursales:
+        return []
+    consulta = (
+        select(
+            ProductoVariante.id,
+            ProductoVariante.producto_id,
+            ProductoVariante.sku,
+            Producto.nombre,
+            Talla.codigo,
+            Color.nombre,
+        )
+        .join(Producto, Producto.id == ProductoVariante.producto_id)
+        .join(Talla, Talla.id == ProductoVariante.talla_id)
+        .join(Color, Color.id == ProductoVariante.color_id)
+        .where(ProductoVariante.activo.is_(True), Producto.activo.is_(True))
+    )
+    if producto_id is not None:
+        consulta = consulta.where(ProductoVariante.producto_id == producto_id)
+    filas: list[dict] = []
+    for variante_id, prod_id, sku, producto, talla, color in db.execute(consulta):
+        for sucursal_id, sucursal in sucursales:
+            if (variante_id, sucursal_id) in con_fila:
+                continue
+            filas.append(
+                {
+                    "producto_id": prod_id,
+                    "producto": producto,
+                    "variante_id": variante_id,
+                    "sku": sku,
+                    "talla": talla,
+                    "color": color,
+                    "sucursal_id": sucursal_id,
+                    "sucursal": sucursal,
+                    "cantidad_fisica": 0,
+                    "cantidad_reservada": 0,
+                    "cantidad_disponible": 0,
+                    "stock_minimo": 0,
+                    "costo_promedio": Decimal("0"),
+                    "valor_inventario": Decimal("0"),
+                    "sin_registro": True,
+                }
+            )
+    return filas
+
+
 def alertas(db: Session, sucursal_id: int | None = None) -> list[dict]:
     condicion_tenant, parametros = condicion_empresa(db)
     condiciones = [condicion_tenant, "cantidad_disponible <= stock_minimo"]
