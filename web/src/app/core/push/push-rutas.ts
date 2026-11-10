@@ -4,7 +4,8 @@
  *
  * - Cliente de la tienda: `compra_confirmada`, `envio`, `pedido_diferido` y `reembolso` abren la compra
  *   (`referencia_id` es el id de la venta); `reserva_preparada` abre sus reservas.
- * - Personal: `reserva` abre las reservas de la sucursal y `sincronizacion` las operaciones sincronizadas.
+ * - Personal: `reserva` abre las reservas de la sucursal, `envio_nuevo` los envíos por despachar y `sincronizacion` las
+ *   operaciones sincronizadas.
  * Un tipo desconocido no abre nada (la notificación queda solo en la lista).
  */
 export function rutaDeAviso(
@@ -24,6 +25,8 @@ export function rutaDeAviso(
       return tienda !== null ? `${tienda}/mis-reservas` : null;
     case 'reserva':
       return '/reservas';
+    case 'envio_nuevo':
+      return '/envios';
     case 'sincronizacion':
       return '/sincronizacion';
     default:

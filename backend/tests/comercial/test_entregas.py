@@ -334,6 +334,42 @@ def test_el_encargado_solo_mueve_envios_de_su_sucursal(
     assert _cambiar_estado(client, propio, envio["id"], "entregado").status_code == 200
 
 
+def _avisos_de_envio_nuevo(client, headers):
+    return [n for n in client.get("/api/v1/notificaciones", headers=headers).json() if n["tipo"] == "envio_nuevo"]
+
+
+def test_un_envio_pagado_avisa_al_encargado_de_su_sucursal_y_no_a_los_demas(
+    client, db_session, admin_headers, cliente_headers, contexto, zona_1er_anillo
+):
+    propio = _encargado(client, admin_headers, db_session, contexto["sucursal_id"], "enc.a@example.com")
+    ajeno = _encargado(client, admin_headers, db_session, _otra_sucursal(client, admin_headers), "enc.b@example.com")
+    cajero = crear_cajero(client, admin_headers, db_session, sucursal_id=contexto["sucursal_id"])
+    envio = _crear_envio(client, admin_headers, cliente_headers, contexto, zona_1er_anillo)
+
+    assert _avisos_de_envio_nuevo(client, propio) == []  # crear el envío no avisa: un pago abandonado dejaría un aviso falso
+
+    _pagar_venta(db_session, envio["venta_id"])
+
+    (aviso,) = _avisos_de_envio_nuevo(client, propio)
+    assert aviso["titulo"] == "Nuevo envío por despachar"
+    assert aviso["referencia_id"] == envio["id"]
+    assert _avisos_de_envio_nuevo(client, ajeno) == []  # otra sucursal
+    assert _avisos_de_envio_nuevo(client, cajero) == []  # sin entregas.gestionar no tiene a dónde ir
+    assert _avisos_de_envio_nuevo(client, cliente_headers) == []  # el cliente tiene sus propios avisos del envío
+
+
+def test_una_compra_de_retiro_no_avisa_envio_al_personal(
+    client, db_session, admin_headers, cliente_headers, contexto
+):
+    propio = _encargado(client, admin_headers, db_session, contexto["sucursal_id"], "enc.a@example.com")
+    client.post("/api/v1/carrito", json={"variante_id": contexto["variante_id"], "cantidad": 1}, headers=cliente_headers)
+    venta = client.post("/api/v1/ventas/digital", json={"sucursal_id": contexto["sucursal_id"]}, headers=cliente_headers).json()
+
+    _pagar_venta(db_session, venta["id"])
+
+    assert _avisos_de_envio_nuevo(client, propio) == []
+
+
 def test_listar_envios_acotado_por_sucursal_y_por_estado(
     client, db_session, admin_headers, cliente_headers, contexto, zona_1er_anillo
 ):

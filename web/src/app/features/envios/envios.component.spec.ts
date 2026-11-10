@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { MessageService } from 'primeng/api';
 import { environment } from '../../../environments/environment';
+import { NotificacionesService } from '../../core/notificaciones.service';
 import { EnviosComponent } from './envios.component';
 
 const API = environment.apiUrl;
@@ -57,6 +58,45 @@ describe('EnviosComponent', () => {
     expect(acciones(1)).toEqual(['Entregado', 'Falló']);
     expect(acciones(2)).toEqual([]);
     expect(acciones(3)).toEqual([]);
+  });
+
+  describe('aviso de envío nuevo', () => {
+    const aviso = (id: number, tipo: string) => ({
+      id,
+      titulo: 'Nuevo envío por despachar',
+      mensaje: null,
+      tipo,
+      referencia_id: id,
+      leida: false,
+      creado_en: '2026-11-09T14:00:00Z',
+    });
+
+    /** Lo que hace el sondeo del layout o el push: bajar la lista de notificaciones. */
+    function llegaLaLista(fixture: { detectChanges(): void }, notificaciones: unknown[]) {
+      TestBed.inject(NotificacionesService).cargar(true).subscribe();
+      http.expectOne((r) => r.url === `${API}/notificaciones`).flush(notificaciones);
+      fixture.detectChanges();
+    }
+
+    it('recarga la lista sola cuando llega un aviso de envío nuevo', () => {
+      const { fixture } = abrir();
+      llegaLaLista(fixture, []);
+      http.expectNone((r) => r.url === `${API}/envios`);
+
+      llegaLaLista(fixture, [aviso(7, 'envio_nuevo')]);
+
+      http.expectOne((r) => r.url === `${API}/envios`).flush([envio(9, 'programado')]);
+    });
+
+    it('no recarga por un aviso que ya estaba, ni por avisos de otro tipo', () => {
+      const { fixture } = abrir();
+      llegaLaLista(fixture, [aviso(7, 'envio_nuevo')]);
+      http.expectOne((r) => r.url === `${API}/envios`).flush([]);
+
+      llegaLaLista(fixture, [aviso(7, 'envio_nuevo'), aviso(8, 'reserva')]);
+
+      http.expectNone((r) => r.url === `${API}/envios`);
+    });
   });
 
   it('la paginación deshabilita los botones cuando no hay más páginas', () => {

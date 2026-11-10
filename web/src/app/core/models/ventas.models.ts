@@ -64,6 +64,12 @@ export interface Venta {
    * (`https://<web>/caja?venta=VTA-XXXX`). Web y app dibujan ESE texto tal cual.
    */
   enlace_verificacion?: string | null;
+  /**
+   * Solo en `GET /ventas/{id}/comprobante`, en una compra de retiro ya pagada y aún no entregada: dónde y a partir de
+   * qué hora pasar a recoger, según el horario que la sucursal tiene definido para ese día
+   * ("Retira en Centro (Av. Uno 123): hoy, hasta las 21:00."). Null en el resto.
+   */
+  retiro?: string | null;
 }
 
 /** Texto de la etiqueta "con devolución" de una venta, o null si no se devolvió nada. */

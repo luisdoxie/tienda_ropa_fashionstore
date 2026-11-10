@@ -102,6 +102,31 @@ describe('CompraDetalleComponent: plazo para cambiar la prenda', () => {
     expect(aviso(fixture)?.classList).toContain('plazo-cambio--vencido');
   });
 
+  describe('retiro en sucursal', () => {
+    const RETIRO = 'Retira en Centro (Av. Uno 123): hoy, hasta las 21:00.';
+    const bloque = (fixture: ReturnType<typeof montar>) =>
+      (fixture.nativeElement as HTMLElement).querySelector('[data-estado="retiro-compra"]');
+
+    it('una compra de retiro pagada dice dónde y desde qué hora pasar, según el horario de la sucursal', () => {
+      const fixture = montar();
+      http.expectOne(`${API}/ventas/42/comprobante`).flush({ ...venta('pagada'), retiro: RETIRO });
+      http.expectOne((r) => r.url === `${API}/catalogo/variantes/detalle`).flush(LOOKUP);
+      http.match(`${API}/ventas/42/plazo-cambio`);
+      fixture.detectChanges();
+
+      expect(texto(bloque(fixture))).toBe(RETIRO);
+    });
+
+    it('sin horario de retiro (envío, venta en caja o ya entregada) no dibuja el bloque', () => {
+      const fixture = montar();
+      cargar(fixture, 'pagada');
+      http.match(`${API}/ventas/42/plazo-cambio`);
+      fixture.detectChanges();
+
+      expect(bloque(fixture)).toBeNull();
+    });
+  });
+
   describe('comprobante con QR', () => {
     const ENLACE = 'https://fashionstore.example/caja?venta=V-0042';
     const comprobante = (fixture: ReturnType<typeof montar>) =>

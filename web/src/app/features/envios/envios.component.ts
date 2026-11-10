@@ -1,6 +1,6 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -11,9 +11,13 @@ import { SelectModule } from 'primeng/select';
 import { TableModule } from 'primeng/table';
 import { environment } from '../../../environments/environment';
 import { EnvioEstadoActualizar, Envio, EstadoEnvio } from '../../core/models/entregas.models';
+import { NotificacionesService } from '../../core/notificaciones.service';
 import { IconoComponent } from '../../shared/icono/icono.component';
 
 const TAMANIO_PAGINA = 20;
+
+/** Tipo del aviso que el servidor crea para el personal cuando se paga un envío a domicilio (`envio_nuevo`). */
+const TIPO_AVISO_ENVIO_NUEVO = 'envio_nuevo';
 
 const ETIQUETAS_ESTADO: Record<EstadoEnvio, string> = {
   programado: 'Programado',
@@ -74,6 +78,10 @@ export class EnviosComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly messageService = inject(MessageService);
   private readonly confirmationService = inject(ConfirmationService);
+  private readonly notificaciones = inject(NotificacionesService);
+
+  /** Los avisos de envío nuevo que ya se vieron: lo que llegue después de estos recarga la lista (null = aún sin leer). */
+  private avisosVistos: Set<number> | null = null;
 
   protected readonly opcionesEstado = OPCIONES_ESTADO;
 
@@ -87,6 +95,18 @@ export class EnviosComponent implements OnInit {
   protected readonly dialogoRutaVisible = signal(false);
   protected readonly envioPorEnviar = signal<Envio | null>(null);
   protected readonly repartidor = signal('');
+
+  constructor() {
+    // Un envío nuevo llega como aviso (el push y el sondeo del layout actualizan la lista de notificaciones): la lista se
+    // recarga sola, sin que el personal tenga que refrescar la página. Lo que ya estaba al abrir la pantalla no recarga.
+    effect(() => {
+      const ids = new Set(this.notificaciones.deTipo(TIPO_AVISO_ENVIO_NUEVO).map((n) => n.id));
+      const vistos = this.avisosVistos;
+      this.avisosVistos = ids;
+      if (vistos === null) return;
+      if ([...ids].some((id) => !vistos.has(id))) untracked(() => this.cargar());
+    });
+  }
 
   ngOnInit(): void {
     this.cargar();

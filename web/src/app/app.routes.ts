@@ -400,7 +400,9 @@ export const routes: Routes = [
       },
       {
         path: 'zonas-envio',
-        canActivate: [permisoGuard('entregas.gestionar')],
+        // Alcance global (`organizacion.gestionar`) además de entregas.gestionar: la pantalla lee las ciudades, que solo
+        // ve el administrador, y las tarifas son de toda la empresa. El encargado de sucursal solo usa Envíos.
+        canActivate: [todosLosPermisosGuard('entregas.gestionar', 'organizacion.gestionar')],
         loadComponent: () =>
           import('./features/zonas-envio/zonas-envio.component').then((m) => m.ZonasEnvioComponent),
       },

@@ -560,6 +560,24 @@ describe('LayoutComponent', () => {
       fixture.destroy();
     });
 
+    it('Zonas de envío es del administrador: un encargado con entregas.gestionar ve Envíos pero no las zonas', () => {
+      iniciarSesion(['encargado_sucursal'], ['entregas.gestionar'], 7);
+      const { fixture, comp } = crear();
+
+      const etiquetas = (comp.itemsFin() as ItemMenu[]).map((i) => i.etiqueta);
+      expect(etiquetas).toContain('Envíos');
+      expect(etiquetas).not.toContain('Zonas de envío');
+      fixture.destroy();
+    });
+
+    it('con alcance global el administrador sí ve las Zonas de envío', () => {
+      iniciarSesion(['administrador'], ['entregas.gestionar', 'organizacion.gestionar'], 7);
+      const { fixture, comp } = crear();
+
+      expect((comp.itemsFin() as ItemMenu[]).map((i) => i.etiqueta)).toContain('Zonas de envío');
+      fixture.destroy();
+    });
+
     it('las secciones plegables arrancan cerradas y se abren con su rótulo; Dashboard y Caja siempre están a la vista', () => {
       iniciarSesion(['administrador'], PERMISOS_ADMIN, 7);
       const { fixture, comp, el } = crear();

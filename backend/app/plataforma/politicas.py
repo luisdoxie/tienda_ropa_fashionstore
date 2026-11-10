@@ -7,7 +7,7 @@ import datetime as dt
 import logging
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from html import escape
@@ -34,7 +34,7 @@ from app.core.permisos import PERMISO_ALCANCE_GLOBAL, ROL_ADMINISTRADOR, ROL_SUP
 from app.core.planes import FUNCIONALIDADES
 from app.core.tenant import empresa_de, exigir_empresa, fijar_empresa, registrar_inicializador, sin_filtro
 from app.core.texto import normalizar_texto, quitar_tildes
-from app.core.tiempo import ahora_utc_naive, hoy_utc
+from app.core.tiempo import ZONA_BOLIVIA, ahora_bolivia, ahora_utc_naive, hoy_utc
 from app.plataforma.models import (
     Bitacora,
     Ciudad,
@@ -830,6 +830,70 @@ def validar_horario_en_atencion(db: Session, sucursal_id: int, fecha, hora_desde
         raise DomainError("La sucursal no atiende ese día")
     if hora_desde < horario.hora_apertura or hora_hasta > horario.hora_cierre:
         raise DomainError("La franja horaria elegida está fuera del horario de atención de la sucursal")
+
+
+# ---- Cuándo se puede retirar una compra ----
+#
+# El horario de atención lo define el administrador POR SUCURSAL y POR DÍA (Sucursales > Horarios de atención): un lunes
+# puede abrir a las 07:00 y un martes a las 09:00, y un domingo sin horario es un día sin atención. Una compra para
+# retiro se avisa con ESE horario: si la sucursal todavía atiende hoy, "hoy"; si ya cerró o hoy no atiende, el próximo
+# día que sí tenga horario. El instante se mide en hora de Bolivia (la base y los pagos van en UTC).
+
+_DIAS_DE_LA_SEMANA = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+
+
+@dataclass(frozen=True)
+class VentanaDeRetiro:
+    """El día y las horas en que se puede pasar a retirar. `es_hoy` y `abierta_ahora` solo cambian cómo se dice."""
+
+    fecha: dt.date
+    desde: dt.time
+    hasta: dt.time
+    es_hoy: bool
+    abierta_ahora: bool
+
+
+def calcular_ventana_de_retiro(horarios: Iterable[HorarioSucursal], ahora_local: dt.datetime) -> VentanaDeRetiro | None:
+    """La primera ventana de atención a partir de `ahora_local` (hora de Bolivia), mirando hasta una semana adelante.
+    Hoy cuenta mientras la sucursal no haya cerrado; pasada la hora de cierre, o un día sin horario, se pasa al
+    siguiente día con horario. Sin ningún horario cargado devuelve None. Función pura: no toca la base."""
+    por_dia = {horario.dia_semana: horario for horario in horarios}
+    hoy = ahora_local.date()
+    hora = ahora_local.time().replace(tzinfo=None)
+    for salto in range(8):  # 8: si solo atiende hoy y ya cerró, vuelve a abrir el mismo día de la semana que viene
+        fecha = hoy + dt.timedelta(days=salto)
+        horario = por_dia.get(fecha.isoweekday())
+        if horario is None:
+            continue
+        if salto == 0:
+            if hora >= horario.hora_cierre:
+                continue
+            return VentanaDeRetiro(fecha, horario.hora_apertura, horario.hora_cierre, True, hora >= horario.hora_apertura)
+        return VentanaDeRetiro(fecha, horario.hora_apertura, horario.hora_cierre, False, False)
+    return None
+
+
+def describir_ventana_de_retiro(ventana: VentanaDeRetiro) -> str:
+    """'hoy, hasta las 21:00', 'hoy, desde las 07:00 hasta las 21:00' o 'el martes 11/11, desde las 09:00 hasta las 21:00'."""
+    desde, hasta = ventana.desde.strftime("%H:%M"), ventana.hasta.strftime("%H:%M")
+    if ventana.es_hoy and ventana.abierta_ahora:
+        return f"hoy, hasta las {hasta}"
+    if ventana.es_hoy:
+        return f"hoy, desde las {desde} hasta las {hasta}"
+    dia = _DIAS_DE_LA_SEMANA[ventana.fecha.weekday()]
+    return f"el {dia} {ventana.fecha:%d/%m}, desde las {desde} hasta las {hasta}"
+
+
+def texto_de_retiro(db: Session, sucursal_id: int, ahora: dt.datetime | None = None) -> str:
+    """La frase para el comprador: 'Retira en Centro (Av. Uno 123): hoy, hasta las 21:00.' Sin horario cargado en la
+    sucursal solo dice dónde. `ahora` (con zona) solo existe para las pruebas."""
+    sucursal = sucursal_repo.obtener(db, sucursal_id)
+    donde = f"Retira en {sucursal.nombre} ({sucursal.direccion})"
+    ahora_local = (ahora.astimezone(ZONA_BOLIVIA) if ahora is not None else ahora_bolivia())
+    ventana = calcular_ventana_de_retiro(horario_repo.listar_por_sucursal(db, sucursal_id), ahora_local)
+    if ventana is None:
+        return f"{donde}."
+    return f"{donde}: {describir_ventana_de_retiro(ventana)}."
 
 
 def listar_sucursales_autorizadas(

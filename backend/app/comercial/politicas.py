@@ -96,6 +96,7 @@ from app.core.config import get_settings
 from app.core.codigos import generar_codigo
 from app.core.permisos import (
     PERMISO_CAJA_SUPERVISAR,
+    PERMISO_ENTREGAS,
     PERMISO_STAFF_RESERVAS,
     PERMISO_STAFF_VENTAS,
     PERMISO_VENTAS_PRESENCIAL,
@@ -730,6 +731,7 @@ def confirmar_venta(
 
     if avisar_compra:
         _avisar_compra_confirmada(db, venta)
+    _avisar_envio_al_personal(db, venta)
 
     _cerrar_tx(db, venta, commit)
     return venta
@@ -2092,6 +2094,55 @@ def construir_enlace_verificacion(codigo_venta: str) -> str:
     return f"{base}/caja?venta={quote(codigo_venta, safe='')}"
 
 
+def es_compra_para_retiro(db: Session, venta: Venta) -> bool:
+    """Una compra digital que se recoge en la sucursal: no tiene envío a domicilio. (El envío se crea ANTES de pagar, así
+    que al confirmar el pago ya existe. Un pedido sin conexión siempre es de retiro.) La venta presencial no cuenta: la
+    persona ya se llevó las prendas."""
+    return venta.canal == "digital" and comercial_repo.EnvioRepository().obtener_por_venta(db, venta.id) is None
+
+
+def texto_de_retiro_de_venta(db: Session, venta: Venta) -> str | None:
+    """'Retira en Centro (dirección): hoy, hasta las 21:00.' con el horario que el administrador definió para ese día en la
+    sucursal de la compra; None si no es de retiro. Nunca lanza: es un extra del aviso, no puede deshacer un pago."""
+    try:
+        if not es_compra_para_retiro(db, venta):
+            return None
+        return plataforma_politicas.texto_de_retiro(db, venta.sucursal_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("texto_de_retiro_no_armado venta_id=%s", getattr(venta, "id", None))
+        return None
+
+
+TIPO_NOTIFICACION_ENVIO_NUEVO = "envio_nuevo"
+
+
+def _avisar_envio_al_personal(db: Session, venta: Venta) -> None:
+    """Un envío a domicilio ya PAGADO es trabajo para la sucursal: se avisa (notificación con su push, en esta
+    transacción) al personal de entregas de esa sucursal. Se avisa al pagar y no al crear el envío porque este se crea antes
+    del pago y un pago abandonado dejaría un aviso falso. Nunca lanza."""
+    try:
+        if venta.canal != "digital":
+            return
+        envio = comercial_repo.EnvioRepository().obtener_por_venta(db, venta.id)
+        if envio is None:
+            return
+        for empleado in plataforma_politicas.listar_empleados_sucursal(db, venta.sucursal_id):
+            if PERMISO_ENTREGAS not in permisos_de_usuario(db, empleado.usuario_id):
+                continue  # un cajero no gestiona envíos: el aviso lo llevaría a una pantalla que no tiene
+            with db.begin_nested():
+                plataforma_politicas.crear_notificacion(
+                    db,
+                    empleado.usuario_id,
+                    "Nuevo envío por despachar",
+                    f"La compra {venta.codigo} se pagó y espera su envío a domicilio.",
+                    TIPO_NOTIFICACION_ENVIO_NUEVO,
+                    envio.id,
+                    commit=False,
+                )
+    except Exception:  # noqa: BLE001 - el aviso es un extra
+        logger.exception("aviso_envio_no_armado venta_id=%s", getattr(venta, "id", None))
+
+
 def _avisar_compra_confirmada(db: Session, venta: Venta) -> None:
     """Notificación (en esta transacción) y anotación del correo (para después del commit). Sin cliente, usuario inactivo
     o sin correo no se avisa. Nunca lanza: un aviso no puede deshacer un pago."""
@@ -2103,9 +2154,12 @@ def _avisar_compra_confirmada(db: Session, venta: Venta) -> None:
         if plataforma_politicas.existe_notificacion(db, usuario_id, TIPO_NOTIFICACION_COMPRA, venta.id):
             return  # ya se avisó de esta venta
         mensaje = f"Tu compra {venta.codigo} por Bs {Decimal(venta.total):.2f} está pagada."
+        retiro = texto_de_retiro_de_venta(db, venta)
+        if retiro:
+            mensaje = f"{mensaje} {retiro}"
         with db.begin_nested():
             plataforma_politicas.crear_notificacion(
-                db, usuario_id, "Compra confirmada", mensaje, TIPO_NOTIFICACION_COMPRA, venta.id, commit=False
+                db, usuario_id, "Compra confirmada", mensaje[:400], TIPO_NOTIFICACION_COMPRA, venta.id, commit=False
             )
         if correo_configurado():
             db.info.setdefault(CLAVE_AVISO_COMPRA, set()).add((venta.empresa_id, venta.id))
@@ -2182,6 +2236,7 @@ def _armar_correo_de_compra(db: Session, venta_id: int) -> MensajeCorreo | None:
         descuento=venta.descuento,
         costo_envio=venta.costo_envio,
         total=venta.total,
+        retiro=texto_de_retiro_de_venta(db, venta),
     )
 
 
@@ -2200,9 +2255,11 @@ def construir_correo_compra_confirmada(
     descuento: Decimal,
     costo_envio: Decimal,
     total: Decimal,
+    retiro: str | None = None,
 ) -> MensajeCorreo:
     """'Compra confirmada': código, fecha en hora de Bolivia, sucursal, prendas (nombre, talla, color y cantidad), importes
-    y el botón 'Ver mi comprobante'. Sin imagen del QR ni adjuntos. Todo dato variable se escapa en el HTML."""
+    y el botón 'Ver mi comprobante'. Sin imagen del QR ni adjuntos. Todo dato variable se escapa en el HTML.
+    `retiro`: cuándo y dónde pasar a recoger (solo en compras de retiro; ver `texto_de_retiro_de_venta`)."""
     asunto = f"Compra confirmada {codigo_venta} · {nombre_empresa}"
     enlace = enlace_comprobante_en_tienda(codigo_empresa, venta_id)
     cuando = _fecha_legible(fecha)
@@ -2224,6 +2281,7 @@ def construir_correo_compra_confirmada(
     texto = (
         f"Hola {nombre},\n\nTu compra en {nombre_empresa} está pagada.\n"
         + "\n".join(f"{etiqueta}: {valor}" for etiqueta, valor in datos)
+        + (f"\n\n{retiro}" if retiro else "")
         + "\n\nPrendas:\n"
         + "\n".join(f"- {prenda} (x{cantidad})" for prenda, cantidad in lineas)
         + "\n\n"
@@ -2240,6 +2298,9 @@ def construir_correo_compra_confirmada(
         f'<tr><td style="padding:2px 12px 2px 0">{escape(etiqueta)}</td><td style="text-align:right">{escape(valor)}</td></tr>'
         for etiqueta, valor in importes
     )
+    bloque_retiro = (
+        f'<p style="font-size:15px;line-height:1.5;margin:0 0 16px"><strong>{escape(retiro)}</strong></p>' if retiro else ""
+    )
     html = (
         '<!doctype html><html lang="es"><body style="margin:0;background:#F7F5F1;font-family:Arial,Helvetica,sans-serif;'
         'color:#161412"><div style="max-width:480px;margin:0 auto;padding:24px">'
@@ -2248,6 +2309,7 @@ def construir_correo_compra_confirmada(
         '<h1 style="font-size:22px;margin:0 0 12px">Compra confirmada</h1>'
         f'<p style="font-size:15px;line-height:1.5">Hola {escape(nombre)}, tu compra está pagada.</p>'
         f'<ul style="font-size:15px;line-height:1.5;padding-left:18px;margin:0 0 16px">{filas_datos}</ul>'
+        f"{bloque_retiro}"
         '<p style="font-size:15px;margin:0 0 6px"><strong>Prendas</strong></p>'
         f'<ul style="font-size:15px;line-height:1.5;padding-left:18px;margin:0 0 16px">{filas_prendas}</ul>'
         f'<table style="font-size:15px;margin:0 0 20px">{filas_importes}</table>'
