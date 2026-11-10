@@ -17,9 +17,16 @@ const cacheRecomendaciones = 'recomendaciones';
 const claveRecomendacionesInicio = 'inicio';
 const motivoRecomendacionGuardada = 'Prenda recomendada';
 
+/// El stock por sucursal de una variante, tal como se vio la última vez con conexión (una fila por variante). Sirve para
+/// mostrar "visto hace 2 h" sin red; el servidor siempre lo vuelve a comprobar al cobrar.
+const cacheDisponibilidad = 'disponibilidad';
+
 /// Cuántas prendas y detalles como máximo se recuerdan para verlos sin conexión (se borran los más viejos).
 const maxItemsEnCache = 300;
 const maxDetallesEnCache = 150;
+
+/// Cuántas variantes con su stock por sucursal se recuerdan (se borran las vistas hace más tiempo).
+const maxDisponibilidadesEnCache = 500;
 
 /// Máximos de un pedido sin conexión (el servidor también aplica los suyos).
 const maxLineasPedido = 30;

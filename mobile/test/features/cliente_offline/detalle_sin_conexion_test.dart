@@ -15,6 +15,7 @@ import 'package:mobile/features/catalogo/models/catalogo_detalle.dart';
 import 'package:mobile/features/catalogo/models/referencia.dart';
 import 'package:mobile/features/catalogo/presentation/detalle_screen.dart';
 import 'package:mobile/features/catalogo/state/catalogo_providers.dart';
+import 'package:mobile/features/cliente_offline/models/stock_guardado.dart';
 import 'package:mobile/features/cliente_offline/state/carrito_local_controller.dart';
 import 'package:mobile/features/cliente_offline/state/cliente_offline_providers.dart';
 import 'package:mobile/features/favoritos/state/favoritos_controller.dart';
@@ -23,6 +24,7 @@ import 'package:mobile/features/reservas/state/reservas_providers.dart';
 import 'package:mobile/features/tracking/models/evento.dart';
 import 'package:mobile/features/tracking/state/tracking_service.dart';
 
+import '../../helpers/cache_catalogo_falso.dart';
 import '../../helpers/cliente_offline_apoyo.dart';
 import '../../helpers/sesion_storage_falso.dart';
 import '../../helpers/token_storage_falso.dart';
@@ -58,7 +60,17 @@ class _CarritoLocalRegistrador extends CarritoLocalController {
   _CarritoLocalRegistrador() : super(() async => null, const RelojSistema(), activo: false);
 
   final agregadas =
-      <({int varianteId, int productoId, String nombre, int precio, String? talla, String? color, String? imagen})>[];
+      <({
+        int varianteId,
+        int productoId,
+        String nombre,
+        int precio,
+        String? talla,
+        String? color,
+        String? imagen,
+        int? sucursalId,
+        String? sucursalNombre,
+      })>[];
 
   @override
   Future<bool> agregar({
@@ -81,6 +93,8 @@ class _CarritoLocalRegistrador extends CarritoLocalController {
       talla: talla,
       color: color,
       imagen: imagen,
+      sucursalId: sucursalId,
+      sucursalNombre: sucursalNombre,
     ));
     return true;
   }
@@ -111,6 +125,8 @@ Future<_CarritoLocalRegistrador> _montar(
   WidgetTester tester, {
   required bool enLinea,
   Future<CatalogoDetalle> Function()? detalle,
+  List<SucursalRef> sucursales = const [],
+  Map<int, StockGuardado> stock = const {},
 }) async {
   final local = _CarritoLocalRegistrador();
   final router = GoRouter(
@@ -136,7 +152,8 @@ Future<_CarritoLocalRegistrador> _montar(
         detalleProductoProvider.overrideWith((ref, id) => detalle == null ? Future.value(_detalle()) : detalle()),
         tallasRefProvider.overrideWith((ref) async => const [TallaRef(id: 2, codigo: 'M', orden: 1)]),
         coloresRefProvider.overrideWith((ref) async => const [ColorRef(id: 3, nombre: 'Azul')]),
-        sucursalesRefProvider.overrideWith((ref) async => const <SucursalRef>[]),
+        sucursalesRefProvider.overrideWith((ref) async => sucursales),
+        cacheCatalogoClienteProvider.overrideWithValue(CacheCatalogoFalso(stock: stock)),
         disponibilidadPorVarianteProvider.overrideWith((ref, id) async => throw errorSinRed),
         recomendacionesDetalleProvider.overrideWith((ref, id) async => const []),
         trackingServiceProvider.overrideWithValue(_TrackingMudo()),
@@ -166,10 +183,95 @@ void main() {
 
       expect(find.text('Sin conexión: ves lo que ya tenías cargado'), findsOneWidget);
       expect(find.byKey(const Key('disponibilidad-sin-datos')), findsOneWidget);
-      expect(find.text('Sin conexión: la disponibilidad se confirma al comprar.'), findsOneWidget);
+      expect(
+        find.text('Sin conexión: la disponibilidad se confirma al comprar. Aún no tenemos guardado su stock.'),
+        findsOneWidget,
+      );
       expect(find.text('Polera Nike'), findsOneWidget);
     },
   );
+
+  group('stock de la última vez que se vio', () {
+    const centro = SucursalRef(id: 1, codigo: 'C', nombre: 'Centro');
+    const sur = SucursalRef(id: 2, codigo: 'S', nombre: 'Sur');
+    const deposito = SucursalRef(id: 9, codigo: 'D', nombre: 'Depósito', esDeposito: true);
+    final haceDosHoras = DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+    Map<int, StockGuardado> stock(Map<int, int> porSucursal) => {
+      101: StockGuardado(porSucursal: porSucursal, vistoEn: haceDosHoras),
+    };
+
+    testWidgets('sin conexión muestra el stock guardado por sucursal con "visto hace 2 h"', (tester) async {
+      await _montar(tester, enLinea: false, sucursales: [centro, sur], stock: stock({1: 3, 2: 0}));
+      await _elegirTallaYColor(tester);
+
+      expect(
+        find.text('Visto hace 2 h. Puede haber cambiado: se confirma al comprar.'),
+        findsOneWidget,
+        reason: 'se dice que NO es el stock actual',
+      );
+      expect(find.text('Disponible (3)'), findsOneWidget);
+      expect(find.text('Agotado'), findsOneWidget);
+      expect(find.byKey(const Key('disponibilidad-sin-datos')), findsNothing);
+    });
+
+    testWidgets('con el servidor caído (hay "conexión" pero falla) también muestra lo guardado', (tester) async {
+      await _montar(tester, enLinea: true, sucursales: [centro, sur], stock: stock({1: 1, 2: 4}));
+      await _elegirTallaYColor(tester);
+
+      expect(find.byKey(const Key('disponibilidad-guardada')), findsOneWidget);
+      expect(find.text('Disponible (1)'), findsOneWidget);
+      expect(find.text('Disponible (4)'), findsOneWidget);
+    });
+
+    testWidgets('al agregar sin conexión, guarda la ÚNICA sucursal donde se vio stock', (tester) async {
+      final local = await _montar(tester, enLinea: false, sucursales: [centro, sur], stock: stock({1: 0, 2: 5}));
+      await _elegirTallaYColor(tester);
+
+      await tester.tap(find.text('Agregar al carrito'));
+      await tester.pumpAndSettle();
+
+      expect(local.agregadas.single.sucursalId, 2);
+      expect(local.agregadas.single.sucursalNombre, 'Sur');
+    });
+
+    testWidgets('si dos sucursales tenían stock, no elige ninguna', (tester) async {
+      final local = await _montar(tester, enLinea: false, sucursales: [centro, sur], stock: stock({1: 2, 2: 5}));
+      await _elegirTallaYColor(tester);
+
+      await tester.tap(find.text('Agregar al carrito'));
+      await tester.pumpAndSettle();
+
+      expect(local.agregadas.single.sucursalId, isNull);
+      expect(local.agregadas.single.sucursalNombre, isNull);
+    });
+
+    testWidgets('un depósito con stock no cuenta: no se retira ahí', (tester) async {
+      final local = await _montar(
+        tester,
+        enLinea: false,
+        sucursales: [centro, sur, deposito],
+        stock: stock({1: 0, 2: 3, 9: 40}),
+      );
+      await _elegirTallaYColor(tester);
+
+      await tester.tap(find.text('Agregar al carrito'));
+      await tester.pumpAndSettle();
+
+      expect(local.agregadas.single.sucursalId, 2);
+    });
+
+    testWidgets('si nunca se vio su stock, la prenda se guarda igual sin sucursal', (tester) async {
+      final local = await _montar(tester, enLinea: false, sucursales: [centro, sur]);
+      await _elegirTallaYColor(tester);
+
+      await tester.tap(find.text('Agregar al carrito'));
+      await tester.pumpAndSettle();
+
+      expect(local.agregadas.single.sucursalId, isNull);
+      expect(find.text('Guardado en tu carrito sin conexión. Lo verás en tu carrito.'), findsOneWidget);
+    });
+  });
 
   testWidgets('sin conexión "Agregar al carrito" guarda la prenda en el carrito LOCAL con todo para mostrarla', (
     tester,

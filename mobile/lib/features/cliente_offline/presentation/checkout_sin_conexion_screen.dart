@@ -4,11 +4,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/dinero.dart';
+import '../../../core/utils/reloj.dart';
 import '../../../core/widgets/foto_prenda.dart';
 import '../../catalogo/models/referencia.dart';
 import '../../catalogo/state/catalogo_providers.dart';
+import '../../vendedor/presentation/aviso_vigencia.dart' show textoHace;
 import '../config/cliente_offline_config.dart';
 import '../models/linea_carrito_local.dart';
+import '../models/stock_guardado.dart';
 import '../state/cliente_offline_providers.dart';
 import '../state/cola_pedidos.dart';
 import 'aviso_sin_conexion_cliente.dart';
@@ -42,6 +45,9 @@ class CheckoutSinConexionScreen extends ConsumerStatefulWidget {
 class _CheckoutSinConexionScreenState extends ConsumerState<CheckoutSinConexionScreen> {
   bool _cargando = true;
   List<SucursalRef> _sucursales = const [];
+
+  /// Lo último que se vio del stock de cada prenda del carrito (por variante). Orienta; el servidor decide al cobrar.
+  Map<int, StockGuardado> _stock = const {};
   int? _sucursalId;
   bool _acepto = false;
   bool _guardando = false;
@@ -72,11 +78,19 @@ class _CheckoutSinConexionScreenState extends ConsumerState<CheckoutSinConexionS
         sucursales = const [];
       }
     }
+    final lineas = ref.read(carritoLocalProvider);
+    var stock = const <int, StockGuardado>{};
+    try {
+      stock = await ref.read(cacheCatalogoClienteProvider).leerDisponibilidades([for (final l in lineas) l.varianteId]);
+    } catch (_) {
+      stock = const {}; // Sin lo guardado, todas quedan "sin datos de stock": la persona elige igual.
+    }
     if (!mounted) return;
     final retirables = sucursalesRetirables(sucursales);
     setState(() {
       _sucursales = retirables;
-      _sucursalId = sucursalSugerida(retirables, ref.read(carritoLocalProvider));
+      _stock = stock;
+      _sucursalId = sucursalSugerida(retirables, lineas) ?? sucursalUnicaConStock(retirables, lineas, stock);
       _cargando = false;
     });
   }
@@ -186,9 +200,18 @@ class _CheckoutSinConexionScreenState extends ConsumerState<CheckoutSinConexionS
                               ),
                           ],
                         ),
+                        const SizedBox(height: AppSpacing.sm),
+                        for (final s in _sucursales)
+                          _StockDeSucursalTexto(
+                            nombre: s.nombre,
+                            stock: stockDeSucursal(s.id, lineas, _stock),
+                            ahora: ref.watch(relojProvider).ahora(),
+                            key: Key('stock-sucursal-${s.id}'),
+                          ),
                         const SizedBox(height: AppSpacing.xs),
                         const Text(
-                          'El stock se confirma al cobrar: si ya no hay, no se cobra nada y te avisamos.',
+                          'Es lo último que viste con conexión. El stock se confirma al cobrar: si ya no hay, no se cobra '
+                          'nada y te avisamos.',
                           style: TextStyle(color: AppColors.textoTenue, fontSize: 12),
                         ),
                       ],
@@ -284,6 +307,30 @@ class _CheckoutSinConexionScreenState extends ConsumerState<CheckoutSinConexionS
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Una línea por sucursal: si tenía stock de TODAS las prendas del carrito la última vez que se vio, y hace cuánto.
+class _StockDeSucursalTexto extends StatelessWidget {
+  const _StockDeSucursalTexto({required this.nombre, required this.stock, required this.ahora, super.key});
+
+  final String nombre;
+  final StockDeSucursal stock;
+  final DateTime ahora;
+
+  @override
+  Widget build(BuildContext context) {
+    final visto = stock.vistoEn;
+    final cuando = visto == null ? '' : ' (visto ${textoHace(ahora.difference(visto))})';
+    final (texto, color) = switch (stock.estado) {
+      EstadoStockSucursal.conStock => ('$nombre: tenía stock de todas tus prendas$cuando', AppColors.exito),
+      EstadoStockSucursal.sinStock => ('$nombre: no tenía stock de alguna de tus prendas$cuando', AppColors.advertencia),
+      EstadoStockSucursal.sinDatos => ('$nombre: sin datos de stock guardados$cuando', AppColors.textoTenue),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      child: Text(texto, style: TextStyle(color: color, fontSize: 13)),
     );
   }
 }

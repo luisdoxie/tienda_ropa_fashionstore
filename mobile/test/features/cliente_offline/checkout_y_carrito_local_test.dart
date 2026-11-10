@@ -11,6 +11,7 @@ import 'package:mobile/features/cliente_offline/data/cache_catalogo_cliente.dart
 import 'package:mobile/features/cliente_offline/data/metodo_pago_repository.dart';
 import 'package:mobile/features/cliente_offline/models/linea_carrito_local.dart';
 import 'package:mobile/features/cliente_offline/models/metodo_pago.dart';
+import 'package:mobile/features/cliente_offline/models/stock_guardado.dart';
 import 'package:mobile/features/cliente_offline/presentation/carrito_local_vista.dart';
 import 'package:mobile/features/cliente_offline/presentation/checkout_sin_conexion_screen.dart';
 import 'package:mobile/features/cliente_offline/state/carrito_local_controller.dart';
@@ -65,9 +66,19 @@ class _MetodoFijo extends MetodoPagoController {
 }
 
 class _CacheSucursales implements CacheCatalogoCliente {
-  _CacheSucursales(this.sucursales);
+  _CacheSucursales(this.sucursales, {this.stock = const {}});
 
   final List<Map<String, dynamic>> sucursales;
+  final Map<int, StockGuardado> stock;
+
+  @override
+  Future<void> guardarDisponibilidad(int varianteId, List<Map<String, dynamic>> crudos) async {}
+
+  @override
+  Future<Map<int, StockGuardado>> leerDisponibilidades(Iterable<int> varianteIds) async => {
+    for (final id in varianteIds)
+      if (stock[id] != null) id: stock[id]!,
+  };
 
   @override
   Future<List<Map<String, dynamic>>> leerReferencias(String tipo) async => tipo == cacheSucursal ? sucursales : [];
@@ -121,6 +132,7 @@ Future<ColaFalsa> _montarCheckout(
   List<LineaCarritoLocal>? lineas,
   MetodoPagoRecordado? metodo,
   List<Map<String, dynamic>>? sucursales,
+  Map<int, StockGuardado> stock = const {},
   bool enLinea = false,
 }) async {
   final cola = ColaFalsa();
@@ -154,6 +166,7 @@ Future<ColaFalsa> _montarCheckout(
         cacheCatalogoClienteProvider.overrideWithValue(
           _CacheSucursales(
             sucursales ?? [_sucursal(1, 'Centro'), _sucursal(2, 'Sur'), _sucursal(9, 'Depósito', deposito: true)],
+            stock: stock,
           ),
         ),
         enLineaProvider.overrideWith((ref) => Stream.value(enLinea)),
@@ -255,6 +268,111 @@ void main() {
       );
 
       expect(find.text('Se cobrará hasta Bs 0.50 cuando vuelva la conexión.'), findsOneWidget);
+    });
+  });
+
+  group('stock de la última vez que se vio, por sucursal', () {
+    final vistoHaceDosHoras = DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+    StockGuardado stock(Map<int, int> porSucursal, {DateTime? vistoEn}) =>
+        StockGuardado(porSucursal: porSucursal, vistoEn: vistoEn ?? vistoHaceDosHoras);
+
+    String textoDe(WidgetTester tester, int sucursalId) =>
+        tester.widget<Text>(find.descendant(of: find.byKey(Key('stock-sucursal-$sucursalId')), matching: find.byType(Text))).data!;
+
+    testWidgets('dice qué sucursal tenía stock de todas las prendas, y hace cuánto se vio', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10, cantidad: 2), lineaCarrito(varianteId: 11)],
+        stock: {
+          10: stock({1: 5, 2: 1}),
+          11: stock({1: 2, 2: 2}),
+        },
+      );
+
+      expect(textoDe(tester, 1), 'Centro: tenía stock de todas tus prendas (visto hace 2 h)');
+      expect(textoDe(tester, 2), 'Sur: no tenía stock de alguna de tus prendas (visto hace 2 h)');
+    });
+
+    testWidgets('una prenda nunca vista deja la sucursal "sin datos de stock guardados"', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10), lineaCarrito(varianteId: 11)],
+        stock: {
+          10: stock({1: 5, 2: 5}),
+        },
+      );
+
+      expect(textoDe(tester, 1), 'Centro: sin datos de stock guardados (visto hace 2 h)');
+      expect(textoDe(tester, 2), 'Sur: sin datos de stock guardados (visto hace 2 h)');
+    });
+
+    testWidgets('sin nada guardado, todas dicen "sin datos" y se puede elegir igual', (tester) async {
+      await _montarCheckout(tester);
+
+      expect(textoDe(tester, 1), 'Centro: sin datos de stock guardados');
+      expect(textoDe(tester, 2), 'Sur: sin datos de stock guardados');
+      expect(find.byKey(const Key('stock-sucursal-9')), findsNothing, reason: 'un depósito no recibe clientes');
+      await _aceptar(tester);
+      await tester.tap(find.byKey(const Key('sucursal-1')));
+      await tester.pumpAndSettle();
+      expect(_confirmarHabilitado(tester), isTrue);
+    });
+
+    testWidgets('si solo una sucursal tenía stock de todo, viene elegida', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10), lineaCarrito(varianteId: 11)],
+        stock: {
+          10: stock({1: 0, 2: 3}),
+          11: stock({1: 4, 2: 1}),
+        },
+      );
+
+      await _aceptar(tester);
+
+      expect(_confirmarHabilitado(tester), isTrue, reason: 'la sucursal 2 era la única con todo');
+    });
+
+    testWidgets('si varias tenían stock, no elige por la persona', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10)],
+        stock: {
+          10: stock({1: 3, 2: 3}),
+        },
+      );
+
+      await _aceptar(tester);
+
+      expect(_confirmarHabilitado(tester), isFalse);
+    });
+
+    testWidgets('la sucursal guardada en la prenda al agregarla gana sobre el cálculo', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10, sucursalId: 1)],
+        stock: {
+          10: stock({1: 3, 2: 3}),
+        },
+      );
+
+      await _aceptar(tester);
+
+      expect(_confirmarHabilitado(tester), isTrue);
+    });
+
+    testWidgets('pedir más unidades de las que había cuenta como sin stock', (tester) async {
+      await _montarCheckout(
+        tester,
+        lineas: [lineaCarrito(varianteId: 10, cantidad: 4)],
+        stock: {
+          10: stock({1: 3, 2: 4}),
+        },
+      );
+
+      expect(textoDe(tester, 1), 'Centro: no tenía stock de alguna de tus prendas (visto hace 2 h)');
+      expect(textoDe(tester, 2), 'Sur: tenía stock de todas tus prendas (visto hace 2 h)');
     });
   });
 

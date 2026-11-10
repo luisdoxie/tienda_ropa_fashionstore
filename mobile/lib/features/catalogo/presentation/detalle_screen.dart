@@ -5,8 +5,10 @@ import '../../../core/network/error_app.dart';
 import '../../../core/network/mensaje_error.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/dinero.dart';
+import '../../../core/utils/reloj.dart';
 import '../../../core/widgets/foto_prenda.dart';
 import '../../auth/state/auth_controller.dart';
+import '../../cliente_offline/models/stock_guardado.dart';
 import '../../cliente_offline/presentation/aviso_sin_conexion_cliente.dart';
 import '../../cliente_offline/state/cliente_offline_providers.dart';
 import '../../compras/state/carrito_controller.dart';
@@ -19,7 +21,9 @@ import '../../recomendador/presentation/carrusel_recomendaciones.dart';
 import '../../recomendador/state/recomendador_providers.dart';
 import '../../tracking/models/evento.dart';
 import '../../tracking/state/tracking_service.dart';
+import '../../vendedor/presentation/aviso_vigencia.dart' show textoHace;
 import '../models/catalogo_detalle.dart';
+import '../models/referencia.dart';
 import '../state/catalogo_providers.dart';
 
 class DetalleScreen extends ConsumerStatefulWidget {
@@ -384,40 +388,83 @@ class _DisponibilidadPorSucursal extends ConsumerWidget {
       error: (e, s) => const Text('No se pudo cargar la lista de sucursales.'),
       data: (sucursales) => asyncDisponibilidad.when(
         loading: () => const LinearProgressIndicator(),
-        error: (e, s) => Text(
-          // El stock exacto no se guarda en el teléfono: sin red se confirma al comprar.
-          estaEnLinea(ref)
-              ? 'No se pudo cargar la disponibilidad.'
-              : 'Sin conexión: la disponibilidad se confirma al comprar.',
-          key: const Key('disponibilidad-sin-datos'),
+        error: (e, s) => _DisponibilidadGuardada(varianteId: varianteId!, sucursales: sucursales),
+        data: (disponibilidad) => _ListaDisponibilidad(
+          sucursales: sucursales,
+          porSucursal: {for (final d in disponibilidad) d.sucursalId: d.cantidadDisponible},
         ),
-        data: (disponibilidad) {
-          final porSucursal = {for (final d in disponibilidad) d.sucursalId: d.cantidadDisponible};
-          return Column(
-            children: [
-              for (final sucursal in sucursales)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.storefront_outlined, color: AppColors.textoTenue),
-                  title: Text(sucursal.nombre),
-                  trailing: Builder(
-                    builder: (context) {
-                      final cantidad = porSucursal[sucursal.id] ?? 0;
-                      return Text(
-                        cantidad > 0 ? 'Disponible ($cantidad)' : 'Agotado',
-                        style: TextStyle(
-                          color: cantidad > 0 ? AppColors.exito : AppColors.textoTenue,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          );
-        },
       ),
+    );
+  }
+}
+
+/// El stock por sucursal, una fila por sucursal. Si [vistoEn] viene, el dato NO es actual: es lo último que se vio, y la
+/// pantalla lo dice con su antigüedad.
+class _ListaDisponibilidad extends ConsumerWidget {
+  const _ListaDisponibilidad({required this.sucursales, required this.porSucursal, this.vistoEn});
+
+  final List<SucursalRef> sucursales;
+  final Map<int, int> porSucursal;
+  final DateTime? vistoEn;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final visto = vistoEn;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (visto != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Text(
+              'Visto ${textoHace(ref.watch(relojProvider).ahora().difference(visto))}. Puede haber cambiado: '
+              'se confirma al comprar.',
+              key: const Key('disponibilidad-guardada'),
+              style: const TextStyle(color: AppColors.advertencia, fontSize: 12),
+            ),
+          ),
+        for (final sucursal in sucursales)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.storefront_outlined, color: AppColors.textoTenue),
+            title: Text(sucursal.nombre),
+            trailing: Builder(
+              builder: (context) {
+                final cantidad = porSucursal[sucursal.id] ?? 0;
+                return Text(
+                  cantidad > 0 ? 'Disponible ($cantidad)' : 'Agotado',
+                  style: TextStyle(
+                    color: cantidad > 0 ? AppColors.exito : AppColors.textoTenue,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// No se pudo pedir el stock actual (sin conexión, o el servidor no respondió): se muestra lo último que se vio, si se vio.
+class _DisponibilidadGuardada extends ConsumerWidget {
+  const _DisponibilidadGuardada({required this.varianteId, required this.sucursales});
+
+  final int varianteId;
+  final List<SucursalRef> sucursales;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final guardado = ref.watch(stockGuardadoDeVarianteProvider(varianteId)).valueOrNull;
+    if (guardado != null) {
+      return _ListaDisponibilidad(sucursales: sucursales, porSucursal: guardado.porSucursal, vistoEn: guardado.vistoEn);
+    }
+    return Text(
+      estaEnLinea(ref)
+          ? 'No se pudo cargar la disponibilidad.'
+          : 'Sin conexión: la disponibilidad se confirma al comprar. Aún no tenemos guardado su stock.',
+      key: const Key('disponibilidad-sin-datos'),
     );
   }
 }
@@ -504,6 +551,18 @@ class _BotonAgregarCarrito extends ConsumerStatefulWidget {
 class _BotonAgregarCarritoState extends ConsumerState<_BotonAgregarCarrito> {
   bool _agregando = false;
 
+  /// La sucursal donde se vio stock de esta variante la última vez, SOLO si fue una única sucursal donde retirar (un depósito
+  /// no cuenta). Con varias o ninguna, o si nunca se vio su stock, no se asume ninguna: la persona elige al pagar.
+  Future<SucursalRef?> _sucursalConStockVista(int varianteId) async {
+    try {
+      final stock = (await ref.read(cacheCatalogoClienteProvider).leerDisponibilidades([varianteId]))[varianteId];
+      final sucursales = ref.read(sucursalesRefProvider).valueOrNull ?? const <SucursalRef>[];
+      return sucursalUnicaConStockDeVariante([for (final s in sucursales) if (!s.esDeposito) s], stock);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Sin conexión la prenda va al carrito LOCAL, con lo necesario para mostrarla sin red (nombre, talla, color, precio y
   /// foto). Al volver la red la persona decide si pasarla a su carrito de siempre.
   Future<bool> _agregarLocal() async {
@@ -515,6 +574,7 @@ class _BotonAgregarCarritoState extends ConsumerState<_BotonAgregarCarrito> {
     final imagenes = detalle.imagenes;
     final delColor = imagenes.where((i) => i.colorId == variante.colorId).firstOrNull;
     final imagen = (delColor ?? imagenes.where((i) => i.esPrincipal).firstOrNull ?? imagenes.firstOrNull)?.url;
+    final sucursal = await _sucursalConStockVista(variante.id);
     final guardada = await ref
         .read(carritoLocalProvider.notifier)
         .agregar(
@@ -525,6 +585,8 @@ class _BotonAgregarCarritoState extends ConsumerState<_BotonAgregarCarrito> {
           talla: talla?.codigo,
           color: color?.nombre,
           imagen: imagen,
+          sucursalId: sucursal?.id,
+          sucursalNombre: sucursal?.nombre,
         );
     if (!mounted) return guardada;
     ScaffoldMessenger.of(context)
