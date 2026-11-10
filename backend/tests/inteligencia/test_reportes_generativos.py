@@ -70,6 +70,117 @@ def test_productos_mas_vendidos_con_limite_y_orden_inverso(client_por_peticion, 
     assert any("con ventas" in aviso for aviso in respuesta.json()["avisos"])
 
 
+def _ranking_por_sucursal(filas):
+    """{sucursal: [(posicion, producto, unidades, total, participacion)]} sin depender del desempate de iguales."""
+    ranking: dict[str, list] = {}
+    for f in filas:
+        ranking.setdefault(f["sucursal"], []).append(
+            (f["posicion"], f["producto"], f["unidades"], f["total_vendido"], f["participacion"])
+        )
+    return ranking
+
+
+def test_productos_mas_vendidos_agrupado_por_sucursal_da_el_ranking_de_cada_una(client_por_peticion, mundo_ia):
+    respuesta = _pedir(
+        client_por_peticion,
+        mundo_ia,
+        tipo_reporte="productos_mas_vendidos",
+        periodo={"tipo": "este_mes"},
+        agrupacion="sucursal",
+        limite=10,
+    )
+
+    filas = filas_de(respuesta)
+    ranking = _ranking_por_sucursal(filas)
+    # Centro vendió 350.00: Oxford 3 u / 300.00 y Polera 1 u / 50.00. Norte vendió 390.00: Lino 3 u / 240.00 y Polera 3 u / 150.00.
+    assert list(ranking) == ["Centro", "Norte"] or list(ranking) == ["Norte", "Centro"]
+    assert ranking["Centro"] == [(1, "Camisa Oxford", 3, 300.0, 85.7), (2, "Polera Básica", 1, 50.0, 14.3)]
+    assert sorted((p, u, t, part) for _, p, u, t, part in ranking["Norte"]) == [
+        ("Camisa Lino", 3, 240.0, 61.5),
+        ("Polera Básica", 3, 150.0, 38.5),
+    ]
+    assert [pos for pos, *_ in ranking["Norte"]] == [1, 2]  # la posición se cuenta dentro de cada sucursal
+    cuerpo = respuesta.json()
+    assert [c["clave"] for c in cuerpo["reporte"]["columnas"]][0] == "sucursal"
+    assert cuerpo["reporte"]["grafico_sugerido"]["tipo"] == "tabla"
+    assert cuerpo["solicitud"]["agrupacion"] == "sucursal"
+    assert any("propio ranking" in aviso for aviso in cuerpo["avisos"])
+
+
+def test_productos_mas_vendidos_agrupado_respeta_el_limite_por_sucursal(client_por_peticion, mundo_ia):
+    filas = filas_de(
+        _pedir(
+            client_por_peticion,
+            mundo_ia,
+            tipo_reporte="productos_mas_vendidos",
+            periodo={"tipo": "este_mes"},
+            agrupacion="sucursal",
+            limite=1,
+        )
+    )
+
+    assert len(filas) == 2  # una fila por sucursal
+    assert {f["sucursal"] for f in filas} == {"Centro", "Norte"}
+    assert [f["producto"] for f in filas if f["sucursal"] == "Centro"] == ["Camisa Oxford"]
+
+
+def test_productos_mas_vendidos_agrupado_con_una_sucursal_nombrada_solo_muestra_esa(client_por_peticion, mundo_ia):
+    filas = filas_de(
+        _pedir(
+            client_por_peticion,
+            mundo_ia,
+            tipo_reporte="productos_mas_vendidos",
+            periodo={"tipo": "este_mes"},
+            sucursales=["Norte"],
+            agrupacion="sucursal",
+        )
+    )
+
+    assert {f["sucursal"] for f in filas} == {"Norte"}
+
+
+def test_el_texto_de_la_pregunta_se_entiende_como_ranking_por_sucursal(client_por_peticion, mundo_ia):
+    respuesta = _pedir(
+        client_por_peticion,
+        mundo_ia,
+        "muestrame los 10 productos mas vendidos de este mes agrupado por sucursal",
+    )
+
+    cuerpo = respuesta.json()
+    assert respuesta.status_code == 200 and cuerpo["estado"] == "ok", respuesta.text
+    assert cuerpo["solicitud"]["tipo_reporte"] == "productos_mas_vendidos"
+    assert cuerpo["solicitud"]["agrupacion"] == "sucursal" and cuerpo["solicitud"]["limite"] == 10
+    assert {f["sucursal"] for f in cuerpo["reporte"]["filas"]} == {"Centro", "Norte"}
+
+
+def test_productos_mas_vendidos_sin_agrupar_sigue_siendo_un_solo_ranking(client_por_peticion, mundo_ia):
+    respuesta = _pedir(
+        client_por_peticion, mundo_ia, tipo_reporte="productos_mas_vendidos", periodo={"tipo": "este_mes"}
+    )
+
+    filas = filas_de(respuesta)
+    assert all("sucursal" not in f for f in filas)
+    assert "sucursal" not in [c["clave"] for c in respuesta.json()["reporte"]["columnas"]]
+
+
+def test_productos_mas_vendidos_no_admite_agrupar_por_tiempo(client_por_peticion, mundo_ia):
+    respuesta = _pedir(
+        client_por_peticion, mundo_ia, tipo_reporte="productos_mas_vendidos", periodo={"tipo": "este_mes"}, agrupacion="mes"
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["estado"] == "invalida" and "sucursal" in cuerpo["mensaje"] and cuerpo["reporte"] is None
+
+
+def test_ventas_por_periodo_no_admite_agrupar_por_sucursal(client_por_peticion, mundo_ia):
+    respuesta = _pedir(
+        client_por_peticion, mundo_ia, tipo_reporte="ventas_por_periodo", periodo={"tipo": "este_mes"}, agrupacion="sucursal"
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["estado"] == "invalida" and cuerpo["reporte"] is None
+
+
 def test_ventas_por_periodo_por_semana_incluye_las_semanas_sin_ventas(client_por_peticion, mundo_ia):
     respuesta = _pedir(
         client_por_peticion, mundo_ia, tipo_reporte="ventas_por_periodo", agrupacion="semana"

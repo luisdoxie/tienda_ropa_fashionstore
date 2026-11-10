@@ -272,6 +272,29 @@ def test_categoria_y_sucursal_en_la_misma_frase():
     assert s.limite == 5
 
 
+def test_top_agrupado_por_sucursal_pide_el_ranking_de_cada_sucursal():
+    s = interpretar("muestrame los 10 productos mas vendidos durante los ultimos 3 meses agrupado por sucursal")
+
+    assert s.tipo_reporte == "productos_mas_vendidos"
+    assert s.agrupacion == "sucursal" and s.limite == 10
+    assert periodo(s) == ("ultimos_meses", 3, None, None)
+    assert s.sucursales == []
+
+
+def test_ventas_por_sucursal_no_manda_agrupacion():
+    s = interpretar("ventas por sucursal de los ultimos 30 dias")
+
+    assert s.tipo_reporte == "ventas_por_sucursal"
+    assert s.agrupacion is None
+
+
+def test_top_de_una_sucursal_nombrada_no_se_agrupa():
+    s = interpretar("los 5 productos mas vendidos de la sucursal Zona Sur", sucursales=["Zona Sur"])
+
+    assert s.tipo_reporte == "productos_mas_vendidos"
+    assert s.agrupacion is None and s.sucursales == ["Zona Sur"]
+
+
 def test_sin_listas_del_llamador_no_inventa_nombres():
     s = InterpreteReportesReglas().interpretar("ventas de Centro este mes", FUNCS).solicitud
 

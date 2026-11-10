@@ -343,7 +343,8 @@ TipoPeriodo = Literal[
     "rango_fechas",
 ]
 CanalReporte = Literal["digital", "presencial"]
-AgrupacionReporte = Literal["dia", "semana", "mes"]
+# "dia", "semana" y "mes" agrupan el TIEMPO (ventas por periodo); "sucursal" agrupa un ranking de productos por sucursal.
+AgrupacionReporte = Literal["dia", "semana", "mes", "sucursal"]
 OrdenReporte = Literal["mayor_a_menor", "menor_a_mayor"]
 OrigenSolicitud = Literal["texto", "voz"]
 TipoColumna = Literal["texto", "entero", "moneda", "porcentaje", "fecha", "booleano"]
@@ -358,6 +359,7 @@ InterpreteUsado = Literal["groq", "reglas"]
 TIPOS_PERIODO = get_args(TipoPeriodo)
 CANALES_REPORTE = get_args(CanalReporte)
 AGRUPACIONES_REPORTE = get_args(AgrupacionReporte)
+AGRUPACIONES_TIEMPO = ("dia", "semana", "mes")
 ORDENES_REPORTE = get_args(OrdenReporte)
 
 MAX_NOMBRES_POR_FILTRO = 5

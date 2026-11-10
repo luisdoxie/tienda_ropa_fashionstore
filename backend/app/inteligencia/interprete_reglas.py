@@ -250,6 +250,9 @@ def _detectar_horizonte(t: str) -> int | None:
     return None
 
 
+_RE_AGRUPAR_SUCURSAL = re.compile(r"\bpor (?:cada )?sucursal\w*|\bcada sucursal\b|\bsucursal por sucursal\b")
+
+
 def _detectar_agrupacion(t: str) -> str | None:
     for valor, patron in _RE_AGRUPACION:
         if patron.search(t):
@@ -357,13 +360,19 @@ class InterpreteReportesReglas(InterpreteReportesBase):
         if tipo not in ("productos_mas_vendidos", "ingresos_por_categoria"):
             orden = None
 
+        agrupacion = _detectar_agrupacion(t)
+        # "los 10 más vendidos ... por sucursal" = un ranking POR sucursal. En los demás reportes "por sucursal" no es
+        # una agrupación (ventas_por_sucursal ya lo es por definición), así que no se manda.
+        if tipo == "productos_mas_vendidos" and _RE_AGRUPAR_SUCURSAL.search(t):
+            agrupacion = "sucursal"
+
         return SolicitudReporte(
             tipo_reporte=tipo,
             periodo=_detectar_periodo(t),
             sucursales=sucursales,
             categorias=categorias,
             canal=_detectar_canal(t),
-            agrupacion=_detectar_agrupacion(t),
+            agrupacion=agrupacion,
             orden=orden,
             limite=_detectar_limite(t),
             horizonte_semanas=_detectar_horizonte(t),

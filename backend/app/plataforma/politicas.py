@@ -797,6 +797,16 @@ def listar_nombres_sucursales_activas(db: Session) -> list[str]:
     return [sucursal.nombre for sucursal in sucursal_repo.listar_activas(db)]
 
 
+def listar_sucursales_activas_minimas(db: Session, sucursal_ids: list[int] | None = None) -> list[tuple[int, str]]:
+    """Para `inteligencia` (reportes generativos): `(id, nombre)` de las sucursales activas de la empresa de la
+    sesión, por id. Con `sucursal_ids` solo esas (una lista vacía no devuelve ninguna)."""
+    return [
+        (sucursal.id, sucursal.nombre)
+        for sucursal in sucursal_repo.listar_activas(db)
+        if sucursal_ids is None or sucursal.id in sucursal_ids
+    ]
+
+
 def atiende_al_publico(db: Session, sucursal_id: int) -> bool:
     """Un depósito (`es_deposito`) es solo almacén: puede despachar envíos
     pero no recibir clientes para retiro ni reservas."""

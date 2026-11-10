@@ -82,7 +82,9 @@ from app.inteligencia.politicas import (
 )
 from app.inteligencia.schemas import (
     TIPOS_REPORTE_VALIDOS,
+    ColumnaReporte,
     ExportarReporteRequest,
+    GraficoSugerido,
     PeriodoResuelto,
     PeriodoSolicitado,
     ReferenciaResuelta,
@@ -222,6 +224,9 @@ class ResultadoEjecucion:
     avisos: list[str] = field(default_factory=list)
     # Resumen en español ya redactado (los reportes de analítica lo traen de CU-24); sin él se usa la plantilla.
     narrativa: str | None = None
+    # Solo si el reporte cambia de forma según el filtro (p. ej. el ranking agrupado por sucursal suma una columna).
+    columnas: list[ColumnaReporte] | None = None
+    grafico: GraficoSugerido | None = None
 
 
 def _ordenado(filas: list[dict], clave: str, orden: str) -> list[dict]:
@@ -248,7 +253,65 @@ def _ejecutar_ventas_por_sucursal(db: Session, usuario_id: int, ctx: ContextoEje
     return ResultadoEjecucion(salida, armar_resumen(salida, ["total_ventas", "transacciones"]))
 
 
+_COLUMNAS_TOP_POR_SUCURSAL = (
+    ColumnaReporte(clave="sucursal", titulo="Sucursal", tipo="texto"),
+    ColumnaReporte(clave="posicion", titulo="Posición", tipo="entero"),
+    ColumnaReporte(clave="producto", titulo="Producto", tipo="texto"),
+    ColumnaReporte(clave="unidades", titulo="Unidades", tipo="entero"),
+    ColumnaReporte(clave="total_vendido", titulo="Total vendido", tipo="moneda"),
+    ColumnaReporte(clave="participacion", titulo="Participación", tipo="porcentaje"),
+)
+
+
+def _productos_mas_vendidos_por_sucursal(db: Session, ctx: ContextoEjecucion) -> ResultadoEjecucion:
+    """El ranking de cada sucursal por separado: la misma consulta del ranking general, una vez por sucursal
+    (las del alcance de quien pide; son pocas, el plan las limita). La participación es sobre el total de ESA
+    sucursal. Una sucursal sin ventas en el periodo no aparece."""
+    ascendente = ctx.orden == "menor_a_mayor"
+    salida: list[dict] = []
+    for sucursal_id, nombre in plataforma_politicas.listar_sucursales_activas_minimas(db, ctx.sucursal_ids):
+        filas = comercial_politicas.reporte_ventas_top_productos(
+            db,
+            ctx.periodo,
+            canal=ctx.canal,
+            limite=ctx.limite,
+            sucursal_ids=[sucursal_id],
+            categoria_ids=ctx.categoria_ids,
+            ascendente=ascendente,
+        )
+        if not filas:
+            continue
+        del_periodo = comercial_politicas.reporte_ventas_resumen(
+            db, ctx.periodo, canal=ctx.canal, sucursal_ids=[sucursal_id], categoria_ids=ctx.categoria_ids
+        )
+        montos = [a_decimal(f["total_vendido"]) for f in filas]
+        participacion = calcular_participacion(montos, a_decimal(del_periodo["total_ventas"]))
+        for posicion, (f, monto, porcentaje) in enumerate(zip(filas, montos, participacion), start=1):
+            salida.append(
+                {
+                    "sucursal": nombre,
+                    "posicion": posicion,
+                    "producto": f["producto"],
+                    "unidades": int(f["cantidad_vendida"]),
+                    "total_vendido": a_numero(monto),
+                    "participacion": porcentaje,
+                }
+            )
+    avisos = ["Cada sucursal muestra su propio ranking; la participación es sobre el total de esa sucursal."]
+    if ascendente:
+        avisos.append("Solo se consideran los productos con ventas en el periodo.")
+    return ResultadoEjecucion(
+        salida,
+        armar_resumen(salida, ["unidades", "total_vendido"]),
+        avisos,
+        columnas=list(_COLUMNAS_TOP_POR_SUCURSAL),
+        grafico=GraficoSugerido(tipo="tabla"),
+    )
+
+
 def _ejecutar_productos_mas_vendidos(db: Session, usuario_id: int, ctx: ContextoEjecucion) -> ResultadoEjecucion:
+    if ctx.agrupacion == "sucursal":
+        return _productos_mas_vendidos_por_sucursal(db, ctx)
     ascendente = ctx.orden == "menor_a_mayor"
     filas = comercial_politicas.reporte_ventas_top_productos(
         db,
@@ -968,7 +1031,8 @@ class _PreparadorSolicitud:
         if "agrupacion" in definicion.filtros:
             filtro = definicion.filtros["agrupacion"]
             agrupacion = solicitud.agrupacion or filtro.defecto
-            if agrupacion not in filtro.valores:
+            # Sin valor por defecto (p. ej. el ranking de productos) "sin agrupar" es válido.
+            if agrupacion is not None and agrupacion not in filtro.valores:
                 permitidas = ", ".join(filtro.valores)
                 return (
                     f"Para «{definicion.titulo}» puedes agrupar por: {permitidas}.",
@@ -999,10 +1063,10 @@ def _resolver_resultado(
         reporte = ReporteEjecutado(
             codigo=definicion.codigo,
             titulo=definicion.titulo,
-            columnas=list(definicion.columnas),
+            columnas=list(ejecucion.columnas or definicion.columnas),
             filas=filas,
             resumen=ejecucion.resumen,
-            grafico_sugerido=definicion.grafico,
+            grafico_sugerido=ejecucion.grafico or definicion.grafico,
             truncado=truncado,
             generado_en=dt.datetime.now(dt.timezone.utc),
         )

@@ -408,7 +408,7 @@ COLUMNAS_SUMABLES = frozenset(
 )
 
 _ETIQUETA_CANAL = {"digital": "digital", "presencial": "presencial"}
-_ETIQUETA_AGRUPACION = {"dia": "por día", "semana": "por semana", "mes": "por mes"}
+_ETIQUETA_AGRUPACION = {"dia": "por día", "semana": "por semana", "mes": "por mes", "sucursal": "por sucursal"}
 _ETIQUETA_ORDEN = {"mayor_a_menor": "de mayor a menor", "menor_a_mayor": "de menor a mayor"}
 
 

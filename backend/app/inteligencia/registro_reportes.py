@@ -42,7 +42,7 @@ from typing import Any, Literal
 
 from app.core.planes import FUNC_ANALITICA_ML, FUNC_REPORTES_IA
 from app.inteligencia.schemas import (
-    AGRUPACIONES_REPORTE,
+    AGRUPACIONES_TIEMPO,
     CANALES_REPORTE,
     LIMITE_MAXIMO,
     LIMITE_MINIMO,
@@ -160,6 +160,15 @@ def _agrupacion(valores: tuple[str, ...], defecto: str) -> DefinicionFiltro:
     )
 
 
+def _agrupar_por_sucursal() -> DefinicionFiltro:
+    """Opcional y SIN valor por defecto: sin ella el ranking es uno solo para todo el alcance."""
+    return DefinicionFiltro(
+        "enum",
+        "Pon «sucursal» para obtener el ranking de cada sucursal por separado.",
+        valores=("sucursal",),
+    )
+
+
 def _horizonte() -> DefinicionFiltro:
     return DefinicionFiltro(
         "entero",
@@ -207,6 +216,7 @@ _DEFINICIONES: tuple[DefinicionReporte, ...] = (
             "cuales fueron los diez productos mas vendidos este mes",
             "top 5 de prendas más vendidas el mes pasado",
             "productos más vendidos por el canal digital en los últimos 7 días",
+            "los 10 productos más vendidos de los últimos 3 meses agrupado por sucursal",
         ),
         filtros=MappingProxyType(
             {
@@ -216,6 +226,7 @@ _DEFINICIONES: tuple[DefinicionReporte, ...] = (
                 "canal": _canal(),
                 "limite": _limite(10),
                 "orden": _orden(),
+                "agrupacion": _agrupar_por_sucursal(),
             }
         ),
         columnas=(
@@ -245,7 +256,7 @@ _DEFINICIONES: tuple[DefinicionReporte, ...] = (
                 "categorias": _nombres("categorías"),
                 "productos": _nombres("productos"),
                 "canal": _canal(),
-                "agrupacion": _agrupacion(tuple(AGRUPACIONES_REPORTE), "semana"),
+                "agrupacion": _agrupacion(tuple(AGRUPACIONES_TIEMPO), "semana"),
             }
         ),
         columnas=(
